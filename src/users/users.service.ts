@@ -67,6 +67,7 @@ export class UsersService {
 
   async findAll(page: number = 1, limit: number = 20) {
     const {skip, take} = paginate(page, limit);
+
     const [users, total] = await this.usersRepository.findAndCount({
       skip,
       take,

@@ -4,6 +4,7 @@ import {UserResponseDto} from './user-response.dto';
 export class AdminUserResponseDto extends UserResponseDto {
   @Expose() isAdmin: boolean;
   @Expose() isBlocked: boolean;
+  @Expose() deletedAt?: Date;
 
   constructor(partial: Partial<AdminUserResponseDto>) {
     super(partial);
