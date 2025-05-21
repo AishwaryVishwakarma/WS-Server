@@ -1,8 +1,12 @@
 {
   "name": "ws-server",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "Server for Whishpering Shadows, a web application for sharing and discussing stories.",
+  "author": {
+    "name": "Aishwary Vishwakarma",
+    "email": "aishwaryvishwakarma23@gmail.com",
+    "url": "https://aishwary.vercel.app/"
+  },
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
@@ -21,9 +25,11 @@
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/throttler": "^6.4.0",
     "@nestjs/typeorm": "^11.0.0",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
