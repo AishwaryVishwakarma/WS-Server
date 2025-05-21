@@ -1,10 +1,16 @@
-import {Module} from '@nestjs/common';
+import {Module, type MiddlewareConsumer} from '@nestjs/common';
 import {AppController} from './app.controller';
 import {AppService} from './app.service';
 import {ConfigModule, ConfigService} from '@nestjs/config';
 import {TypeOrmModule} from '@nestjs/typeorm';
 import {ThrottlerGuard, ThrottlerModule} from '@nestjs/throttler';
 import {APP_GUARD} from '@nestjs/core';
+import {UsersModule} from './users/users.module';
+import {User} from './users/entities/user.entity';
+import {AuthModule} from './auth/auth.module';
+import {CsrfMiddleware} from './middlewares/csrf.middleware';
+import {SessionService} from './session/session.service';
+import {SessionModule} from './session/session.module';
 
 @Module({
   imports: [
@@ -49,10 +55,13 @@ import {APP_GUARD} from '@nestjs/core';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
-        entities: [],
+        entities: [User],
         synchronize: configService.get('NODE_ENV') !== 'production',
       }),
     }),
+    AuthModule,
+    UsersModule,
+    SessionModule,
   ],
   controllers: [AppController],
   providers: [
@@ -61,6 +70,14 @@ import {APP_GUARD} from '@nestjs/core';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    SessionService,
   ],
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(CsrfMiddleware)
+      .exclude('/auth/login', '/auth/logout', '/auth/register')
+      .forRoutes('*');
+  }
+}

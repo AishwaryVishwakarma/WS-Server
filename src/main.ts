@@ -4,6 +4,7 @@ import {Logger, ValidationPipe} from '@nestjs/common';
 import {createClient} from 'redis';
 import {RedisStore} from 'connect-redis';
 import * as session from 'express-session';
+import {CsrfExceptionFilter} from './common/filters/csrf-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,6 +14,7 @@ async function bootstrap() {
       transform: true,
     })
   );
+  app.useGlobalFilters(new CsrfExceptionFilter());
 
   // Initialize Redis client
   const redisClient = createClient({
