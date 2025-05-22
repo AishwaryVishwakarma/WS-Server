@@ -7,7 +7,7 @@ import {
 import {Request} from 'express';
 
 @Injectable()
-export class AdminOnlyGaurd implements CanActivate {
+export class AdminOnlyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
 

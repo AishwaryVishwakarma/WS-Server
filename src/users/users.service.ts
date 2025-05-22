@@ -101,18 +101,21 @@ export class UsersService {
     };
   }
 
-  async findOne(id: string) {
-    const user = await this.usersRepository.findOneBy({id});
+  async findMe(req: Request) {
+    return this.findOne(req.session.userId!, true);
+  }
+
+  async findOne(id: string, includeStories: boolean = false) {
+    const user = await this.usersRepository.findOne({
+      where: {id},
+      relations: includeStories ? ['stories'] : [],
+    });
 
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
     return user;
-  }
-
-  async findMe(req: Request) {
-    return this.findOne(req.session.userId!);
   }
 
   async updateMe(updateUserDto: UpdateUserDto, req: Request) {

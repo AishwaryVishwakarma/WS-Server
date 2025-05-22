@@ -4,7 +4,7 @@ import {TypeOrmModule} from '@nestjs/typeorm';
 import {User} from './entities/user.entity';
 import {SessionModule} from 'src/session/session.module';
 import {PublicUsersController} from './controllers/public-users.controller';
-import {AdminUsersController} from './controllers/admin.users.controller';
+import {AdminUsersController} from './controllers/admin-users.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User]), SessionModule],

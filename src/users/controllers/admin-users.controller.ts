@@ -15,31 +15,34 @@ import {
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import type {Request} from 'express';
-import {serializeUser} from 'src/utils/serialization';
 import {AdminOnlyGuard} from 'src/common/gaurds/admin-only.gaurd';
 import {UsersService} from '../users.service';
 import {User} from '../entities/user.entity';
 import {CreateUserDto} from '../dto/create-user.dto';
 import {UpdateUserDto} from '../dto/update-user.dto';
+import {plainToInstance} from 'class-transformer';
+import {UserResponseDto} from '../dto/user-response.dto';
 
 @UseGuards(SessionAuthGuard, AdminOnlyGuard)
 @Controller('admin/users')
 export class AdminUsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  private _serialize(user: User, isAdmin: boolean = false) {
-    return serializeUser(user, isAdmin);
+  private _serialize(user: User) {
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post()
   @HttpCode(201)
-  async create(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
+  async create(@Body() createUserDto: CreateUserDto) {
     const user = await this.usersService.create(createUserDto);
-    return this._serialize(user as User, req.session.isAdmin);
+    return this._serialize(user as User);
   }
 
   @Get()
-  async findAll(@Query() paginationDto: PaginationDto, @Req() req: Request) {
+  async findAll(@Query() paginationDto: PaginationDto) {
     const result = await this.usersService.findAll(
       paginationDto.page,
       paginationDto.limit
@@ -47,9 +50,7 @@ export class AdminUsersController {
 
     return {
       ...result,
-      data: result.data.map((user) =>
-        this._serialize(user, req.session.isAdmin)
-      ),
+      data: result.data.map((user) => this._serialize(user)),
     };
   }
 
@@ -60,7 +61,7 @@ export class AdminUsersController {
     @Req() req: Request
   ) {
     const user = await this.usersService.update(id, updateUserDto, req);
-    return this._serialize(user as User, req.session.isAdmin);
+    return this._serialize(user as User);
   }
 
   @Patch(':id/restore')

@@ -11,6 +11,8 @@ import {AuthModule} from './auth/auth.module';
 import {CsrfMiddleware} from './middlewares/csrf.middleware';
 import {SessionService} from './session/session.service';
 import {SessionModule} from './session/session.module';
+import {StoriesModule} from './stories/stories.module';
+import {Story} from './stories/entities/story.entity';
 
 @Module({
   imports: [
@@ -55,13 +57,14 @@ import {SessionModule} from './session/session.module';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
-        entities: [User],
+        entities: [User, Story],
         synchronize: configService.get('NODE_ENV') !== 'production',
       }),
     }),
     AuthModule,
-    UsersModule,
     SessionModule,
+    UsersModule,
+    StoriesModule,
   ],
   controllers: [AppController],
   providers: [
