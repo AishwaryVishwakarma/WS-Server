@@ -48,6 +48,24 @@ export class UsersService {
     return bcrypt.hash(password, saltRounds);
   }
 
+  // Update the user entity with the new data
+  private async _updateUserEntity(user: User, updateUserDto: UpdateUserDto) {
+    const {password, ...rest} = updateUserDto;
+    Object.assign(user, rest);
+
+    if (password) {
+      user.password = await this._generateHash(password);
+    }
+
+    try {
+      return await this.usersRepository.save(user);
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        this._handleQueryFailedError(error, 'update');
+      }
+    }
+  }
+
   async create(createUserDto: CreateUserDto) {
     const hashedPassword = await this._generateHash(createUserDto.password);
 
@@ -93,31 +111,24 @@ export class UsersService {
     return user;
   }
 
-  async update(id: number, updateUserDto: UpdateUserDto) {
-    const user = await this.findOne(id);
-
-    const {password, ...rest} = updateUserDto;
-    Object.assign(user, rest);
-
-    if (password) {
-      user.password = await this._generateHash(password);
+  async updateMe(updateUserDto: UpdateUserDto, req: Request) {
+    if (req.session.isAdmin && !updateUserDto.isAdmin) {
+      throw new ConflictException(
+        'You cannot remove admin privileges from yourself'
+      );
     }
 
-    try {
-      return await this.usersRepository.save(user);
-    } catch (error) {
-      if (error instanceof QueryFailedError) {
-        this._handleQueryFailedError(error, 'update');
-      }
-    }
+    const user = await this.findOne(req.session.userId!);
+    return this._updateUserEntity(user, updateUserDto);
   }
 
-  async remove(id: number) {
-    const result = await this.usersRepository.softDelete(id);
-
-    if (result.affected === 0) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+  async update(id: number, updateUserDto: UpdateUserDto, req: Request) {
+    if (req.session.userId === id) {
+      return this.updateMe(updateUserDto, req);
     }
+
+    const user = await this.findOne(id);
+    return this._updateUserEntity(user, updateUserDto);
   }
 
   async removeMe(req: Request) {
@@ -130,6 +141,14 @@ export class UsersService {
     }
 
     return this.sessionService.destroy(req);
+  }
+
+  async remove(id: number) {
+    const result = await this.usersRepository.softDelete(id);
+
+    if (result.affected === 0) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
   }
 
   async restore(id: number) {

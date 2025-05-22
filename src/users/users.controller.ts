@@ -20,6 +20,7 @@ import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {User} from './entities/user.entity';
 import type {Request} from 'express';
 import {serializeUser} from 'src/utils/serialization';
+import {AdminOnlyGuard} from 'src/common/gaurds/admin-only.gaurd';
 
 @UseGuards(SessionAuthGuard)
 @Controller('users')
@@ -31,6 +32,7 @@ export class UsersController {
   }
 
   @Post()
+  @UseGuards(AdminOnlyGuard)
   @HttpCode(201)
   async create(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
     const user = await this.usersService.create(createUserDto);
@@ -38,6 +40,7 @@ export class UsersController {
   }
 
   @Get()
+  @UseGuards(AdminOnlyGuard)
   async findAll(@Query() paginationDto: PaginationDto, @Req() req: Request) {
     const result = await this.usersService.findAll(
       paginationDto.page,
@@ -53,22 +56,31 @@ export class UsersController {
   }
 
   @Get(':id')
+  @UseGuards(AdminOnlyGuard)
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     const user = await this.usersService.findOne(id);
     return this._serialize(user, req.session.isAdmin);
   }
 
+  @Patch('me')
+  async updateMe(@Body() updateUserDto: UpdateUserDto, @Req() req: Request) {
+    const user = await this.usersService.updateMe(updateUserDto, req);
+    return this._serialize(user as User, req.session.isAdmin);
+  }
+
   @Patch(':id')
+  @UseGuards(AdminOnlyGuard)
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
     @Req() req: Request
   ) {
-    const user = await this.usersService.update(id, updateUserDto);
+    const user = await this.usersService.update(id, updateUserDto, req);
     return this._serialize(user as User, req.session.isAdmin);
   }
 
   @Patch(':id/restore')
+  @UseGuards(AdminOnlyGuard)
   @HttpCode(204)
   async restore(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.restore(id);
@@ -81,6 +93,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @UseGuards(AdminOnlyGuard)
   @HttpCode(204)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.remove(id);
