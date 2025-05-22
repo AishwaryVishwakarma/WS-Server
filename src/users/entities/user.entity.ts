@@ -1,17 +1,19 @@
 import {Exclude} from 'class-transformer';
+import {Story} from 'src/stories/entities/story.entity';
 import {
   Column,
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 @Entity()
 export class User {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({length: 100})
   name: string;
@@ -46,4 +48,7 @@ export class User {
 
   @DeleteDateColumn()
   deletedAt: Date;
+
+  @OneToMany(() => Story, (story) => story.author)
+  stories: Story[];
 }

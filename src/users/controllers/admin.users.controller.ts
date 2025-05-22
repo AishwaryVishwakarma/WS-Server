@@ -6,25 +6,25 @@ import {
   Patch,
   Param,
   Delete,
-  ParseIntPipe,
   HttpCode,
   Query,
   UseGuards,
   Req,
+  ParseUUIDPipe,
 } from '@nestjs/common';
-import {UsersService} from './users.service';
-import {CreateUserDto} from './dto/create-user.dto';
-import {UpdateUserDto} from './dto/update-user.dto';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
-import {User} from './entities/user.entity';
 import type {Request} from 'express';
 import {serializeUser} from 'src/utils/serialization';
-import {AdminOnlyGuard} from 'src/common/gaurds/admin-only.gaurd';
+import {AdminOnlyGaurd} from 'src/common/gaurds/admin-only.gaurd';
+import {UsersService} from '../users.service';
+import {User} from '../entities/user.entity';
+import {CreateUserDto} from '../dto/create-user.dto';
+import type {UpdateUserDto} from '../dto/update-user.dto';
 
-@UseGuards(SessionAuthGuard)
-@Controller('users')
-export class UsersController {
+@UseGuards(SessionAuthGuard, AdminOnlyGaurd)
+@Controller('admin/users')
+export class AdminUsersController {
   constructor(private readonly usersService: UsersService) {}
 
   private _serialize(user: User, isAdmin: boolean = false) {
@@ -32,7 +32,6 @@ export class UsersController {
   }
 
   @Post()
-  @UseGuards(AdminOnlyGuard)
   @HttpCode(201)
   async create(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
     const user = await this.usersService.create(createUserDto);
@@ -40,7 +39,6 @@ export class UsersController {
   }
 
   @Get()
-  @UseGuards(AdminOnlyGuard)
   async findAll(@Query() paginationDto: PaginationDto, @Req() req: Request) {
     const result = await this.usersService.findAll(
       paginationDto.page,
@@ -55,23 +53,9 @@ export class UsersController {
     };
   }
 
-  @Get(':id')
-  @UseGuards(AdminOnlyGuard)
-  async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
-    const user = await this.usersService.findOne(id);
-    return this._serialize(user, req.session.isAdmin);
-  }
-
-  @Patch('me')
-  async updateMe(@Body() updateUserDto: UpdateUserDto, @Req() req: Request) {
-    const user = await this.usersService.updateMe(updateUserDto, req);
-    return this._serialize(user as User, req.session.isAdmin);
-  }
-
   @Patch(':id')
-  @UseGuards(AdminOnlyGuard)
   async update(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
     @Req() req: Request
   ) {
@@ -80,22 +64,14 @@ export class UsersController {
   }
 
   @Patch(':id/restore')
-  @UseGuards(AdminOnlyGuard)
   @HttpCode(204)
-  async restore(@Param('id', ParseIntPipe) id: number) {
+  async restore(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.restore(id);
   }
 
-  @Delete('me')
-  @HttpCode(204)
-  async removeMe(@Req() req: Request) {
-    return this.usersService.removeMe(req);
-  }
-
   @Delete(':id')
-  @UseGuards(AdminOnlyGuard)
   @HttpCode(204)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.remove(id);
   }
 }

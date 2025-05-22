@@ -101,7 +101,7 @@ export class UsersService {
     };
   }
 
-  async findOne(id: number) {
+  async findOne(id: string) {
     const user = await this.usersRepository.findOneBy({id});
 
     if (!user) {
@@ -122,7 +122,7 @@ export class UsersService {
     return this._updateUserEntity(user, updateUserDto);
   }
 
-  async update(id: number, updateUserDto: UpdateUserDto, req: Request) {
+  async update(id: string, updateUserDto: UpdateUserDto, req: Request) {
     if (req.session.userId === id) {
       return this.updateMe(updateUserDto, req);
     }
@@ -143,7 +143,7 @@ export class UsersService {
     return this.sessionService.destroy(req);
   }
 
-  async remove(id: number) {
+  async remove(id: string) {
     const result = await this.usersRepository.softDelete(id);
 
     if (result.affected === 0) {
@@ -151,7 +151,7 @@ export class UsersService {
     }
   }
 
-  async restore(id: number) {
+  async restore(id: string) {
     const result = await this.usersRepository.restore(id);
 
     if (result.affected === 0) {
