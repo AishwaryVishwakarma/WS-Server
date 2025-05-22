@@ -16,13 +16,13 @@ import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import type {Request} from 'express';
 import {serializeUser} from 'src/utils/serialization';
-import {AdminOnlyGaurd} from 'src/common/gaurds/admin-only.gaurd';
+import {AdminOnlyGuard} from 'src/common/gaurds/admin-only.gaurd';
 import {UsersService} from '../users.service';
 import {User} from '../entities/user.entity';
 import {CreateUserDto} from '../dto/create-user.dto';
-import type {UpdateUserDto} from '../dto/update-user.dto';
+import {UpdateUserDto} from '../dto/update-user.dto';
 
-@UseGuards(SessionAuthGuard, AdminOnlyGaurd)
+@UseGuards(SessionAuthGuard, AdminOnlyGuard)
 @Controller('admin/users')
 export class AdminUsersController {
   constructor(private readonly usersService: UsersService) {}

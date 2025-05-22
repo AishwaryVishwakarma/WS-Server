@@ -111,6 +111,10 @@ export class UsersService {
     return user;
   }
 
+  async findMe(req: Request) {
+    return this.findOne(req.session.userId!);
+  }
+
   async updateMe(updateUserDto: UpdateUserDto, req: Request) {
     if (req.session.isAdmin && !updateUserDto.isAdmin) {
       throw new ConflictException(

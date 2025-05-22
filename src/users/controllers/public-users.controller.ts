@@ -26,6 +26,12 @@ export class PublicUsersController {
     return serializeUser(user);
   }
 
+  @Get('me')
+  async findMe(@Req() req: Request) {
+    const user = await this.usersService.findMe(req);
+    return this._serialize(user);
+  }
+
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const user = await this.usersService.findOne(id);
