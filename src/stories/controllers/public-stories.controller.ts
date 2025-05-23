@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   HttpCode,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import {StoriesService} from '../stories.service';
 import {CreateStoryDto} from '../dto/create-story.dto';
@@ -21,6 +22,7 @@ import {
   StoryPreviewResponseDto,
   StoryResponseDto,
 } from '../dto/story-response.dto';
+import type {Request} from 'express';
 
 @UseGuards(SessionAuthGuard)
 @Controller('stories')
@@ -42,8 +44,11 @@ export class PublicStoriesController {
 
   @Post()
   @HttpCode(201)
-  async create(@Body() createStoryDto: CreateStoryDto) {
-    const story = await this.storiesService.create(createStoryDto);
+  async create(@Body() createStoryDto: CreateStoryDto, @Req() req: Request) {
+    const story = await this.storiesService.create(
+      createStoryDto,
+      req.session.userId!
+    );
     return this._serialize(StoryResponseDto, story);
   }
 
@@ -54,16 +59,27 @@ export class PublicStoriesController {
   }
 
   @Patch(':id')
-  update(
+  async update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateStoryDto: UpdateStoryDto
+    @Body() updateStoryDto: UpdateStoryDto,
+    @Req() req: Request
   ) {
-    return this.storiesService.update(id, updateStoryDto);
+    const story = await this.storiesService.update(
+      id,
+      updateStoryDto,
+      req.session.userId!,
+      req.session.isAdmin!
+    );
+    return this._serialize(StoryResponseDto, story);
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.storiesService.remove(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.storiesService.remove(
+      id,
+      req.session.userId!,
+      req.session.isAdmin!
+    );
   }
 }

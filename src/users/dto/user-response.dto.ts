@@ -4,6 +4,11 @@ import {
   StoryResponseDto,
 } from 'src/stories/dto/story-response.dto';
 
+/**
+ * User preview response DTO [public]
+ * This DTO is used to return a preview of the user
+ * and can be used in the list of users or the user profile
+ */
 export class UserPreviewResponseDto {
   @Expose() id: string;
   @Expose() name: string;
@@ -19,6 +24,12 @@ export class UserPreviewResponseDto {
   }
 }
 
+/**
+ * User with story preview response DTO [public]
+ * This DTO is used to return a preview of the user
+ * and the stories, can be used in the user profile to show
+ * the stories of the user without the content
+ */
 export class UserWithStoryPreviewResponseDto extends UserPreviewResponseDto {
   @Expose()
   @Type(() => StoryPreviewResponseDto)
@@ -30,6 +41,12 @@ export class UserWithStoryPreviewResponseDto extends UserPreviewResponseDto {
   }
 }
 
+/**
+ * User response DTO [author]
+ * This DTO is used to return the user with the stories
+ * and can be used in the user profile to show
+ * the stories of the user with the content
+ */
 export class UserWithStoryResponseDto extends UserPreviewResponseDto {
   @Expose()
   @Type(() => StoryResponseDto)
@@ -41,6 +58,11 @@ export class UserWithStoryResponseDto extends UserPreviewResponseDto {
   }
 }
 
+/**
+ * User response DTO [admin]
+ * This DTO is used to return the user without the stories
+ * and can be used in the admin panel to show the users
+ */
 export class UserResponseDto extends UserPreviewResponseDto {
   @Expose() createdAt: Date;
   @Expose() updatedAt: Date;

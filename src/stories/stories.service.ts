@@ -1,4 +1,8 @@
-import {Injectable, NotFoundException} from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {CreateStoryDto} from './dto/create-story.dto';
 import {UpdateStoryDto} from './dto/update-story.dto';
 import {InjectRepository} from '@nestjs/typeorm';
@@ -15,13 +19,29 @@ export class StoriesService {
     private readonly usersService: UsersService
   ) {}
 
-  async create(createStoryDto: CreateStoryDto) {
-    const {authorId, ...rest} = createStoryDto;
+  private async _getStoryIfAuthorized(
+    storyId: string,
+    userId: string,
+    isAdmin: boolean
+  ): Promise<Story> {
+    const story = await this.findOne(storyId);
 
-    const author = await this.usersService.findOne(authorId);
+    const isOwner = story.author.id === userId;
+
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException(
+        `You do not have permission to modify this story`
+      );
+    }
+
+    return story;
+  }
+
+  async create(createStoryDto: CreateStoryDto, userId: string) {
+    const author = await this.usersService.findOne(userId);
 
     const story = this.storiesRepository.create({
-      ...rest,
+      ...createStoryDto,
       author,
     });
 
@@ -34,6 +54,16 @@ export class StoriesService {
     const [stories, total] = await this.storiesRepository.findAndCount({
       skip,
       take,
+      select: {
+        id: true,
+        title: true,
+        coverImageUrl: true,
+        scareLevel: true,
+        isFlagged: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     return {
@@ -47,7 +77,10 @@ export class StoriesService {
   }
 
   async findOne(id: string) {
-    const story = await this.storiesRepository.findOneBy({id});
+    const story = await this.storiesRepository.findOne({
+      where: {id},
+      relations: ['author'],
+    });
 
     if (!story) {
       throw new NotFoundException(`Story with ID ${id} not found`);
@@ -56,18 +89,21 @@ export class StoriesService {
     return story;
   }
 
-  async update(id: string, updateStoryDto: UpdateStoryDto) {
-    const user = await this.findOne(id);
+  async update(
+    id: string,
+    updateStoryDto: UpdateStoryDto,
+    userId: string,
+    isAdmin: boolean
+  ) {
+    const story = await this._getStoryIfAuthorized(id, userId, isAdmin);
 
-    Object.assign(user, updateStoryDto);
-    return await this.storiesRepository.save(user);
+    Object.assign(story, updateStoryDto);
+    return await this.storiesRepository.save(story);
   }
 
-  async remove(id: string) {
-    const result = await this.storiesRepository.delete(id);
+  async remove(id: string, userId: string, isAdmin: boolean) {
+    await this._getStoryIfAuthorized(id, userId, isAdmin);
 
-    if (result.affected === 0) {
-      throw new NotFoundException(`User with ID ${id} not found`);
-    }
+    return await this.storiesRepository.delete(id);
   }
 }

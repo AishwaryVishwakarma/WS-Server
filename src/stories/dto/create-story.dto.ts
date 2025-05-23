@@ -5,16 +5,12 @@ import {
   IsOptional,
   IsString,
   IsUrl,
-  IsUUID,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
 
 export class CreateStoryDto {
-  @IsUUID()
-  authorId: string;
-
   @IsString()
   @IsNotEmpty()
   title: string;

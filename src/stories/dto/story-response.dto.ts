@@ -1,6 +1,12 @@
 import {Expose, Type} from 'class-transformer';
 import type {StoryStatus} from '../enums/story-status.enum';
 
+/**
+ * Author preview DTO [public]
+ * This DTO is used to return a preview of the author
+ * and can be used in the list of stories, story details or
+ * the author details page
+ */
 class AuthorPreviewDto {
   @Expose() id: string;
   @Expose() name: string;
@@ -13,6 +19,11 @@ class AuthorPreviewDto {
   }
 }
 
+/**
+ * Story preview response DTO [public]
+ * This DTO is used to return a preview of the story an can be used
+ * in the list of stories without the content
+ */
 export class StoryPreviewResponseDto {
   @Expose() id: string;
   @Expose() title: string;
@@ -27,6 +38,11 @@ export class StoryPreviewResponseDto {
   }
 }
 
+/**
+ * Story with author preview response DTO [public]
+ * This DTO is used to return a preview of the story with the author
+ * and the content, can be used in the story details page
+ */
 export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
 
@@ -40,6 +56,12 @@ export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
   }
 }
 
+/**
+ * Story response DTO [admin, author]
+ * This DTO is used to return the full story without the author
+ * and can be used in to show the current users stories
+ * and the admin panel
+ */
 export class StoryResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
   @Expose() isFlagged: boolean;

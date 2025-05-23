@@ -12,8 +12,6 @@ import {QueryFailedError, Repository} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
-import {SessionService} from 'src/session/session.service';
-import type {Request} from 'express';
 
 @Injectable()
 export class UsersService {
@@ -21,8 +19,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
-    private readonly configService: ConfigService,
-    private readonly sessionService: SessionService
+    private readonly configService: ConfigService
   ) {}
 
   private _handleQueryFailedError(error: unknown, action: string) {
@@ -49,7 +46,7 @@ export class UsersService {
   }
 
   // Update the user entity with the new data
-  private async _updateUserEntity(user: User, updateUserDto: UpdateUserDto) {
+  private async _applyUserUpdates(user: User, updateUserDto: UpdateUserDto) {
     const {password, ...rest} = updateUserDto;
     Object.assign(user, rest);
 
@@ -60,9 +57,7 @@ export class UsersService {
     try {
       return await this.usersRepository.save(user);
     } catch (error) {
-      if (error instanceof QueryFailedError) {
-        this._handleQueryFailedError(error, 'update');
-      }
+      this._handleQueryFailedError(error, 'update');
     }
   }
 
@@ -101,53 +96,70 @@ export class UsersService {
     };
   }
 
-  async findMe(req: Request) {
-    return this.findOne(req.session.userId!, true);
+  async findMe(userId: string) {
+    return this.findOne(userId, true);
   }
 
   async findOne(id: string, includeStories: boolean = false) {
-    const user = await this.usersRepository.findOne({
-      where: {id},
-      relations: includeStories ? ['stories'] : [],
-    });
+    const query = this.usersRepository
+      .createQueryBuilder('user')
+      .where('user.id = :id', {id});
 
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+    if (includeStories) {
+      query
+        .leftJoinAndSelect('user.stories', 'story')
+        .addSelect([
+          'story.id',
+          'story.title',
+          'story.coverImageUrl',
+          'story.scareLevel',
+          'story.isFlagged',
+          'story.status',
+          'story.createdAt',
+          'story.updatedAt',
+        ]);
     }
 
-    return user;
+    return await query.getOneOrFail().catch(() => {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    });
   }
 
-  async updateMe(updateUserDto: UpdateUserDto, req: Request) {
-    if (req.session.isAdmin && !updateUserDto.isAdmin) {
+  async updateMe(
+    updateUserDto: UpdateUserDto,
+    userId: string,
+    isAdmin: boolean
+  ) {
+    if (isAdmin && !updateUserDto.isAdmin) {
       throw new ConflictException(
         'You cannot remove admin privileges from yourself'
       );
     }
 
-    const user = await this.findOne(req.session.userId!);
-    return this._updateUserEntity(user, updateUserDto);
+    const user = await this.findOne(userId);
+    return this._applyUserUpdates(user, updateUserDto);
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto, req: Request) {
-    if (req.session.userId === id) {
-      return this.updateMe(updateUserDto, req);
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    userId: string,
+    isAdmin: boolean
+  ) {
+    if (userId === id) {
+      return this.updateMe(updateUserDto, userId, isAdmin);
     }
 
     const user = await this.findOne(id);
-    return this._updateUserEntity(user, updateUserDto);
+    return this._applyUserUpdates(user, updateUserDto);
   }
 
-  async removeMe(req: Request) {
-    const result = await this.usersRepository.softDelete(req.session.userId!);
+  async removeMe(userId: string) {
+    const result = await this.usersRepository.softDelete(userId);
 
     if (result.affected === 0) {
-      throw new NotFoundException(
-        `User with ID ${req.session.userId} not found`
-      );
+      throw new NotFoundException(`User with ID ${userId} not found`);
     }
-
-    return this.sessionService.destroy(req);
   }
 
   async remove(id: string) {

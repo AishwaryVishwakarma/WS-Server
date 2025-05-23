@@ -22,11 +22,15 @@ import {CreateUserDto} from '../dto/create-user.dto';
 import {UpdateUserDto} from '../dto/update-user.dto';
 import {plainToInstance} from 'class-transformer';
 import {UserResponseDto} from '../dto/user-response.dto';
+import {SessionService} from 'src/session/session.service';
 
 @UseGuards(SessionAuthGuard, AdminOnlyGuard)
 @Controller('admin/users')
 export class AdminUsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly sessionService: SessionService
+  ) {}
 
   private _serialize(user: User) {
     return plainToInstance(UserResponseDto, user, {
@@ -60,7 +64,12 @@ export class AdminUsersController {
     @Body() updateUserDto: UpdateUserDto,
     @Req() req: Request
   ) {
-    const user = await this.usersService.update(id, updateUserDto, req);
+    const user = await this.usersService.update(
+      id,
+      updateUserDto,
+      req.session.userId!,
+      req.session.isAdmin!
+    );
     return this._serialize(user as User);
   }
 
@@ -72,7 +81,11 @@ export class AdminUsersController {
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    await this.usersService.remove(id);
+
+    if (req.session.userId === id) {
+      return await this.sessionService.destroy(req);
+    }
   }
 }
