@@ -1,5 +1,6 @@
 import {Expose, Type} from 'class-transformer';
 import type {StoryStatus} from '../enums/story-status.enum';
+import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
 
 /**
  * Author preview DTO [public]
@@ -29,9 +30,12 @@ export class StoryPreviewResponseDto {
   @Expose() title: string;
   @Expose() coverImageUrl?: string;
   @Expose() scareLevel: number;
-  @Expose() tags: string[];
   @Expose() createdAt: Date;
   @Expose() updatedAt: Date;
+
+  @Expose()
+  @Type(() => TagResponseDto)
+  tags: TagResponseDto[];
 
   constructor(partial: Partial<StoryPreviewResponseDto>) {
     Object.assign(this, partial);

@@ -45,6 +45,12 @@ export class AdminUsersController {
     return this._serialize(user as User);
   }
 
+  @Get('me')
+  async findMe(@Req() req: Request) {
+    const user = await this.usersService.findMe(req.session.userId!);
+    return this._serialize(user);
+  }
+
   @Get()
   async findAll(@Query() paginationDto: PaginationDto) {
     const result = await this.usersService.findAll(

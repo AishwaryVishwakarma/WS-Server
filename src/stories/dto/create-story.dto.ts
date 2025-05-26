@@ -1,10 +1,12 @@
 import {
+  ArrayMaxSize,
   IsArray,
   IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -34,6 +36,7 @@ export class CreateStoryDto {
 
   @IsOptional()
   @IsArray()
-  @IsString({each: true})
+  @IsUUID('all', {each: true})
+  @ArrayMaxSize(5)
   tags?: string[];
 }

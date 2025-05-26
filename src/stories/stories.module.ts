@@ -5,9 +5,10 @@ import {Story} from './entities/story.entity';
 import {UsersModule} from 'src/users/users.module';
 import {PublicStoriesController} from './controllers/public-stories.controller';
 import {AdminStoriesController} from './controllers/admin-stories.controller';
+import {TagsModule} from 'src/tags/tags.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Story]), UsersModule],
+  imports: [TypeOrmModule.forFeature([Story]), UsersModule, TagsModule],
   controllers: [PublicStoriesController, AdminStoriesController],
   providers: [StoriesService],
 })

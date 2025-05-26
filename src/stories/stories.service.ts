@@ -10,13 +10,15 @@ import {Story} from './entities/story.entity';
 import {Repository} from 'typeorm';
 import {paginate} from 'src/utils/pagination';
 import {UsersService} from 'src/users/users.service';
+import {TagsService} from 'src/tags/tags.service';
 
 @Injectable()
 export class StoriesService {
   constructor(
     @InjectRepository(Story)
     private readonly storiesRepository: Repository<Story>,
-    private readonly usersService: UsersService
+    private readonly usersService: UsersService,
+    private readonly tagsService: TagsService
   ) {}
 
   private async _getStoryIfAuthorized(
@@ -38,12 +40,24 @@ export class StoriesService {
   }
 
   async create(createStoryDto: CreateStoryDto, userId: string) {
+    const {tags: tagIds, ...rest} = createStoryDto;
+
     const author = await this.usersService.findOne(userId);
 
     const story = this.storiesRepository.create({
-      ...createStoryDto,
+      ...rest,
       author,
     });
+
+    if (tagIds?.length) {
+      const tags = await this.tagsService.findManyByIds(tagIds);
+
+      if (tags.length !== tagIds.length) {
+        throw new NotFoundException('One or more tags not found');
+      }
+
+      story.tags = tags;
+    }
 
     return this.storiesRepository.save(story);
   }
@@ -54,6 +68,7 @@ export class StoriesService {
     const [stories, total] = await this.storiesRepository.findAndCount({
       skip,
       take,
+      relations: ['author', 'tags'],
       select: {
         id: true,
         title: true,
@@ -79,7 +94,7 @@ export class StoriesService {
   async findOne(id: string) {
     const story = await this.storiesRepository.findOne({
       where: {id},
-      relations: ['author'],
+      relations: ['author', 'tags'],
     });
 
     if (!story) {
@@ -104,6 +119,10 @@ export class StoriesService {
   async remove(id: string, userId: string, isAdmin: boolean) {
     await this._getStoryIfAuthorized(id, userId, isAdmin);
 
-    return await this.storiesRepository.delete(id);
+    const result = await this.storiesRepository.delete(id);
+
+    if (result.affected === 0) {
+      throw new NotFoundException(`Story with ID ${id} not found`);
+    }
   }
 }

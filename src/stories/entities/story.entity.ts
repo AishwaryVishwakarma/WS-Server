@@ -3,11 +3,14 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinTable,
+  ManyToMany,
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import {StoryStatus} from '../enums/story-status.enum';
+import {Tag} from 'src/tags/entities/tag.entity';
 
 @Entity()
 export class Story {
@@ -40,6 +43,12 @@ export class Story {
     onDelete: 'CASCADE',
   })
   author: User;
+
+  @ManyToMany(() => Tag, (tag) => tag.stories, {
+    cascade: true,
+  })
+  @JoinTable()
+  tags: Tag[];
 
   @CreateDateColumn()
   createdAt: Date;

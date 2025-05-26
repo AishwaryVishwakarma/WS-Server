@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
+import {ConflictException, Injectable, NotFoundException} from '@nestjs/common';
 import {CreateUserDto} from './dto/create-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from '@nestjs/typeorm';
@@ -12,6 +7,7 @@ import {QueryFailedError, Repository} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
+import {handleQueryFailedError} from 'src/utils/handle-query-error';
 
 @Injectable()
 export class UsersService {
@@ -21,20 +17,6 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
     private readonly configService: ConfigService
   ) {}
-
-  private _handleQueryFailedError(error: unknown, action: string) {
-    if (error instanceof QueryFailedError) {
-      // MySQL error code for duplicate entry: 1062
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      if ((error as any).code === 'ER_DUP_ENTRY') {
-        throw new ConflictException('Email already exists');
-      }
-
-      throw new InternalServerErrorException(`Failed to ${action} user`);
-    }
-
-    throw error;
-  }
 
   // Hash the password using bcrypt
   private _generateHash(password: string) {
@@ -57,7 +39,7 @@ export class UsersService {
     try {
       return await this.usersRepository.save(user);
     } catch (error) {
-      this._handleQueryFailedError(error, 'update');
+      handleQueryFailedError(error, 'update');
     }
   }
 
@@ -73,7 +55,7 @@ export class UsersService {
       return await this.usersRepository.save(user);
     } catch (error) {
       if (error instanceof QueryFailedError) {
-        this._handleQueryFailedError(error, 'create');
+        handleQueryFailedError(error, 'create');
       }
     }
   }

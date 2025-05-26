@@ -13,6 +13,8 @@ import {SessionService} from './session/session.service';
 import {SessionModule} from './session/session.module';
 import {StoriesModule} from './stories/stories.module';
 import {Story} from './stories/entities/story.entity';
+import {TagsModule} from './tags/tags.module';
+import {Tag} from './tags/entities/tag.entity';
 
 @Module({
   imports: [
@@ -57,7 +59,7 @@ import {Story} from './stories/entities/story.entity';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
-        entities: [User, Story],
+        entities: [User, Story, Tag],
         synchronize: configService.get('NODE_ENV') !== 'production',
       }),
     }),
@@ -65,6 +67,7 @@ import {Story} from './stories/entities/story.entity';
     SessionModule,
     UsersModule,
     StoriesModule,
+    TagsModule,
   ],
   controllers: [AppController],
   providers: [
