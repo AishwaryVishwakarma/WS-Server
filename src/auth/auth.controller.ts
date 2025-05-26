@@ -19,14 +19,15 @@ import {
   UserPreviewResponseDto,
   UserResponseDto,
 } from 'src/users/dto/user-response.dto';
+import {Role} from 'src/users/enums/role';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  private _serialize(user: User, isAdmin: boolean = false) {
+  private _serialize(user: User, role: Role = Role.User) {
     return plainToInstance(
-      isAdmin ? UserResponseDto : UserPreviewResponseDto,
+      role === Role.Admin ? UserResponseDto : UserPreviewResponseDto,
       user,
       {
         excludeExtraneousValues: true,
@@ -49,7 +50,7 @@ export class AuthController {
     if (req.session.userId) throw new BadRequestException('Already logged in');
 
     const user = await this.authService.register(createUserDto, req);
-    return this._serialize(user, req.session.isAdmin);
+    return this._serialize(user, req.session.role);
   }
 
   @Post('login')
@@ -57,7 +58,7 @@ export class AuthController {
     if (req.session.userId) throw new BadRequestException('Already logged in');
 
     const user = await this.authService.login(loginInfoDto, req);
-    return this._serialize(user, req.session.isAdmin);
+    return this._serialize(user, req.session.role);
   }
 
   @Post('logout')

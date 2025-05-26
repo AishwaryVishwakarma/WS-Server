@@ -8,6 +8,7 @@ import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
+import {Role} from './enums/role';
 
 @Injectable()
 export class UsersService {
@@ -107,12 +108,8 @@ export class UsersService {
     });
   }
 
-  async updateMe(
-    updateUserDto: UpdateUserDto,
-    userId: string,
-    isAdmin: boolean
-  ) {
-    if (isAdmin && !updateUserDto.isAdmin) {
+  async updateMe(updateUserDto: UpdateUserDto, userId: string, role: Role) {
+    if (role === Role.Admin && updateUserDto.role === Role.User) {
       throw new ConflictException(
         'You cannot remove admin privileges from yourself'
       );
@@ -126,10 +123,10 @@ export class UsersService {
     id: string,
     updateUserDto: UpdateUserDto,
     userId: string,
-    isAdmin: boolean
+    role: Role
   ) {
     if (userId === id) {
-      return this.updateMe(updateUserDto, userId, isAdmin);
+      return this.updateMe(updateUserDto, userId, role);
     }
 
     const user = await this.findOne(id);

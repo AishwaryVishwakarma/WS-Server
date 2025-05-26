@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsEmail,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -8,6 +9,7 @@ import {
   IsUrl,
   MaxLength,
 } from 'class-validator';
+import {Role} from '../enums/role';
 
 export class CreateUserDto {
   @IsString()
@@ -23,8 +25,8 @@ export class CreateUserDto {
   password: string;
 
   @IsOptional()
-  @IsBoolean()
-  isAdmin?: boolean;
+  @IsEnum(Role)
+  role: Role;
 
   @IsOptional()
   @IsBoolean()

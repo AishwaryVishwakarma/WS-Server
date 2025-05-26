@@ -68,7 +68,7 @@ export class PublicUsersController {
     const user = await this.usersService.updateMe(
       updateUserDto,
       req.session.userId!,
-      req.session.isAdmin!
+      req.session.role!
     );
     return this._serialize(UserPreviewResponseDto, user as User);
   }

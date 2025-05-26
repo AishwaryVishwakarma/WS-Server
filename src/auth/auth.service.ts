@@ -8,6 +8,7 @@ import {CreateUserDto} from 'src/users/dto/create-user.dto';
 import type {Request} from 'express';
 import {UsersService} from 'src/users/users.service';
 import {SessionService} from 'src/session/session.service';
+import {Role} from 'src/users/enums/role';
 
 @Injectable()
 export class AuthService {
@@ -44,7 +45,7 @@ export class AuthService {
     await this.sessionService.regenerate(req);
 
     req.session.userId = user.id;
-    req.session.isAdmin = user.isAdmin || false;
+    req.session.role = user.role || Role.User;
 
     return user;
   }
@@ -55,7 +56,7 @@ export class AuthService {
     await this.sessionService.regenerate(req);
 
     req.session.userId = user.id;
-    req.session.isAdmin = user.isAdmin || false;
+    req.session.role = user.role || Role.User;
 
     return user;
   }

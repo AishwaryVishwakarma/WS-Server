@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import {Role} from '../enums/role';
 
 @Entity()
 export class User {
@@ -25,8 +26,8 @@ export class User {
   @Exclude()
   password: string;
 
-  @Column({default: false})
-  isAdmin: boolean;
+  @Column({type: 'enum', enum: Role, default: Role.User})
+  role: Role;
 
   @Column({default: false})
   isVerified: boolean;

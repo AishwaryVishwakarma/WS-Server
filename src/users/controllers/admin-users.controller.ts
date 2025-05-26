@@ -15,7 +15,6 @@ import {
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import type {Request} from 'express';
-import {AdminOnlyGuard} from 'src/common/gaurds/admin-only.gaurd';
 import {UsersService} from '../users.service';
 import {User} from '../entities/user.entity';
 import {CreateUserDto} from '../dto/create-user.dto';
@@ -23,8 +22,12 @@ import {UpdateUserDto} from '../dto/update-user.dto';
 import {plainToInstance} from 'class-transformer';
 import {UserResponseDto} from '../dto/user-response.dto';
 import {SessionService} from 'src/session/session.service';
+import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
+import {Roles} from 'src/common/decorators/roles.decorators';
+import {Role} from '../enums/role';
 
-@UseGuards(SessionAuthGuard, AdminOnlyGuard)
+@UseGuards(SessionAuthGuard, RolesGuard)
+@Roles(Role.Admin)
 @Controller('admin/users')
 export class AdminUsersController {
   constructor(
@@ -74,7 +77,7 @@ export class AdminUsersController {
       id,
       updateUserDto,
       req.session.userId!,
-      req.session.isAdmin!
+      req.session.role!
     );
     return this._serialize(user as User);
   }

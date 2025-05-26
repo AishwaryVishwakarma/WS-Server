@@ -68,7 +68,7 @@ export class PublicStoriesController {
       id,
       updateStoryDto,
       req.session.userId!,
-      req.session.isAdmin!
+      req.session.role!
     );
     return this._serialize(StoryResponseDto, story);
   }
@@ -79,7 +79,7 @@ export class PublicStoriesController {
     return this.storiesService.remove(
       id,
       req.session.userId!,
-      req.session.isAdmin!
+      req.session.role!
     );
   }
 }

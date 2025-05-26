@@ -12,10 +12,13 @@ import {
 import {TagsService} from '../tags.service';
 import {CreateTagDto} from '../dto/create-tag.dto';
 import {UpdateTagDto} from '../dto/update-tag.dto';
-import {AdminOnlyGuard} from 'src/common/gaurds/admin-only.gaurd';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
+import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
+import {Roles} from 'src/common/decorators/roles.decorators';
+import {Role} from 'src/users/enums/role';
 
-@UseGuards(SessionAuthGuard, AdminOnlyGuard)
+@UseGuards(SessionAuthGuard, RolesGuard)
+@Roles(Role.Admin)
 @Controller('admin/tags')
 export class AdminTagsController {
   constructor(private readonly tagsService: TagsService) {}

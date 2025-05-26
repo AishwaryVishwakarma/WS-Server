@@ -11,6 +11,7 @@ import {Repository} from 'typeorm';
 import {paginate} from 'src/utils/pagination';
 import {UsersService} from 'src/users/users.service';
 import {TagsService} from 'src/tags/tags.service';
+import {Role} from 'src/users/enums/role';
 
 @Injectable()
 export class StoriesService {
@@ -24,13 +25,13 @@ export class StoriesService {
   private async _getStoryIfAuthorized(
     storyId: string,
     userId: string,
-    isAdmin: boolean
+    role: Role
   ): Promise<Story> {
     const story = await this.findOne(storyId);
 
     const isOwner = story.author.id === userId;
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && role !== Role.Admin) {
       throw new ForbiddenException(
         `You do not have permission to modify this story`
       );
@@ -108,16 +109,16 @@ export class StoriesService {
     id: string,
     updateStoryDto: UpdateStoryDto,
     userId: string,
-    isAdmin: boolean
+    role: Role
   ) {
-    const story = await this._getStoryIfAuthorized(id, userId, isAdmin);
+    const story = await this._getStoryIfAuthorized(id, userId, role);
 
     Object.assign(story, updateStoryDto);
     return await this.storiesRepository.save(story);
   }
 
-  async remove(id: string, userId: string, isAdmin: boolean) {
-    await this._getStoryIfAuthorized(id, userId, isAdmin);
+  async remove(id: string, userId: string, role: Role) {
+    await this._getStoryIfAuthorized(id, userId, role);
 
     const result = await this.storiesRepository.delete(id);
 

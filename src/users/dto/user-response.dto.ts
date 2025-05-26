@@ -3,6 +3,7 @@ import {
   StoryPreviewResponseDto,
   StoryResponseDto,
 } from 'src/stories/dto/story-response.dto';
+import type {Role} from '../enums/role';
 
 /**
  * User preview response DTO [public]
@@ -16,6 +17,8 @@ export class UserPreviewResponseDto {
   @Expose() profileImageUrl?: string;
   @Expose() bio?: string;
   @Expose() isVerified: boolean;
+  @Expose() createdAt: Date;
+  @Expose() updatedAt: Date;
 
   @Exclude() password: string;
 
@@ -64,9 +67,7 @@ export class UserWithStoryResponseDto extends UserPreviewResponseDto {
  * and can be used in the admin panel to show the users
  */
 export class UserResponseDto extends UserPreviewResponseDto {
-  @Expose() createdAt: Date;
-  @Expose() updatedAt: Date;
-  @Expose() isAdmin: boolean;
+  @Expose() role: Role;
   @Expose() isBlocked: boolean;
   @Expose() deletedAt?: Date;
 
