@@ -20,6 +20,9 @@ export class Story {
   @Column({length: 255})
   title: string;
 
+  @Column({length: 300})
+  excerpt: string;
+
   @Column('mediumtext')
   content: string;
 

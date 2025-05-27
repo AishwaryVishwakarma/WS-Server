@@ -41,12 +41,13 @@ export class StoriesService {
   }
 
   async create(createStoryDto: CreateStoryDto, userId: string) {
-    const {tags: tagIds, ...rest} = createStoryDto;
+    const {tags: tagIds, excerpt, ...rest} = createStoryDto;
 
     const author = await this.usersService.findOne(userId);
 
     const story = this.storiesRepository.create({
       ...rest,
+      excerpt: excerpt || rest.content.slice(0, 280) + '...',
       author,
     });
 
@@ -77,6 +78,7 @@ export class StoriesService {
         scareLevel: true,
         isFlagged: true,
         status: true,
+        excerpt: true,
         createdAt: true,
         updatedAt: true,
       },

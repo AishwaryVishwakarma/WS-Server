@@ -17,6 +17,11 @@ export class CreateStoryDto {
   @IsNotEmpty()
   title: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  excerpt?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(50000) // ~ 50KB

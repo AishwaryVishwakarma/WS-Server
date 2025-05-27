@@ -30,6 +30,7 @@ export class StoryPreviewResponseDto {
   @Expose() title: string;
   @Expose() coverImageUrl?: string;
   @Expose() scareLevel: number;
+  @Expose() excerpt: string;
   @Expose() createdAt: Date;
   @Expose() updatedAt: Date;
 
