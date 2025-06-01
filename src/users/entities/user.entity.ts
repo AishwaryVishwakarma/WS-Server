@@ -10,6 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import {Role} from '../enums/role';
+import {Comment} from 'src/comments/entities/comment.entity';
 
 @Entity()
 export class User {
@@ -41,6 +42,12 @@ export class User {
   @Column({length: 500, nullable: true})
   bio: string;
 
+  @OneToMany(() => Story, (story) => story.author)
+  stories: Story[];
+
+  @OneToMany(() => Comment, (comment) => comment.user)
+  comments: Comment[];
+
   @CreateDateColumn()
   createdAt: Date;
 
@@ -49,7 +56,4 @@ export class User {
 
   @DeleteDateColumn()
   deletedAt: Date;
-
-  @OneToMany(() => Story, (story) => story.author)
-  stories: Story[];
 }

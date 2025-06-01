@@ -3,7 +3,7 @@ import {
   StoryPreviewResponseDto,
   StoryResponseDto,
 } from 'src/stories/dto/story-response.dto';
-import type {Role} from '../enums/role';
+import {Role} from '../enums/role';
 
 /**
  * User preview response DTO [public]
@@ -13,12 +13,9 @@ import type {Role} from '../enums/role';
 export class UserPreviewResponseDto {
   @Expose() id: string;
   @Expose() name: string;
-  @Expose() email: string;
   @Expose() profileImageUrl?: string;
   @Expose() bio?: string;
   @Expose() isVerified: boolean;
-  @Expose() createdAt: Date;
-  @Expose() updatedAt: Date;
 
   @Exclude() password: string;
 
@@ -45,12 +42,16 @@ export class UserWithStoryPreviewResponseDto extends UserPreviewResponseDto {
 }
 
 /**
- * User response DTO [author]
+ * User response DTO [private]
  * This DTO is used to return the user with the stories
  * and can be used in the user profile to show
  * the stories of the user with the content
  */
 export class UserWithStoryResponseDto extends UserPreviewResponseDto {
+  @Expose() email: string;
+  @Expose() createdAt: Date;
+  @Expose() updatedAt: Date;
+
   @Expose()
   @Type(() => StoryResponseDto)
   stories: StoryResponseDto[];

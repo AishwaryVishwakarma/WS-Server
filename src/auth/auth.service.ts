@@ -6,9 +6,9 @@ import {LoginInfoDto} from './dto/login-info.dto';
 import * as bcrypt from 'bcrypt';
 import {CreateUserDto} from 'src/users/dto/create-user.dto';
 import type {Request} from 'express';
-import {UsersService} from 'src/users/users.service';
 import {SessionService} from 'src/session/session.service';
 import {Role} from 'src/users/enums/role';
+import {UsersService} from 'src/users/users.service';
 
 @Injectable()
 export class AuthService {

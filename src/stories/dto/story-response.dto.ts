@@ -1,24 +1,7 @@
 import {Expose, Type} from 'class-transformer';
 import type {StoryStatus} from '../enums/story-status.enum';
 import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
-
-/**
- * Author preview DTO [public]
- * This DTO is used to return a preview of the author
- * and can be used in the list of stories, story details or
- * the author details page
- */
-class AuthorPreviewDto {
-  @Expose() id: string;
-  @Expose() name: string;
-  @Expose() profileImageUrl?: string;
-  @Expose() bio?: string;
-  @Expose() isVerified: boolean;
-
-  constructor(partial: Partial<AuthorPreviewDto>) {
-    Object.assign(this, partial);
-  }
-}
+import {UserPreviewResponseDto} from 'src/users/dto/user-response.dto';
 
 /**
  * Story preview response DTO [public]
@@ -52,8 +35,8 @@ export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
 
   @Expose()
-  @Type(() => AuthorPreviewDto)
-  author: AuthorPreviewDto;
+  @Type(() => UserPreviewResponseDto)
+  author: UserPreviewResponseDto;
 
   constructor(partial: Partial<StoryWithAuthorPreviewResponseDto>) {
     super(partial);
@@ -62,7 +45,7 @@ export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
 }
 
 /**
- * Story response DTO [admin, author]
+ * Story response DTO [admin, private]
  * This DTO is used to return the full story without the author
  * and can be used in to show the current users stories
  * and the admin panel

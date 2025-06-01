@@ -15,6 +15,8 @@ import {StoriesModule} from './stories/stories.module';
 import {Story} from './stories/entities/story.entity';
 import {TagsModule} from './tags/tags.module';
 import {Tag} from './tags/entities/tag.entity';
+import {CommentsModule} from './comments/comments.module';
+import {Comment} from './comments/entities/comment.entity';
 
 @Module({
   imports: [
@@ -59,7 +61,7 @@ import {Tag} from './tags/entities/tag.entity';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
-        entities: [User, Story, Tag],
+        entities: [User, Story, Tag, Comment],
         synchronize: configService.get('NODE_ENV') !== 'production',
       }),
     }),
@@ -68,6 +70,7 @@ import {Tag} from './tags/entities/tag.entity';
     UsersModule,
     StoriesModule,
     TagsModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -81,9 +84,9 @@ import {Tag} from './tags/entities/tag.entity';
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(CsrfMiddleware)
-      .exclude('/auth/login', '/auth/logout', '/auth/register')
-      .forRoutes('*');
+    // consumer
+    //   .apply(CsrfMiddleware)
+    //   .exclude('/auth/login', '/auth/logout', '/auth/register')
+    //   .forRoutes('*');
   }
 }

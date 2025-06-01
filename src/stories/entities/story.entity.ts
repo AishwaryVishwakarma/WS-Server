@@ -6,11 +6,13 @@ import {
   JoinTable,
   ManyToMany,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import {StoryStatus} from '../enums/story-status.enum';
 import {Tag} from 'src/tags/entities/tag.entity';
+import {Comment} from 'src/comments/entities/comment.entity';
 
 @Entity()
 export class Story {
@@ -52,6 +54,9 @@ export class Story {
   })
   @JoinTable()
   tags: Tag[];
+
+  @OneToMany(() => Comment, (comment) => comment.story)
+  comments: Comment[];
 
   @CreateDateColumn()
   createdAt: Date;

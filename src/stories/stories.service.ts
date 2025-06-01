@@ -8,10 +8,22 @@ import {UpdateStoryDto} from './dto/update-story.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Story} from './entities/story.entity';
 import {Repository} from 'typeorm';
-import {paginate} from 'src/utils/pagination';
-import {UsersService} from 'src/users/users.service';
+import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
+import {UsersService} from 'src/users/users.service';
+
+const SELECTED_FIELDS = {
+  id: true,
+  title: true,
+  coverImageUrl: true,
+  scareLevel: true,
+  isFlagged: true,
+  status: true,
+  excerpt: true,
+  createdAt: true,
+  updatedAt: true,
+};
 
 @Injectable()
 export class StoriesService {
@@ -40,6 +52,16 @@ export class StoriesService {
     return story;
   }
 
+  private async _getTagsIfExists(tagIds: string[]) {
+    const tags = await this.tagsService.findManyByIds(tagIds);
+
+    if (tags.length !== tagIds.length) {
+      throw new NotFoundException('One or more tags not found');
+    }
+
+    return tags;
+  }
+
   async create(createStoryDto: CreateStoryDto, userId: string) {
     const {tags: tagIds, excerpt, ...rest} = createStoryDto;
 
@@ -52,13 +74,7 @@ export class StoriesService {
     });
 
     if (tagIds?.length) {
-      const tags = await this.tagsService.findManyByIds(tagIds);
-
-      if (tags.length !== tagIds.length) {
-        throw new NotFoundException('One or more tags not found');
-      }
-
-      story.tags = tags;
+      story.tags = await this._getTagsIfExists(tagIds);
     }
 
     return this.storiesRepository.save(story);
@@ -71,40 +87,35 @@ export class StoriesService {
       skip,
       take,
       relations: ['author', 'tags'],
-      select: {
-        id: true,
-        title: true,
-        coverImageUrl: true,
-        scareLevel: true,
-        isFlagged: true,
-        status: true,
-        excerpt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: SELECTED_FIELDS,
     });
 
-    return {
-      message: 'Success',
-      data: stories,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    return getPaginatedResponse<Story>(stories, total, page, limit);
+  }
+
+  async findAllByUserId(userId: string, page: number = 1, limit: number = 20) {
+    const {skip, take} = paginate(page, limit);
+
+    const [stories, total] = await this.storiesRepository.findAndCount({
+      where: {author: {id: userId}},
+      relations: ['tags'],
+      skip,
+      take,
+      select: SELECTED_FIELDS,
+    });
+
+    return getPaginatedResponse<Story>(stories, total, page, limit);
   }
 
   async findOne(id: string) {
-    const story = await this.storiesRepository.findOne({
-      where: {id},
-      relations: ['author', 'tags'],
-    });
-
-    if (!story) {
-      throw new NotFoundException(`Story with ID ${id} not found`);
-    }
-
-    return story;
+    return await this.storiesRepository
+      .findOneOrFail({
+        where: {id},
+        relations: ['author', 'tags'],
+      })
+      .catch(() => {
+        throw new NotFoundException(`Story with ID ${id} not found`);
+      });
   }
 
   async update(
@@ -115,7 +126,13 @@ export class StoriesService {
   ) {
     const story = await this._getStoryIfAuthorized(id, userId, role);
 
-    Object.assign(story, updateStoryDto);
+    const {tags: tagIds, ...rest} = updateStoryDto;
+
+    if (tagIds?.length) {
+      story.tags = await this._getTagsIfExists(tagIds);
+    }
+
+    Object.assign(story, rest);
     return await this.storiesRepository.save(story);
   }
 

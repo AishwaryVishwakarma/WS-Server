@@ -79,37 +79,14 @@ export class UsersService {
     };
   }
 
-  async findMe(userId: string) {
-    return this.findOne(userId, true);
-  }
-
-  async findOne(id: string, includeStories: boolean = false) {
-    const query = this.usersRepository
-      .createQueryBuilder('user')
-      .where('user.id = :id', {id});
-
-    if (includeStories) {
-      query
-        .leftJoinAndSelect('user.stories', 'story')
-        .addSelect([
-          'story.id',
-          'story.title',
-          'story.coverImageUrl',
-          'story.scareLevel',
-          'story.isFlagged',
-          'story.status',
-          'story.createdAt',
-          'story.updatedAt',
-        ]);
-    }
-
-    return await query.getOneOrFail().catch(() => {
+  async findOne(id: string) {
+    return this.usersRepository.findOneByOrFail({id}).catch(() => {
       throw new NotFoundException(`User with ID ${id} not found`);
     });
   }
 
   async updateMe(updateUserDto: UpdateUserDto, userId: string, role: Role) {
-    if (role === Role.Admin && updateUserDto.role === Role.User) {
+    if (role === Role.Admin && updateUserDto.role !== Role.Admin) {
       throw new ConflictException(
         'You cannot remove admin privileges from yourself'
       );
@@ -131,14 +108,6 @@ export class UsersService {
 
     const user = await this.findOne(id);
     return this._applyUserUpdates(user, updateUserDto);
-  }
-
-  async removeMe(userId: string) {
-    const result = await this.usersRepository.softDelete(userId);
-
-    if (result.affected === 0) {
-      throw new NotFoundException(`User with ID ${userId} not found`);
-    }
   }
 
   async remove(id: string) {

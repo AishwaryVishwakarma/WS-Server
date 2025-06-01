@@ -10,6 +10,9 @@ import {
   HttpCode,
   UseGuards,
   Req,
+  Query,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import {StoriesService} from '../stories.service';
 import {CreateStoryDto} from '../dto/create-story.dto';
@@ -23,11 +26,19 @@ import {
   StoryResponseDto,
 } from '../dto/story-response.dto';
 import type {Request} from 'express';
+import {PaginationDto} from 'src/common/dto/pagination.dto';
+import {CommentsService} from 'src/comments/comments.service';
+import {CommentPreviewResponseDto} from 'src/comments/dto/comment-response.dto';
 
 @UseGuards(SessionAuthGuard)
 @Controller('stories')
 export class PublicStoriesController {
-  constructor(private readonly storiesService: StoriesService) {}
+  constructor(
+    private readonly storiesService: StoriesService,
+
+    @Inject(forwardRef(() => CommentsService))
+    private readonly commentsService: CommentsService
+  ) {}
 
   private _serialize(
     dto: ClassConstructor<
@@ -56,6 +67,27 @@ export class PublicStoriesController {
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const story = await this.storiesService.findOne(id);
     return this._serialize(StoryWithAuthorPreviewResponseDto, story);
+  }
+
+  @Get(':id/comments')
+  async getCommentsForStory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() paginationDto: PaginationDto
+  ) {
+    const {data, ...rest} = await this.commentsService.findAllByStoryId(
+      id,
+      paginationDto.page,
+      paginationDto.limit
+    );
+
+    return {
+      ...rest,
+      data: data.map((comment) =>
+        plainToInstance(CommentPreviewResponseDto, comment, {
+          excludeExtraneousValues: true,
+        })
+      ),
+    };
   }
 
   @Patch(':id')

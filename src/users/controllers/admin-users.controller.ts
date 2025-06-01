@@ -15,7 +15,6 @@ import {
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import type {Request} from 'express';
-import {UsersService} from '../users.service';
 import {User} from '../entities/user.entity';
 import {CreateUserDto} from '../dto/create-user.dto';
 import {UpdateUserDto} from '../dto/update-user.dto';
@@ -25,6 +24,7 @@ import {SessionService} from 'src/session/session.service';
 import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
 import {Role} from '../enums/role';
+import {UsersService} from '../users.service';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(Role.Admin)
@@ -46,12 +46,6 @@ export class AdminUsersController {
   async create(@Body() createUserDto: CreateUserDto) {
     const user = await this.usersService.create(createUserDto);
     return this._serialize(user as User);
-  }
-
-  @Get('me')
-  async findMe(@Req() req: Request) {
-    const user = await this.usersService.findMe(req.session.userId!);
-    return this._serialize(user);
   }
 
   @Get()
