@@ -84,9 +84,9 @@ import {Comment} from './comments/entities/comment.entity';
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
-    // consumer
-    //   .apply(CsrfMiddleware)
-    //   .exclude('/auth/login', '/auth/logout', '/auth/register')
-    //   .forRoutes('*');
+    consumer
+      .apply(CsrfMiddleware)
+      .exclude('/auth/login', '/auth/logout', '/auth/register')
+      .forRoutes('*');
   }
 }

@@ -64,15 +64,9 @@ export class AdminUsersController {
   @Patch(':id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateUserDto: UpdateUserDto,
-    @Req() req: Request
+    @Body() updateUserDto: UpdateUserDto
   ) {
-    const user = await this.usersService.update(
-      id,
-      updateUserDto,
-      req.session.userId!,
-      req.session.role!
-    );
+    const user = await this.usersService.update(id, updateUserDto);
     return this._serialize(user as User);
   }
 

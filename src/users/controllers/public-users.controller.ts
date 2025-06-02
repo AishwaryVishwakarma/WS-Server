@@ -40,7 +40,7 @@ export class PublicUsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() paginationDto: PaginationDto
   ) {
-    const {data, ...rest} = await this.storiesService.findAllByUserId(
+    const {data, ...rest} = await this.storiesService.findAllApprovedByUserId(
       id,
       paginationDto.page,
       paginationDto.limit

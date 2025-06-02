@@ -1,14 +1,8 @@
-import {Exclude, Expose, Type} from 'class-transformer';
-import {
-  StoryPreviewResponseDto,
-  StoryResponseDto,
-} from 'src/stories/dto/story-response.dto';
+import {Exclude, Expose} from 'class-transformer';
 import {Role} from '../enums/role';
 
 /**
- * User preview response DTO [public]
- * This DTO is used to return a preview of the user
- * and can be used in the list of users or the user profile
+ * [public]
  */
 export class UserPreviewResponseDto {
   @Expose() id: string;
@@ -16,6 +10,8 @@ export class UserPreviewResponseDto {
   @Expose() profileImageUrl?: string;
   @Expose() bio?: string;
   @Expose() isVerified: boolean;
+  @Expose() createdAt: Date;
+  @Expose() updatedAt: Date;
 
   @Exclude() password: string;
 
@@ -25,49 +21,21 @@ export class UserPreviewResponseDto {
 }
 
 /**
- * User with story preview response DTO [public]
- * This DTO is used to return a preview of the user
- * and the stories, can be used in the user profile to show
- * the stories of the user without the content
+ * [private]
  */
-export class UserWithStoryPreviewResponseDto extends UserPreviewResponseDto {
-  @Expose()
-  @Type(() => StoryPreviewResponseDto)
-  stories: StoryPreviewResponseDto[];
-
-  constructor(partial: Partial<UserWithStoryPreviewResponseDto>) {
-    super(partial);
-    Object.assign(this, partial);
-  }
-}
-
-/**
- * User response DTO [private]
- * This DTO is used to return the user with the stories
- * and can be used in the user profile to show
- * the stories of the user with the content
- */
-export class UserWithStoryResponseDto extends UserPreviewResponseDto {
+export class UserPrivateResponseDto extends UserPreviewResponseDto {
   @Expose() email: string;
-  @Expose() createdAt: Date;
-  @Expose() updatedAt: Date;
 
-  @Expose()
-  @Type(() => StoryResponseDto)
-  stories: StoryResponseDto[];
-
-  constructor(partial: Partial<UserWithStoryResponseDto>) {
+  constructor(partial: Partial<UserPrivateResponseDto>) {
     super(partial);
     Object.assign(this, partial);
   }
 }
 
 /**
- * User response DTO [admin]
- * This DTO is used to return the user without the stories
- * and can be used in the admin panel to show the users
+ * [admin]
  */
-export class UserResponseDto extends UserPreviewResponseDto {
+export class UserResponseDto extends UserPrivateResponseDto {
   @Expose() role: Role;
   @Expose() isBlocked: boolean;
   @Expose() deletedAt?: Date;

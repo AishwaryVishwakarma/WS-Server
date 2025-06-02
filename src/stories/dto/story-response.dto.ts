@@ -4,9 +4,7 @@ import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
 import {UserPreviewResponseDto} from 'src/users/dto/user-response.dto';
 
 /**
- * Story preview response DTO [public]
- * This DTO is used to return a preview of the story an can be used
- * in the list of stories without the content
+ * [public]
  */
 export class StoryPreviewResponseDto {
   @Expose() id: string;
@@ -27,9 +25,7 @@ export class StoryPreviewResponseDto {
 }
 
 /**
- * Story with author preview response DTO [public]
- * This DTO is used to return a preview of the story with the author
- * and the content, can be used in the story details page
+ * [public]
  */
 export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
@@ -45,10 +41,7 @@ export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
 }
 
 /**
- * Story response DTO [admin, private]
- * This DTO is used to return the full story without the author
- * and can be used in to show the current users stories
- * and the admin panel
+ * [private, admin]
  */
 export class StoryResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;

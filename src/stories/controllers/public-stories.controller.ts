@@ -22,7 +22,6 @@ import {Story} from '../entities/story.entity';
 import {plainToInstance, type ClassConstructor} from 'class-transformer';
 import {
   StoryWithAuthorPreviewResponseDto,
-  StoryPreviewResponseDto,
   StoryResponseDto,
 } from '../dto/story-response.dto';
 import type {Request} from 'express';
@@ -41,11 +40,7 @@ export class PublicStoriesController {
   ) {}
 
   private _serialize(
-    dto: ClassConstructor<
-      | StoryPreviewResponseDto
-      | StoryResponseDto
-      | StoryWithAuthorPreviewResponseDto
-    >,
+    dto: ClassConstructor<StoryResponseDto | StoryWithAuthorPreviewResponseDto>,
     story: Story
   ) {
     return plainToInstance(dto, story, {

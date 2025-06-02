@@ -12,6 +12,7 @@ import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
+import {StoryStatus} from './enums/story-status.enum';
 
 const SELECTED_FIELDS = {
   id: true,
@@ -87,6 +88,24 @@ export class StoriesService {
       skip,
       take,
       relations: ['author', 'tags'],
+      select: SELECTED_FIELDS,
+    });
+
+    return getPaginatedResponse<Story>(stories, total, page, limit);
+  }
+
+  async findAllApprovedByUserId(
+    userId: string,
+    page: number = 1,
+    limit: number = 20
+  ) {
+    const {skip, take} = paginate(page, limit);
+
+    const [stories, total] = await this.storiesRepository.findAndCount({
+      where: {author: {id: userId}, status: StoryStatus.Approved},
+      relations: ['tags'],
+      skip,
+      take,
       select: SELECTED_FIELDS,
     });
 
