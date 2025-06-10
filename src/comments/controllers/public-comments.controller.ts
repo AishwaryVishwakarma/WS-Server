@@ -16,7 +16,7 @@ import {UpdateCommentDto} from '../dto/update-comment.dto';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import type {Request} from 'express';
 import {plainToInstance} from 'class-transformer';
-import type {Comment} from '../entities/comment.entity';
+import {Comment} from '../entities/comment.entity';
 import {CommentPreviewResponseDto} from '../dto/comment-response.dto';
 
 @UseGuards(SessionAuthGuard)
