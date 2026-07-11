@@ -14,7 +14,7 @@ import {
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import type {Request} from 'express';
 import {User} from '../entities/user.entity';
-import {UpdateUserDto} from '../dto/update-user.dto';
+import {UpdateProfileDto} from '../dto/update-profile.dto';
 import {UserPrivateResponseDto} from '../dto/user-response.dto';
 import {plainToInstance} from 'class-transformer';
 import {SessionService} from 'src/session/session.service';
@@ -74,10 +74,13 @@ export class PrivateUsersController {
   }
 
   @Patch()
-  async updateMe(@Body() updateUserDto: UpdateUserDto, @Req() req: Request) {
+  async updateMe(
+    @Body() updateProfileDto: UpdateProfileDto,
+    @Req() req: Request
+  ) {
     const user = await this.usersService.update(
       req.session.userId!,
-      updateUserDto
+      updateProfileDto
     );
     return this._serialize(user as User);
   }

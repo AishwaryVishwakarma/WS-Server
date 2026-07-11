@@ -1,29 +1,9 @@
-import {
-  IsBoolean,
-  IsEmail,
-  IsEnum,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsStrongPassword,
-  IsUrl,
-  MaxLength,
-} from 'class-validator';
+import {IsBoolean, IsEnum, IsOptional} from 'class-validator';
 import {Role} from '../enums/role';
+import {RegisterUserDto} from './register-user.dto';
 
-export class CreateUserDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  name: string;
-
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  @IsStrongPassword()
-  password: string;
-
+// Admin-only DTO: adds privileged fields on top of the self-service ones
+export class CreateUserDto extends RegisterUserDto {
   @IsOptional()
   @IsEnum(Role)
   role: Role;
@@ -35,15 +15,4 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isBlocked?: boolean;
-
-  @IsOptional()
-  @IsUrl({
-    max_allowed_length: 500,
-  })
-  profileImageUrl?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  bio?: string;
 }

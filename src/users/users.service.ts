@@ -1,5 +1,5 @@
 import {Injectable, NotFoundException} from '@nestjs/common';
-import {CreateUserDto} from './dto/create-user.dto';
+import {RegisterUserDto} from './dto/register-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {User} from './entities/user.entity';
@@ -43,7 +43,8 @@ export class UsersService {
     }
   }
 
-  async create(createUserDto: CreateUserDto) {
+  // Accepts RegisterUserDto (self-registration) or CreateUserDto (admin, extends it)
+  async create(createUserDto: RegisterUserDto) {
     const hashedPassword = await this._generateHash(createUserDto.password);
 
     const user = this.usersRepository.create({

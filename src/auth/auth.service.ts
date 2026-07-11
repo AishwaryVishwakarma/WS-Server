@@ -4,7 +4,7 @@ import {User} from 'src/users/entities/user.entity';
 import {Repository} from 'typeorm';
 import {LoginInfoDto} from './dto/login-info.dto';
 import * as bcrypt from 'bcrypt';
-import {CreateUserDto} from 'src/users/dto/create-user.dto';
+import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import type {Request} from 'express';
 import {SessionService} from 'src/session/session.service';
 import {Role} from 'src/users/enums/role';
@@ -39,8 +39,8 @@ export class AuthService {
     throw new UnauthorizedException('Invalid credentials');
   }
 
-  async register(createUserDto: CreateUserDto, req: Request) {
-    const user = (await this.usersService.create(createUserDto)) as User;
+  async register(registerUserDto: RegisterUserDto, req: Request) {
+    const user = (await this.usersService.create(registerUserDto)) as User;
 
     await this.sessionService.regenerate(req);
 

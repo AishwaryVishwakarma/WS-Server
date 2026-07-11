@@ -11,7 +11,7 @@ import {
 import {AuthService} from './auth.service';
 import {LoginInfoDto} from './dto/login-info.dto';
 import type {Request} from 'express';
-import {CreateUserDto} from 'src/users/dto/create-user.dto';
+import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {User} from 'src/users/entities/user.entity';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {plainToInstance} from 'class-transformer';
@@ -46,10 +46,13 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(201)
-  async register(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
+  async register(
+    @Body() registerUserDto: RegisterUserDto,
+    @Req() req: Request
+  ) {
     if (req.session.userId) throw new BadRequestException('Already logged in');
 
-    const user = await this.authService.register(createUserDto, req);
+    const user = await this.authService.register(registerUserDto, req);
     return this._serialize(user, req.session.role);
   }
 
