@@ -25,6 +25,9 @@ export class UserPreviewResponseDto {
  */
 export class UserPrivateResponseDto extends UserPreviewResponseDto {
   @Expose() email: string;
+  // Your own role is not sensitive, and the frontend needs it to decide
+  // whether to surface the admin area.
+  @Expose() role: Role;
 
   constructor(partial: Partial<UserPrivateResponseDto>) {
     super(partial);
@@ -36,7 +39,6 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
  * [admin]
  */
 export class UserResponseDto extends UserPrivateResponseDto {
-  @Expose() role: Role;
   @Expose() isBlocked: boolean;
   @Expose() deletedAt?: Date;
 
