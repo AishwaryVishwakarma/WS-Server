@@ -29,6 +29,8 @@ import {Comment} from './comments/entities/comment.entity';
         },
       ],
       errorMessage: 'Too many requests, please try again later.',
+      // Rate limiting would fail integration tests after a few requests
+      skipIf: () => process.env.NODE_ENV === 'test',
     }),
     // Load environment variables from .env file
     ConfigModule.forRoot({
