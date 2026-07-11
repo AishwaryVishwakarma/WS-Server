@@ -53,12 +53,22 @@ import {Comment} from './comments/entities/comment.entity';
 
         // A weak or well-known session secret allows session-cookie forgery.
         const sessionSecret = String(config.SESSION_SECRET);
+        if (sessionSecret.length < 16) {
+          throw new Error('SESSION_SECRET must be at least 16 characters');
+        }
+
+        // Example/dev secrets are fine locally but must never reach production.
+        const nonProductionSecrets = [
+          'some-ultra-long-secret', // former hardcoded fallback
+          'dev-session-secret-change-me', // .env.example default
+          'test-session-secret', // .env.test
+        ];
         if (
-          sessionSecret.length < 16 ||
-          sessionSecret === 'some-ultra-long-secret'
+          config.NODE_ENV === 'production' &&
+          nonProductionSecrets.includes(sessionSecret)
         ) {
           throw new Error(
-            'SESSION_SECRET must be a strong, non-default value (at least 16 characters)'
+            'SESSION_SECRET is set to a known example value — set a unique secret in production'
           );
         }
 
