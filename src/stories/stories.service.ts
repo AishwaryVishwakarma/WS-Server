@@ -13,6 +13,14 @@ import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {StoryStatus} from './enums/story-status.enum';
+import type {StorySortOption} from './dto/story-query.dto';
+
+interface StoryFilters {
+  tag?: string;
+  search?: string;
+  scareLevel?: number;
+  sort?: StorySortOption;
+}
 
 const SELECTED_FIELDS = {
   id: true,
@@ -161,18 +169,46 @@ export class StoriesService {
     return story;
   }
 
-  async findAllApproved(page: number = 1, limit: number = 20) {
+  async findAllApproved(
+    page: number = 1,
+    limit: number = 20,
+    filters: StoryFilters = {}
+  ) {
     const {skip, take} = paginate(page, limit);
+    const {tag, search, scareLevel, sort} = filters;
 
-    const [stories, total] = await this.storiesRepository.findAndCount({
-      where: {status: StoryStatus.Approved},
-      relations: ['author', 'tags'],
-      skip,
-      take,
-      select: SELECTED_FIELDS,
-      order: {createdAt: 'DESC'},
-      withDeleted: true,
-    });
+    const qb = this.storiesRepository
+      .createQueryBuilder('story')
+      .select(Object.keys(SELECTED_FIELDS).map((field) => `story.${field}`))
+      .leftJoinAndSelect('story.author', 'author')
+      .leftJoinAndSelect('story.tags', 'tags')
+      .where('story.status = :status', {status: StoryStatus.Approved})
+      .orderBy('story.createdAt', sort === 'oldest' ? 'ASC' : 'DESC')
+      .skip(skip)
+      .take(take)
+      // Same rationale as findOne: keep stories by soft-deleted authors.
+      .withDeleted();
+
+    if (tag) {
+      // Second join purely as a filter — `tags` above still loads the story's
+      // full tag list, not just the matched one.
+      qb.innerJoin('story.tags', 'tagFilter', 'tagFilter.slug = :tagSlug', {
+        tagSlug: tag,
+      });
+    }
+
+    if (search) {
+      const escaped = search.replace(/[\\%_]/g, '\\$&');
+      qb.andWhere('(story.title LIKE :search OR story.excerpt LIKE :search)', {
+        search: `%${escaped}%`,
+      });
+    }
+
+    if (scareLevel) {
+      qb.andWhere('story.scareLevel = :scareLevel', {scareLevel});
+    }
+
+    const [stories, total] = await qb.getManyAndCount();
 
     return getPaginatedResponse<Story>(stories, total, page, limit);
   }

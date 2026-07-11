@@ -27,6 +27,7 @@ import {
 } from '../dto/story-response.dto';
 import type {Request} from 'express';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
+import {StoryQueryDto} from '../dto/story-query.dto';
 import {CommentsService} from 'src/comments/comments.service';
 import {CommentPreviewResponseDto} from 'src/comments/dto/comment-response.dto';
 
@@ -60,10 +61,12 @@ export class PublicStoriesController {
   }
 
   @Get()
-  async findAll(@Query() paginationDto: PaginationDto) {
+  async findAll(@Query() query: StoryQueryDto) {
+    const {page, limit, ...filters} = query;
     const {data, ...rest} = await this.storiesService.findAllApproved(
-      paginationDto.page,
-      paginationDto.limit
+      page,
+      limit,
+      filters
     );
 
     return {

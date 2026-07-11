@@ -220,6 +220,115 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('GET /stories filters', () => {
+    // Two approved stories: one tagged ghosts+demons (scare 2), one tagged
+    // demons only (scare 5), created in that order.
+    const setupCatalog = async () => {
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+
+      const createTag = (name: string) =>
+        admin.post('/admin/tags').set('x-csrf-token', adminToken).send({name});
+
+      const {body: ghosts} = await createTag('ghosts').expect(201);
+      const {body: demons} = await createTag('demons').expect(201);
+
+      const {story: lighthouse} = await createStory(
+        {
+          ...STORY_PAYLOAD,
+          title: 'The Haunted Lighthouse',
+          scareLevel: 2,
+          tags: [ghosts.id, demons.id],
+        },
+        'ghost-author@test.com'
+      );
+      await approveStory(lighthouse.id, admin);
+
+      const {story: walls} = await createStory(
+        {
+          ...STORY_PAYLOAD,
+          title: 'A Demon in the Walls',
+          scareLevel: 5,
+          tags: [demons.id],
+        },
+        'demon-author@test.com'
+      );
+      await approveStory(walls.id, admin);
+
+      const browser = agent();
+      await registerUser(browser, {email: 'filter-browser@test.com'});
+
+      return {browser, lighthouse, walls};
+    };
+
+    it('filters by tag slug while keeping the full tag list on results', async () => {
+      const {browser, lighthouse} = await setupCatalog();
+
+      const response = await browser.get('/stories?tag=ghosts').expect(200);
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].id).toBe(lighthouse.id);
+      // The tag join used for filtering must not narrow the loaded tags
+      const slugs = response.body.data[0].tags.map(
+        (tag: {slug: string}) => tag.slug
+      );
+      expect(slugs).toEqual(expect.arrayContaining(['ghosts', 'demons']));
+    });
+
+    it('returns an empty page for an unknown tag slug', async () => {
+      const {browser} = await setupCatalog();
+
+      const response = await browser.get('/stories?tag=vampires').expect(200);
+
+      expect(response.body.total).toBe(0);
+    });
+
+    it('searches titles case-insensitively', async () => {
+      const {browser, lighthouse} = await setupCatalog();
+
+      const response = await browser
+        .get('/stories?search=lighthouse')
+        .expect(200);
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].id).toBe(lighthouse.id);
+    });
+
+    it('does not treat LIKE wildcards in search as match-alls', async () => {
+      const {browser} = await setupCatalog();
+
+      const response = await browser.get('/stories?search=%25').expect(200);
+
+      expect(response.body.total).toBe(0);
+    });
+
+    it('filters by scareLevel', async () => {
+      const {browser, walls} = await setupCatalog();
+
+      const response = await browser.get('/stories?scareLevel=5').expect(200);
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].id).toBe(walls.id);
+    });
+
+    it('sorts newest-first by default and oldest-first on request', async () => {
+      const {browser, lighthouse, walls} = await setupCatalog();
+
+      const newest = await browser.get('/stories').expect(200);
+      expect(newest.body.data[0].id).toBe(walls.id);
+
+      const oldest = await browser.get('/stories?sort=oldest').expect(200);
+      expect(oldest.body.data[0].id).toBe(lighthouse.id);
+    });
+
+    it('rejects invalid filter values with 400 (DTO validation is live)', async () => {
+      const {browser} = await setupCatalog();
+
+      await browser.get('/stories?scareLevel=9').expect(400);
+      await browser.get('/stories?sort=spookiest').expect(400);
+    });
+  });
+
   describe('re-moderation on edit', () => {
     it('resets an approved story to pending when the author edits content', async () => {
       const {client, token, story} = await createStory();
