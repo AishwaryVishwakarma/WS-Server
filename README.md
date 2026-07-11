@@ -44,6 +44,43 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Development database
+
+The app needs MySQL and Redis (configured via `.env`, see `.env.example`).
+Either run them natively, or use the dockerized dev infrastructure — it runs
+on alternate ports (MySQL `3308`, Redis `6381`) so it coexists with native
+installs:
+
+```bash
+# start dev MySQL + Redis (data persists in a named volume)
+$ npm run dev:infra:up
+
+# stop them (add `docker compose -f docker-compose.dev.yml down -v` for a full reset)
+$ npm run dev:infra:down
+```
+
+To use it, point `.env` at the containers (values in `.env.example`).
+
+### Seed data
+
+```bash
+# populate the database configured in .env with demo data
+$ npm run seed
+
+# wipe and reseed
+$ npm run seed -- --fresh
+```
+
+Seeds an admin, four writers (one blocked), five tags, eight stories across
+every moderation status, and comments. Logins:
+
+| Account | Email                          | Password         |
+| ------- | ------------------------------ | ---------------- |
+| Admin   | `admin@whisperingshadows.dev`  | `Adm1n!Shadows`  |
+| Writers | `alice`/`bob`/`carol`/`dave` `@whisperingshadows.dev` | `Wr1ter!Shadows` |
+
+(`dave` is blocked — useful for testing the blocked-login path.)
+
 ## Run tests
 
 ```bash
