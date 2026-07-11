@@ -1,10 +1,20 @@
-import {Controller, Get, Query, UseGuards} from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {StoriesService} from '../stories.service';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
 import {Role} from 'src/users/enums/role';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
+import {UpdateStoryStatusDto} from '../dto/update-story-status.dto';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(Role.Admin)
@@ -15,5 +25,13 @@ export class AdminStoriesController {
   @Get()
   findAll(@Query() paginationDto: PaginationDto) {
     return this.storiesService.findAll(paginationDto.page, paginationDto.limit);
+  }
+
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateStoryStatusDto: UpdateStoryStatusDto
+  ) {
+    return this.storiesService.updateStatus(id, updateStoryStatusDto.status);
   }
 }

@@ -155,6 +155,15 @@ export class StoriesService {
     return await this.storiesRepository.save(story);
   }
 
+  async updateStatus(id: string, status: StoryStatus) {
+    const story = await this.findOne(id);
+
+    story.status = status;
+    story.isFlagged = status === StoryStatus.Flagged;
+
+    return await this.storiesRepository.save(story);
+  }
+
   async remove(id: string, userId: string, role: Role) {
     await this._getStoryIfAuthorized(id, userId, role);
 
