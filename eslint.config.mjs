@@ -33,7 +33,7 @@ export default tseslint.config(
   },
   {
     // Test files rely on mocks and fixtures where `any` is unavoidable
-    files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
+    files: ['**/*.spec.ts', 'test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',

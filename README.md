@@ -47,14 +47,29 @@ $ npm run start:prod
 ## Run tests
 
 ```bash
-# unit tests
+# unit tests (no infrastructure required)
 $ npm run test
-
-# e2e tests
-$ npm run test:e2e
 
 # test coverage
 $ npm run test:cov
+```
+
+### Integration tests
+
+Integration tests boot the real application against a dedicated MySQL and
+Redis, provisioned via Docker Compose (requires [Docker Desktop](https://www.docker.com/products/docker-desktop/)).
+They run on separate ports (MySQL `3307`, Redis `6380`), so they never touch
+your local dev databases. Configuration lives in `.env.test`.
+
+```bash
+# start the test MySQL + Redis containers
+$ npm run test:infra:up
+
+# run the integration suite
+$ npm run test:integration
+
+# stop the containers and remove their volumes
+$ npm run test:infra:down
 ```
 
 ## Deployment
