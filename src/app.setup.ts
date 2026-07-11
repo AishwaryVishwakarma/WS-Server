@@ -34,7 +34,8 @@ export async function setupApp(
   app.use(
     session({
       store,
-      secret: process.env.SESSION_SECRET || 'some-ultra-long-secret',
+      // SESSION_SECRET is validated as required in AppModule's ConfigModule
+      secret: process.env.SESSION_SECRET!,
       resave: false,
       saveUninitialized: false,
       cookie: {

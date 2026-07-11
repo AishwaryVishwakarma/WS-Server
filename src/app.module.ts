@@ -41,12 +41,37 @@ import {Comment} from './comments/entities/comment.entity';
           'DB_USERNAME',
           'DB_PASSWORD',
           'DB_NAME',
+          'SESSION_SECRET',
+          'REDIS_URL',
         ];
 
         for (const key of requiredConfig) {
           if (!config[key]) {
             throw new Error(`Missing required config: ${key}`);
           }
+        }
+
+        // A weak or well-known session secret allows session-cookie forgery.
+        const sessionSecret = String(config.SESSION_SECRET);
+        if (
+          sessionSecret.length < 16 ||
+          sessionSecret === 'some-ultra-long-secret'
+        ) {
+          throw new Error(
+            'SESSION_SECRET must be a strong, non-default value (at least 16 characters)'
+          );
+        }
+
+        // Fail fast on a typo'd NODE_ENV — it gates cookie security and
+        // TypeORM synchronize, so a bad value silently weakens production.
+        const nodeEnv = config.NODE_ENV;
+        if (
+          typeof nodeEnv === 'string' &&
+          !['development', 'test', 'production'].includes(nodeEnv)
+        ) {
+          throw new Error(
+            `Invalid NODE_ENV "${nodeEnv}" — expected development, test, or production`
+          );
         }
 
         return config;

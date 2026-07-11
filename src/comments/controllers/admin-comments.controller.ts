@@ -11,7 +11,7 @@ import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
 import {Role} from 'src/users/enums/role';
-import type {PaginationDto} from 'src/common/dto/pagination.dto';
+import {PaginationDto} from 'src/common/dto/pagination.dto';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(Role.Admin)

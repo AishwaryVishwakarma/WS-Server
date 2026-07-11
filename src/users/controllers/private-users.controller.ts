@@ -18,7 +18,7 @@ import {UpdateProfileDto} from '../dto/update-profile.dto';
 import {UserPrivateResponseDto} from '../dto/user-response.dto';
 import {plainToInstance} from 'class-transformer';
 import {SessionService} from 'src/session/session.service';
-import type {PaginationDto} from 'src/common/dto/pagination.dto';
+import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {CommentsService} from 'src/comments/comments.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from '../users.service';

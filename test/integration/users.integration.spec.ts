@@ -159,6 +159,44 @@ describe('Users (integration)', () => {
     });
   });
 
+  describe('live session revocation', () => {
+    it('invalidates an active session once the user is blocked', async () => {
+      const client = agent();
+      const {body} = await registerUser(client);
+      await client.get('/users/me').expect(200);
+
+      await userRepository().update({id: body.id}, {isBlocked: true});
+
+      // The same session cookie no longer works
+      await client.get('/users/me').expect(401);
+    });
+
+    it('reflects a role change on the next request', async () => {
+      const client = agent();
+      const {body} = await registerUser(client);
+      await client.get('/admin/users').expect(403);
+
+      await userRepository().update({id: body.id}, {role: Role.Admin});
+
+      await client.get('/admin/users').expect(200);
+    });
+  });
+
+  describe('pagination validation', () => {
+    it('enforces the limit bound on /users/me/stories', async () => {
+      const client = agent();
+      await registerUser(client);
+
+      await client.get('/users/me/stories').query({limit: 101}).expect(400);
+    });
+
+    it('enforces the limit bound on /admin/comments', async () => {
+      const admin = await seedAdmin(testApp);
+
+      await admin.get('/admin/comments').query({limit: 101}).expect(400);
+    });
+  });
+
   describe('GET /users/:id (public profile)', () => {
     it('returns the preview profile without email', async () => {
       const client = agent();
