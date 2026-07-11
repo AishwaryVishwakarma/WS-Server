@@ -64,6 +64,67 @@ describe('Tags (integration)', () => {
     });
   });
 
+  describe('slugs', () => {
+    it('generates a URL slug from the name on create', async () => {
+      const admin = await seedAdmin(testApp);
+
+      const response = await createTag(admin, ' Dark Magic ');
+
+      expect(response.status).toBe(201);
+      expect(response.body.name).toBe('dark magic');
+      expect(response.body.slug).toBe('dark-magic');
+    });
+
+    it('serves the tag by slug and by id on the public route', async () => {
+      const admin = await seedAdmin(testApp);
+      const tag = await createTag(admin, 'Dark Magic');
+
+      const client = agent();
+      await registerUser(client);
+
+      const bySlug = await client.get('/tags/dark-magic').expect(200);
+      expect(bySlug.body.id).toBe(tag.body.id);
+
+      const byId = await client.get(`/tags/${tag.body.id}`).expect(200);
+      expect(byId.body.slug).toBe('dark-magic');
+
+      await client.get('/tags/no-such-tag').expect(404);
+    });
+
+    it('regenerates the slug when an admin renames the tag', async () => {
+      const admin = await seedAdmin(testApp);
+      const tag = await createTag(admin, 'Dark Magic');
+      const token = await getCsrfToken(admin);
+
+      const response = await admin
+        .patch(`/admin/tags/${tag.body.id}`)
+        .set('x-csrf-token', token)
+        .send({name: 'Occult Rituals'})
+        .expect(200);
+
+      expect(response.body.slug).toBe('occult-rituals');
+    });
+
+    it('rejects names with no letters or numbers', async () => {
+      const admin = await seedAdmin(testApp);
+
+      const response = await createTag(admin, '!!!');
+
+      expect(response.status).toBe(400);
+    });
+
+    it('includes slugs in the public listing', async () => {
+      const admin = await seedAdmin(testApp);
+      await createTag(admin, 'Dark Magic');
+
+      const client = agent();
+      await registerUser(client);
+
+      const response = await client.get('/tags').expect(200);
+      expect(response.body.data[0].slug).toBe('dark-magic');
+    });
+  });
+
   describe('GET /tags', () => {
     it('lists tags for any logged-in user with pagination metadata', async () => {
       const admin = await seedAdmin(testApp);

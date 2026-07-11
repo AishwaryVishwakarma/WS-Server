@@ -34,6 +34,7 @@ export class TagsService {
       select: {
         id: true,
         name: true,
+        slug: true,
       },
       order: {name: 'ASC'},
     });
@@ -45,6 +46,16 @@ export class TagsService {
     return await this.tagsRepository.findOneByOrFail({id}).catch(() => {
       throw new NotFoundException(`Tag with ID ${id} not found`);
     });
+  }
+
+  // Public lookup: accepts either the UUID or the URL slug. Safe as a single
+  // OR query because ids are UUIDs and slugs never look like one.
+  async findOneByIdOrSlug(idOrSlug: string) {
+    return await this.tagsRepository
+      .findOneOrFail({where: [{id: idOrSlug}, {slug: idOrSlug}]})
+      .catch(() => {
+        throw new NotFoundException(`Tag '${idOrSlug}' not found`);
+      });
   }
 
   async findManyByIds(ids: string[]) {

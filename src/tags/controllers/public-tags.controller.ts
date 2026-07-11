@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import {Controller, Get, Param, Query, UseGuards} from '@nestjs/common';
 import {TagsService} from '../tags.service';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
@@ -20,8 +13,8 @@ export class PublicTagsController {
     return this.tagsService.findAll(paginationDto.page, paginationDto.limit);
   }
 
-  @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tagsService.findOne(id);
+  @Get(':idOrSlug')
+  findOne(@Param('idOrSlug') idOrSlug: string) {
+    return this.tagsService.findOneByIdOrSlug(idOrSlug);
   }
 }

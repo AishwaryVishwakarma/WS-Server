@@ -16,6 +16,9 @@ export class Tag {
   @Column({length: 20, unique: true})
   name: string;
 
+  @Column({length: 20, unique: true})
+  slug: string;
+
   @ManyToMany(() => Story, (story) => story.tags)
   stories: Story[];
 
@@ -24,6 +27,7 @@ export class Tag {
   normalizeName() {
     if (this.name) {
       this.name = this.name.trim().toLowerCase();
+      this.slug = this.name.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     }
   }
 }
