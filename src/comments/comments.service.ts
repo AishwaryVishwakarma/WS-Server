@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   forwardRef,
   Inject,
   Injectable,
@@ -51,7 +52,7 @@ export class CommentsService {
 
   private _authorize(ownerId: string, requesterId: string, role: Role) {
     if (role !== Role.Admin && ownerId !== requesterId) {
-      throw new NotFoundException(
+      throw new ForbiddenException(
         `You do not have permission to perform this action`
       );
     }
