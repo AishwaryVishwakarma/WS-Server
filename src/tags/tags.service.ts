@@ -35,6 +35,7 @@ export class TagsService {
         id: true,
         name: true,
       },
+      order: {name: 'ASC'},
     });
 
     return getPaginatedResponse<Tag>(tags, total, page, limit);

@@ -3,7 +3,7 @@ import {RegisterUserDto} from './dto/register-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {User} from './entities/user.entity';
-import {QueryFailedError, Repository} from 'typeorm';
+import {Repository} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
@@ -55,9 +55,10 @@ export class UsersService {
     try {
       return await this.usersRepository.save(user);
     } catch (error) {
-      if (error instanceof QueryFailedError) {
-        handleQueryFailedError(error, 'create');
-      }
+      // handleQueryFailedError maps duplicates to 409 and re-throws anything
+      // else — never swallow, or create() would return undefined and callers
+      // (register/admin create) would respond 201 with an empty body.
+      return handleQueryFailedError(error, 'create');
     }
   }
 
@@ -68,6 +69,7 @@ export class UsersService {
       skip,
       take,
       withDeleted: true,
+      order: {createdAt: 'DESC'},
     });
 
     return {

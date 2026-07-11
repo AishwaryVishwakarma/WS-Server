@@ -9,7 +9,7 @@ export function handleQueryFailedError(error: unknown, action: string) {
       throw new ConflictException(`${action} failed: Duplicate entry`);
     }
 
-    throw new InternalServerErrorException(`Failed to ${action} tag`);
+    throw new InternalServerErrorException(`Failed to ${action} record`);
   }
 
   throw error;

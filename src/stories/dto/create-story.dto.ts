@@ -15,6 +15,7 @@ import {
 export class CreateStoryDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(255)
   title: string;
 
   @IsOptional()
