@@ -1,6 +1,6 @@
 import {INestApplication, ValidationPipe} from '@nestjs/common';
 import {Test, TestingModule} from '@nestjs/testing';
-import * as request from 'supertest';
+import request from 'supertest';
 import {App} from 'supertest/types';
 import {AuthController} from '../src/auth/auth.controller';
 import {AuthService} from '../src/auth/auth.service';

@@ -3,7 +3,7 @@ import {AppModule} from './app.module';
 import {Logger, ValidationPipe} from '@nestjs/common';
 import {createClient} from 'redis';
 import {RedisStore} from 'connect-redis';
-import * as session from 'express-session';
+import session from 'express-session';
 import {CsrfExceptionFilter} from './common/filters/csrf-exception.filter';
 
 async function bootstrap() {
