@@ -38,9 +38,12 @@ describe('Stories (integration)', () => {
   const storyRepository = () => testApp.dataSource.getRepository(Story);
 
   // Registers an author and creates a story, returning everything needed
-  const createStory = async (payload: object = STORY_PAYLOAD) => {
+  const createStory = async (
+    payload: object = STORY_PAYLOAD,
+    email?: string
+  ) => {
     const client = agent();
-    const {body: author} = await registerUser(client);
+    const {body: author} = await registerUser(client, email ? {email} : {});
     const token = await getCsrfToken(client);
 
     const response = await client
@@ -152,6 +155,97 @@ describe('Stories (integration)', () => {
         .set('x-csrf-token', adminToken)
         .send({status: 'published'})
         .expect(400);
+    });
+  });
+
+  describe('visibility (GET /stories/:id)', () => {
+    it('hides a pending story from other users with 404', async () => {
+      const {story} = await createStory();
+
+      const other = agent();
+      await registerUser(other, {email: 'other@test.com'});
+
+      await other.get(`/stories/${story.id}`).expect(404);
+    });
+
+    it('lets the author read their own pending story', async () => {
+      const {client, story} = await createStory();
+
+      await client.get(`/stories/${story.id}`).expect(200);
+    });
+
+    it('lets an admin read any pending story', async () => {
+      const {story} = await createStory();
+      const admin = await seedAdmin(testApp);
+
+      await admin.get(`/stories/${story.id}`).expect(200);
+    });
+
+    it('shows an approved story to any logged-in user', async () => {
+      const {story} = await createStory();
+      await approveStory(story.id);
+
+      const other = agent();
+      await registerUser(other, {email: 'other@test.com'});
+
+      await other.get(`/stories/${story.id}`).expect(200);
+    });
+
+    it('hides comments of a story the user cannot see', async () => {
+      const {story} = await createStory();
+
+      const other = agent();
+      await registerUser(other, {email: 'other@test.com'});
+
+      await other.get(`/stories/${story.id}/comments`).expect(404);
+    });
+  });
+
+  describe('GET /stories (public browse)', () => {
+    it('lists only approved stories, without full content', async () => {
+      const {story: approved} = await createStory(STORY_PAYLOAD, 'a@test.com');
+      await approveStory(approved.id);
+      await createStory(
+        {...STORY_PAYLOAD, title: 'Still pending'},
+        'b@test.com'
+      );
+
+      const browser = agent();
+      await registerUser(browser, {email: 'browser@test.com'});
+      const response = await browser.get('/stories').expect(200);
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].id).toBe(approved.id);
+      expect(response.body.data[0].content).toBeUndefined();
+    });
+  });
+
+  describe('re-moderation on edit', () => {
+    it('resets an approved story to pending when the author edits content', async () => {
+      const {client, token, story} = await createStory();
+      await approveStory(story.id);
+
+      const response = await client
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', token)
+        .send({content: 'Completely rewritten after approval'})
+        .expect(200);
+
+      expect(response.body.status).toBe(StoryStatus.Pending);
+    });
+
+    it('keeps the status when an admin edits', async () => {
+      const {story} = await createStory();
+      const admin = await approveStory(story.id);
+      const adminToken = await getCsrfToken(admin);
+
+      const response = await admin
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', adminToken)
+        .send({title: 'Admin fixed a typo'})
+        .expect(200);
+
+      expect(response.body.status).toBe(StoryStatus.Approved);
     });
   });
 

@@ -42,7 +42,7 @@ export class StoriesService {
   ): Promise<Story> {
     const story = await this.findOne(storyId);
 
-    const isOwner = story.author.id === userId;
+    const isOwner = story.author?.id === userId;
 
     if (!isOwner && role !== Role.Admin) {
       throw new ForbiddenException(
@@ -89,6 +89,7 @@ export class StoriesService {
       take,
       relations: ['author', 'tags'],
       select: SELECTED_FIELDS,
+      order: {createdAt: 'DESC'},
     });
 
     return getPaginatedResponse<Story>(stories, total, page, limit);
@@ -107,6 +108,7 @@ export class StoriesService {
       skip,
       take,
       select: SELECTED_FIELDS,
+      order: {createdAt: 'DESC'},
     });
 
     return getPaginatedResponse<Story>(stories, total, page, limit);
@@ -121,6 +123,7 @@ export class StoriesService {
       skip,
       take,
       select: SELECTED_FIELDS,
+      order: {createdAt: 'DESC'},
     });
 
     return getPaginatedResponse<Story>(stories, total, page, limit);
@@ -131,10 +134,47 @@ export class StoriesService {
       .findOneOrFail({
         where: {id},
         relations: ['author', 'tags'],
+        // Include soft-deleted authors so a story by a removed user stays
+        // readable instead of null-ing out author and throwing.
+        withDeleted: true,
       })
       .catch(() => {
         throw new NotFoundException(`Story with ID ${id} not found`);
       });
+  }
+
+  // Public read: non-approved stories are visible only to their author and
+  // admins. Others get a 404 (not 403) so story existence isn't leaked.
+  async findOneVisible(id: string, userId: string, role: Role) {
+    const story = await this.findOne(id);
+
+    const isOwner = story.author?.id === userId;
+
+    if (
+      story.status !== StoryStatus.Approved &&
+      !isOwner &&
+      role !== Role.Admin
+    ) {
+      throw new NotFoundException(`Story with ID ${id} not found`);
+    }
+
+    return story;
+  }
+
+  async findAllApproved(page: number = 1, limit: number = 20) {
+    const {skip, take} = paginate(page, limit);
+
+    const [stories, total] = await this.storiesRepository.findAndCount({
+      where: {status: StoryStatus.Approved},
+      relations: ['author', 'tags'],
+      skip,
+      take,
+      select: SELECTED_FIELDS,
+      order: {createdAt: 'DESC'},
+      withDeleted: true,
+    });
+
+    return getPaginatedResponse<Story>(stories, total, page, limit);
   }
 
   async update(
@@ -152,6 +192,25 @@ export class StoriesService {
     }
 
     Object.assign(story, rest);
+
+    // A non-admin editing an already-moderated story sends it back to pending
+    // so content changes can't bypass review.
+    const contentChanged =
+      tagIds !== undefined ||
+      rest.title !== undefined ||
+      rest.content !== undefined ||
+      rest.coverImageUrl !== undefined ||
+      rest.excerpt !== undefined;
+
+    if (
+      contentChanged &&
+      role !== Role.Admin &&
+      story.status !== StoryStatus.Pending
+    ) {
+      story.status = StoryStatus.Pending;
+      story.isFlagged = false;
+    }
+
     return await this.storiesRepository.save(story);
   }
 

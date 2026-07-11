@@ -23,6 +23,7 @@ import {plainToInstance, type ClassConstructor} from 'class-transformer';
 import {
   StoryWithAuthorPreviewResponseDto,
   StoryResponseDto,
+  StoryPreviewResponseDto,
 } from '../dto/story-response.dto';
 import type {Request} from 'express';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
@@ -58,17 +59,46 @@ export class PublicStoriesController {
     return this._serialize(StoryResponseDto, story);
   }
 
+  @Get()
+  async findAll(@Query() paginationDto: PaginationDto) {
+    const {data, ...rest} = await this.storiesService.findAllApproved(
+      paginationDto.page,
+      paginationDto.limit
+    );
+
+    return {
+      ...rest,
+      data: data.map((story) =>
+        plainToInstance(StoryPreviewResponseDto, story, {
+          excludeExtraneousValues: true,
+        })
+      ),
+    };
+  }
+
   @Get(':id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    const story = await this.storiesService.findOne(id);
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const story = await this.storiesService.findOneVisible(
+      id,
+      req.session.userId!,
+      req.session.role!
+    );
     return this._serialize(StoryWithAuthorPreviewResponseDto, story);
   }
 
   @Get(':id/comments')
   async getCommentsForStory(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query() paginationDto: PaginationDto
+    @Query() paginationDto: PaginationDto,
+    @Req() req: Request
   ) {
+    // Only expose comments if the story itself is visible to this user
+    await this.storiesService.findOneVisible(
+      id,
+      req.session.userId!,
+      req.session.role!
+    );
+
     const {data, ...rest} = await this.commentsService.findAllByStoryId(
       id,
       paginationDto.page,

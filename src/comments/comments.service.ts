@@ -58,8 +58,14 @@ export class CommentsService {
     }
   }
 
-  async create(createCommentDto: CreateCommentDto, userId: string) {
-    const story = await this.storiesService.findOne(createCommentDto.storyId);
+  async create(createCommentDto: CreateCommentDto, userId: string, role: Role) {
+    // findOneVisible blocks commenting on stories the user can't see
+    // (pending/rejected/flagged stories that aren't theirs).
+    const story = await this.storiesService.findOneVisible(
+      createCommentDto.storyId,
+      userId,
+      role
+    );
     const user = await this.usersService.findOne(userId);
 
     const comment = this.commentsRepository.create({

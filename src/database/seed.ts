@@ -311,7 +311,8 @@ async function seed() {
     for (const {story, author, content} of COMMENTS) {
       await commentsService.create(
         {content, storyId: storyIdsByTitle.get(story)!},
-        usersByEmail.get(author)!.id
+        usersByEmail.get(author)!.id,
+        Role.User
       );
     }
 

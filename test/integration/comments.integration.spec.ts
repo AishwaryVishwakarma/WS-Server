@@ -131,6 +131,21 @@ describe('Comments (integration)', () => {
       .expect(403);
   });
 
+  it('rejects commenting on a story the user cannot see', async () => {
+    // createStoryFixture leaves the story pending and owned by its author
+    const {story} = await createStoryFixture();
+
+    const intruder = agent();
+    await registerUser(intruder, {email: 'intruder@test.com'});
+    const token = await getCsrfToken(intruder);
+
+    await intruder
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Can I see this?', storyId: story.id})
+      .expect(404);
+  });
+
   it('exposes all comments to admins only', async () => {
     const {client, token, story} = await createStoryFixture();
 

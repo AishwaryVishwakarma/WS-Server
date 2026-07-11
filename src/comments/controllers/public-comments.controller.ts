@@ -38,7 +38,8 @@ export class PublicCommentsController {
   ) {
     const comment = await this.commentsService.create(
       createCommentDto,
-      req.session.userId!
+      req.session.userId!,
+      req.session.role!
     );
     return this._serialize(comment);
   }
