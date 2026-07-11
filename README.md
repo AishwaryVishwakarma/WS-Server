@@ -23,7 +23,8 @@ moderation layer approves, rejects, or flags content before it goes public.
 
 ```bash
 npm install
-cp .env.example .env   # then fill in the values
+cp .env.example .env        # defaults target the dockerized dev infra below
+npm run dev:infra:up        # start MySQL + Redis (or use your own — see below)
 npm run start:dev
 ```
 
@@ -47,9 +48,9 @@ is weak.
 
 ## Development database
 
-The app needs MySQL and Redis. Either run them natively, or use the dockerized
-dev infrastructure — it runs on alternate ports (MySQL `3308`, Redis `6381`)
-so it coexists with native installs:
+The app needs MySQL and Redis. The `.env.example` defaults point at the
+dockerized dev infrastructure, which runs on alternate ports (MySQL `3308`,
+Redis `6381`) so it coexists with any natively installed instances:
 
 ```bash
 # start dev MySQL + Redis (data persists in a named volume)
@@ -59,7 +60,8 @@ npm run dev:infra:up
 npm run dev:infra:down
 ```
 
-To use it, point `.env` at the containers (values in `.env.example`).
+To use your own MySQL/Redis instead, edit the `DB_*` / `REDIS_URL` values in
+`.env`.
 
 ### Seed data
 
