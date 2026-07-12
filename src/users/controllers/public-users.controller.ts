@@ -1,13 +1,7 @@
-import {
-  Controller,
-  Get,
-  Param,
-  UseGuards,
-  ParseUUIDPipe,
-  Query,
-} from '@nestjs/common';
-import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
+import {Controller, Get, Param, ParseUUIDPipe, Query} from '@nestjs/common';
+import {Throttle} from '@nestjs/throttler';
 import {User} from '../entities/user.entity';
+import {PUBLIC_READ_THROTTLE} from 'src/common/constants/throttle';
 import {UserPreviewResponseDto} from '../dto/user-response.dto';
 import {plainToInstance} from 'class-transformer';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
@@ -15,7 +9,9 @@ import {StoriesService} from 'src/stories/stories.service';
 import {StoryPreviewResponseDto} from 'src/stories/dto/story-response.dto';
 import {UsersService} from '../users.service';
 
-@UseGuards(SessionAuthGuard)
+// Public author profiles — no session required; only approved stories are
+// exposed (findAllApprovedByUserId).
+@Throttle(PUBLIC_READ_THROTTLE)
 @Controller('users')
 export class PublicUsersController {
   constructor(

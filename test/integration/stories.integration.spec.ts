@@ -1,6 +1,7 @@
 import request from 'supertest';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {Story} from 'src/stories/entities/story.entity';
+import {User} from 'src/users/entities/user.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import {
   cleanDatabase,
@@ -326,6 +327,83 @@ describe('Stories (integration)', () => {
 
       await browser.get('/stories?scareLevel=9').expect(400);
       await browser.get('/stories?sort=spookiest').expect(400);
+    });
+  });
+
+  describe('anonymous access', () => {
+    it('serves the approved feed, story, and comments without a session', async () => {
+      const {client, token, story} = await createStory();
+      await approveStory(story.id);
+      await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'Chilling.', storyId: story.id})
+        .expect(201);
+
+      const anonymous = agent();
+
+      const feed = await anonymous.get('/stories').expect(200);
+      expect(feed.body.total).toBe(1);
+
+      const detail = await anonymous.get(`/stories/${story.id}`).expect(200);
+      expect(detail.body.content).toBeDefined();
+
+      const comments = await anonymous
+        .get(`/stories/${story.id}/comments`)
+        .expect(200);
+      expect(comments.body.total).toBe(1);
+    });
+
+    it('hides non-approved stories from anonymous visitors with 404', async () => {
+      const {story} = await createStory(); // pending
+
+      await agent().get(`/stories/${story.id}`).expect(404);
+    });
+
+    it('rejects anonymous mutations', async () => {
+      const {story} = await createStory();
+      await approveStory(story.id);
+
+      // Without a CSRF token the middleware rejects first (403)
+      const anonymous = agent();
+      await anonymous.post('/stories').send(STORY_PAYLOAD).expect(403);
+
+      // With a token, the auth guard rejects the missing session (401)
+      const token = await getCsrfToken(anonymous);
+      await anonymous
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send(STORY_PAYLOAD)
+        .expect(401);
+      await anonymous
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', token)
+        .send({title: 'Hijacked'})
+        .expect(401);
+      await anonymous
+        .delete(`/stories/${story.id}`)
+        .set('x-csrf-token', token)
+        .expect(401);
+      await anonymous
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'Anon', storyId: story.id})
+        .expect(401);
+    });
+
+    it('degrades a revoked session to anonymous, clearing a stale role', async () => {
+      const {story} = await createStory();
+      const admin = await seedAdmin(testApp);
+
+      // Admin can read the pending story...
+      await admin.get(`/stories/${story.id}`).expect(200);
+
+      // ...but once blocked, the same session must not retain admin reads
+      await testApp.dataSource
+        .getRepository(User)
+        .update({email: 'admin@test.com'}, {isBlocked: true});
+
+      await admin.get(`/stories/${story.id}`).expect(404);
     });
   });
 

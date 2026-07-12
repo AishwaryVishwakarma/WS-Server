@@ -141,8 +141,12 @@ describe('Tags (integration)', () => {
       expect(names).toEqual(expect.arrayContaining(['horror', 'paranormal']));
     });
 
-    it('rejects unauthenticated requests', async () => {
-      await agent().get('/tags').expect(401);
+    it('serves anonymous visitors (public reads)', async () => {
+      const admin = await seedAdmin(testApp);
+      await createTag(admin, 'horror');
+
+      const response = await agent().get('/tags').expect(200);
+      expect(response.body.total).toBe(1);
     });
   });
 

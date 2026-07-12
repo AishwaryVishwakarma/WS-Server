@@ -3,7 +3,8 @@ import {Role} from 'src/users/enums/role';
 
 declare module 'express-session' {
   interface SessionData {
-    userId: string;
-    role: Role;
+    // Absent on anonymous sessions — public read routes allow those
+    userId?: string;
+    role?: Role;
   }
 }

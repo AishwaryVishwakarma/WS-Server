@@ -171,11 +171,12 @@ export class StoriesService {
   }
 
   // Public read: non-approved stories are visible only to their author and
-  // admins. Others get a 404 (not 403) so story existence isn't leaked.
-  async findOneVisible(id: string, userId: string, role: Role) {
+  // admins. Others — including anonymous visitors — get a 404 (not 403) so
+  // story existence isn't leaked.
+  async findOneVisible(id: string, userId?: string, role?: Role) {
     const story = await this.findOne(id);
 
-    const isOwner = story.author?.id === userId;
+    const isOwner = userId !== undefined && story.author?.id === userId;
 
     if (
       story.status !== StoryStatus.Approved &&
