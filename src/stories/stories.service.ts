@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -7,7 +8,7 @@ import {CreateStoryDto} from './dto/create-story.dto';
 import {UpdateStoryDto} from './dto/update-story.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Story} from './entities/story.entity';
-import {Like, Repository, type FindOptionsWhere} from 'typeorm';
+import {Like, Not, Repository, type FindOptionsWhere} from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
@@ -74,13 +75,14 @@ export class StoriesService {
   }
 
   async create(createStoryDto: CreateStoryDto, userId: string) {
-    const {tags: tagIds, excerpt, ...rest} = createStoryDto;
+    const {tags: tagIds, excerpt, draft, ...rest} = createStoryDto;
 
     const author = await this.usersService.findOne(userId);
 
     const story = this.storiesRepository.create({
       ...rest,
       excerpt: excerpt || rest.content.slice(0, 280) + '...',
+      status: draft ? StoryStatus.Draft : StoryStatus.Pending,
       author,
     });
 
@@ -99,7 +101,10 @@ export class StoriesService {
   ) {
     const {skip, take} = paginate(page, limit);
 
-    const base: FindOptionsWhere<Story> = status ? {status} : {};
+    // Drafts are the author's private business — never listed for admins
+    const base: FindOptionsWhere<Story> = status
+      ? {status}
+      : {status: Not(StoryStatus.Draft)};
     let where: FindOptionsWhere<Story> | FindOptionsWhere<Story>[] = base;
 
     if (search) {
@@ -251,7 +256,8 @@ export class StoriesService {
   ) {
     const story = await this._getStoryIfAuthorized(id, userId, role);
 
-    const {tags: tagIds, ...rest} = updateStoryDto;
+    // `draft` only applies at creation; submission goes through submitDraft
+    const {tags: tagIds, draft: _draft, ...rest} = updateStoryDto;
 
     if (tagIds?.length) {
       story.tags = await this._getTagsIfExists(tagIds);
@@ -260,7 +266,8 @@ export class StoriesService {
     Object.assign(story, rest);
 
     // A non-admin editing an already-moderated story sends it back to pending
-    // so content changes can't bypass review.
+    // so content changes can't bypass review. Drafts stay drafts — they were
+    // never in moderation.
     const contentChanged =
       tagIds !== undefined ||
       rest.title !== undefined ||
@@ -271,11 +278,25 @@ export class StoriesService {
     if (
       contentChanged &&
       role !== Role.Admin &&
-      story.status !== StoryStatus.Pending
+      story.status !== StoryStatus.Pending &&
+      story.status !== StoryStatus.Draft
     ) {
       story.status = StoryStatus.Pending;
       story.isFlagged = false;
     }
+
+    return await this.storiesRepository.save(story);
+  }
+
+  // Author action: move a private draft into the moderation queue
+  async submitDraft(id: string, userId: string, role: Role) {
+    const story = await this._getStoryIfAuthorized(id, userId, role);
+
+    if (story.status !== StoryStatus.Draft) {
+      throw new BadRequestException('Only drafts can be submitted for review');
+    }
+
+    story.status = StoryStatus.Pending;
 
     return await this.storiesRepository.save(story);
   }

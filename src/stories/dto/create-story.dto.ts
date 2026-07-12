@@ -1,6 +1,7 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -45,4 +46,9 @@ export class CreateStoryDto {
   @IsUUID('all', {each: true})
   @ArrayMaxSize(5)
   tags?: string[];
+
+  /** Save privately instead of submitting to moderation. */
+  @IsOptional()
+  @IsBoolean()
+  draft?: boolean;
 }

@@ -330,6 +330,100 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('drafts', () => {
+    const createDraft = async () => {
+      const client = agent();
+      const {body: author} = await registerUser(client, {
+        email: 'drafter@test.com',
+      });
+      const token = await getCsrfToken(client);
+
+      const response = await client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({...STORY_PAYLOAD, draft: true})
+        .expect(201);
+
+      return {client, token, author, story: response.body};
+    };
+
+    it('creates with draft status, invisible to everyone else', async () => {
+      const {client, story} = await createDraft();
+      expect(story.status).toBe(StoryStatus.Draft);
+
+      // Author sees it on their own shelf and can open it
+      const mine = await client.get('/users/me/stories').expect(200);
+      expect(mine.body.total).toBe(1);
+      await client.get(`/stories/${story.id}`).expect(200);
+
+      // Everyone else gets a 404, and it never reaches the admin list
+      await agent().get(`/stories/${story.id}`).expect(404);
+      const admin = await seedAdmin(testApp);
+      const adminList = await admin.get('/admin/stories').expect(200);
+      expect(adminList.body.total).toBe(0);
+      await admin.get('/admin/stories?status=draft').expect(400);
+    });
+
+    it('keeps a draft a draft when edited', async () => {
+      const {client, token, story} = await createDraft();
+
+      const response = await client
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', token)
+        .send({content: 'Still working on this'})
+        .expect(200);
+
+      expect(response.body.status).toBe(StoryStatus.Draft);
+    });
+
+    it('submits a draft into the moderation queue', async () => {
+      const {client, token, story} = await createDraft();
+
+      const submitted = await client
+        .patch(`/stories/${story.id}/submit`)
+        .set('x-csrf-token', token)
+        .expect(200);
+      expect(submitted.body.status).toBe(StoryStatus.Pending);
+
+      const admin = await seedAdmin(testApp);
+      const queue = await admin
+        .get('/admin/stories?status=pending')
+        .expect(200);
+      expect(queue.body.total).toBe(1);
+
+      // Submitting twice is a 400 — it is no longer a draft
+      await client
+        .patch(`/stories/${story.id}/submit`)
+        .set('x-csrf-token', token)
+        .expect(400);
+    });
+
+    it('rejects submitting someone else’s draft', async () => {
+      const {story} = await createDraft();
+
+      const other = agent();
+      await registerUser(other, {email: 'other@test.com'});
+      const otherToken = await getCsrfToken(other);
+
+      await other
+        .patch(`/stories/${story.id}/submit`)
+        .set('x-csrf-token', otherToken)
+        .expect(403);
+    });
+
+    it('admins cannot move a story into drafts', async () => {
+      const {story} = await createStory();
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+
+      await admin
+        .patch(`/admin/stories/${story.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: 'draft'})
+        .expect(400);
+    });
+  });
+
   describe('word and comment counts', () => {
     it('computes wordCount on create and update', async () => {
       const {client, token, story} = await createStory({

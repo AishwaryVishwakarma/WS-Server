@@ -128,6 +128,20 @@ export class PublicStoriesController {
     };
   }
 
+  @Patch(':id/submit')
+  @UseGuards(SessionAuthGuard)
+  async submitDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request
+  ) {
+    const story = await this.storiesService.submitDraft(
+      id,
+      req.session.userId!,
+      req.session.role!
+    );
+    return this._serialize(StoryResponseDto, story);
+  }
+
   @Patch(':id')
   @UseGuards(SessionAuthGuard)
   async update(

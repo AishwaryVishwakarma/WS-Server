@@ -27,10 +27,13 @@ export class StoryPreviewResponseDto {
 }
 
 /**
- * [public]
+ * [public] — status is exposed but harmless: anonymous readers only ever see
+ * approved stories (findOneVisible 404s the rest), while authors reading
+ * their own work need it to know draft/pending/rejected state.
  */
 export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
+  @Expose() status: StoryStatus;
 
   @Expose()
   @Type(() => UserPreviewResponseDto)

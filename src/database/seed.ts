@@ -150,6 +150,17 @@ const STORIES: {
   },
   {
     author: 'alice@whisperingshadows.dev',
+    title: 'Unfinished Business (draft)',
+    content:
+      'I have been putting off writing this one down, because naming a thing invites it. ' +
+      'But the scratching at the study door has grown impatient, and I think it wants its story told properly.\n\n' +
+      'TODO: decide whether the ending happens to the narrator or to the reader.',
+    scareLevel: 3,
+    tags: ['psychological'],
+    status: StoryStatus.Draft,
+  },
+  {
+    author: 'alice@whisperingshadows.dev',
     title: 'Mirror Math',
     content:
       'There are five mirrors in my flat. I counted them when I moved in, the way you do. Last Tuesday there were six. ' +
@@ -420,11 +431,15 @@ async function seed() {
       ...generateStories(),
     ]) {
       const story = await storiesService.create(
-        {...rest, tags: tags.map((name) => tagIdsByName.get(name)!)},
+        {
+          ...rest,
+          tags: tags.map((name) => tagIdsByName.get(name)!),
+          draft: status === StoryStatus.Draft,
+        },
         usersByEmail.get(author)!.id
       );
 
-      if (status !== StoryStatus.Pending) {
+      if (status !== StoryStatus.Pending && status !== StoryStatus.Draft) {
         await storiesService.updateStatus(story.id, status);
       }
 
