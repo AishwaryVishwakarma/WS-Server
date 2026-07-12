@@ -161,6 +161,128 @@ const STORIES: {
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Generated bulk data — deterministic (index-rotated, no randomness) filler on
+// top of the handcrafted stories so every paginated surface has 2+ pages:
+// the public feed and admin list (>20 stories), Alice's /me shelf (>20 of her
+// own), and one story with >20 comments.
+// ---------------------------------------------------------------------------
+
+const TITLE_ADJECTIVES = [
+  'The Waiting',
+  'The Hollow',
+  'The Patient',
+  'The Unlit',
+  'The Borrowed',
+  'The Crooked',
+];
+
+const TITLE_NOUNS = [
+  'Stairwell',
+  'Orchard',
+  'Congregation',
+  'Reservoir',
+  'Nursery',
+  'Archive',
+];
+
+const OPENINGS = [
+  'It started, as these things do, with something small: a door that took two tries to close, a draught with no window to explain it, a neighbour who waved a moment too long.',
+  'Nobody in town will give you directions there after sundown. They will talk about the weather, about the harvest, about anything else, and their eyes will keep flicking to the road behind you.',
+  'My grandmother left me the house, the clocks, and a list of rules written on the back of a hymn sheet. The first rule was underlined three times: *keep counting*.',
+  'The photographs came back from the developer with an extra frame at the end of the roll — a picture none of us remembered taking, of a room none of us recognised.',
+  'For eleven nights running, the dogs on our street barked at exactly the same minute, then stopped all at once, as if a hand had been raised.',
+  'The renovation was meant to take six weeks. The builders left in four days, and they left their tools, which the foreman later told me, quietly, was cheaper than going back.',
+];
+
+const MIDDLES = [
+  'I did what anyone would do: I kept a log. Dates, times, temperatures. The entries look sane until the second week, when my handwriting starts leaning the wrong way — and I do not remember writing any of them after the 14th.\n\nThe log now updates itself. It is more disciplined than I ever was.',
+  "We asked the oldest resident about it. She laughed until she understood we were serious, and then she asked us, very carefully, which of us had spoken to it first, because that person would need to start wearing iron.\n\nNone of us could remember who had spoken first. That, she said, was the worst possible answer.",
+  'The library keeps the town records in a basement that the staff call, without any humour at all, the deep end. The ledger for that year is there, and the relevant page has been cut out — not torn, cut, with a ruler, by someone who wanted it known that this was a decision.\n\n## What the ledger did keep\n\nThe index survived. It lists the missing page under a single word: *returned*.',
+  'I tried to photograph it, of course. The pictures develop fine except for a smear of light in the corner, always the same corner, no matter which way I face the camera.\n\nMy phone has started cropping the corner out on its own. The manufacturer says there is no feature that does that.',
+  'There is a version of this story where I moved out, and I tell that version at dinner parties. In the true version the rent is very reasonable, the rooms are warm, and every evening at dusk something in the house exhales, slowly, like a swimmer surfacing.\n\nYou can live with anything, is the thing. You can live with almost anything.',
+  'The priest came, blessed the doorways, drank two cups of tea, and left in good spirits. That night the blessing was returned, neatly, written in condensation on the inside of every window, in Latin, in a hand nobody in this century was taught.',
+];
+
+const QUOTES = [
+  '> Whatever knocks, my mother used to say, is asking permission. Whatever walks in never knocked.',
+  '> The dead are not patient. They are punctual. There is a difference, and it matters enormously.',
+  '> A house remembers its first family the way a bell remembers being struck.',
+  '> Do not thank it. Thanking it finishes the transaction.',
+];
+
+const ENDINGS = [
+  'I am writing this down because the entries in the log have started describing tomorrow, and I want at least one account of these events that something else did not author.\n\nIf you read this and recognise your own street: start counting.',
+  'We sold the house in the spring. The new owners seem happy. They repainted, of course.\n\nThey always repaint.',
+  'The town has since put up a fence and a sign. The fence is for the tourists. The sign, if you read it from the far side, is for something else.',
+  'I still have the key. Some nights it is warm in the drawer, like a coin held too long in a hand, and on those nights I do not open the drawer.',
+  'If this reads like a warning, good. It cost me a great deal to be in a position to give it.',
+];
+
+const GENERATED_AUTHOR_ROTATION = [
+  'alice@whisperingshadows.dev',
+  'bob@whisperingshadows.dev',
+  'alice@whisperingshadows.dev',
+  'carol@whisperingshadows.dev',
+];
+
+// Every 9th story stays pending / rejected / flagged so moderation surfaces
+// have depth too; everything else is approved for the public feed.
+function generatedStatus(index: number): StoryStatus {
+  if (index % 9 === 8) return StoryStatus.Pending;
+  if (index % 9 === 4 && index > 9) return StoryStatus.Approved;
+  if (index === 17) return StoryStatus.Rejected;
+  if (index === 26) return StoryStatus.Flagged;
+  return StoryStatus.Approved;
+}
+
+function generateStories(): typeof STORIES {
+  return Array.from({length: 36}, (_, i) => {
+    const title = `${TITLE_ADJECTIVES[i % 6]} ${TITLE_NOUNS[Math.floor(i / 6)]}`;
+
+    const content = [
+      OPENINGS[i % OPENINGS.length],
+      MIDDLES[i % MIDDLES.length],
+      QUOTES[i % QUOTES.length],
+      MIDDLES[(i + 3) % MIDDLES.length],
+      ENDINGS[i % ENDINGS.length],
+    ].join('\n\n');
+
+    return {
+      author: GENERATED_AUTHOR_ROTATION[i % 4],
+      title,
+      content,
+      scareLevel: (i % 5) + 1,
+      tags: [TAG_NAMES[i % TAG_NAMES.length]],
+      status: generatedStatus(i),
+    };
+  });
+}
+
+const COMMENT_REACTIONS = [
+  'Read this alone at 2 a.m. Regretting my choices.',
+  'The pacing on this one is merciless. Loved it.',
+  'I had to check my own windows halfway through.',
+  'This is going to live in my head rent-free. Like the thing in the story.',
+  'Quietly the scariest thing on the shelves this month.',
+  'The detail about the repainting broke me.',
+];
+
+// Pile comments onto one story so its thread paginates.
+function generateComments(): typeof COMMENTS {
+  const commenters = [
+    'alice@whisperingshadows.dev',
+    'bob@whisperingshadows.dev',
+    'carol@whisperingshadows.dev',
+  ];
+
+  return Array.from({length: 24}, (_, i) => ({
+    story: 'The House on Hollow Lane',
+    author: commenters[i % commenters.length],
+    content: `${COMMENT_REACTIONS[i % COMMENT_REACTIONS.length]} (${i + 1})`,
+  }));
+}
+
 const COMMENTS: {story: string; author: string; content: string}[] = [
   {
     story: 'The House on Hollow Lane',
@@ -293,7 +415,10 @@ async function seed() {
     const storyIdsByTitle = new Map<string, string>();
     const statusCounts = new Map<StoryStatus, number>();
 
-    for (const {author, status, tags, ...rest} of STORIES) {
+    for (const {author, status, tags, ...rest} of [
+      ...STORIES,
+      ...generateStories(),
+    ]) {
       const story = await storiesService.create(
         {...rest, tags: tags.map((name) => tagIdsByName.get(name)!)},
         usersByEmail.get(author)!.id
@@ -308,7 +433,8 @@ async function seed() {
     }
 
     // Comments
-    for (const {story, author, content} of COMMENTS) {
+    const allComments = [...COMMENTS, ...generateComments()];
+    for (const {story, author, content} of allComments) {
       await commentsService.create(
         {content, storyId: storyIdsByTitle.get(story)!},
         usersByEmail.get(author)!.id,
@@ -322,7 +448,7 @@ async function seed() {
 
     log(
       `Seeded ${usersByEmail.size} users, ${tagIdsByName.size} tags, ` +
-        `${storyIdsByTitle.size} stories (${statusSummary}), ${COMMENTS.length} comments`
+        `${storyIdsByTitle.size} stories (${statusSummary}), ${allComments.length} comments`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`

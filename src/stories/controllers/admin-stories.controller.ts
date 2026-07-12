@@ -24,7 +24,12 @@ export class AdminStoriesController {
 
   @Get()
   findAll(@Query() query: AdminStoryQueryDto) {
-    return this.storiesService.findAll(query.page, query.limit, query.status);
+    return this.storiesService.findAll(
+      query.page,
+      query.limit,
+      query.status,
+      query.search
+    );
   }
 
   @Patch(':id/status')

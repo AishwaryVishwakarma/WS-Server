@@ -346,6 +346,29 @@ describe('Stories (integration)', () => {
 
       await admin.get('/admin/stories?status=published').expect(400);
     });
+
+    it('searches titles and excerpts, composable with status', async () => {
+      const {story} = await createStory(
+        {...STORY_PAYLOAD, title: 'The Cursed Compass'},
+        'a@test.com'
+      );
+      const admin = await approveStory(story.id);
+      await createStory(
+        {...STORY_PAYLOAD, title: 'A Compass, Cursed'},
+        'b@test.com'
+      ); // stays pending
+
+      const search = await admin
+        .get('/admin/stories?search=compass')
+        .expect(200);
+      expect(search.body.total).toBe(2);
+
+      const combined = await admin
+        .get('/admin/stories?search=compass&status=approved')
+        .expect(200);
+      expect(combined.body.total).toBe(1);
+      expect(combined.body.data[0].id).toBe(story.id);
+    });
   });
 
   describe('re-moderation on edit', () => {

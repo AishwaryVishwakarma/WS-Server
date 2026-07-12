@@ -7,7 +7,7 @@ import {CreateStoryDto} from './dto/create-story.dto';
 import {UpdateStoryDto} from './dto/update-story.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Story} from './entities/story.entity';
-import {Repository} from 'typeorm';
+import {Like, Repository, type FindOptionsWhere} from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
@@ -89,13 +89,29 @@ export class StoriesService {
     return this.storiesRepository.save(story);
   }
 
-  async findAll(page: number = 1, limit: number = 20, status?: StoryStatus) {
+  async findAll(
+    page: number = 1,
+    limit: number = 20,
+    status?: StoryStatus,
+    search?: string
+  ) {
     const {skip, take} = paginate(page, limit);
+
+    const base: FindOptionsWhere<Story> = status ? {status} : {};
+    let where: FindOptionsWhere<Story> | FindOptionsWhere<Story>[] = base;
+
+    if (search) {
+      const like = Like(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      where = [
+        {...base, title: like},
+        {...base, excerpt: like},
+      ];
+    }
 
     const [stories, total] = await this.storiesRepository.findAndCount({
       skip,
       take,
-      where: status ? {status} : {},
+      where,
       relations: ['author', 'tags'],
       select: SELECTED_FIELDS,
       order: {createdAt: 'DESC'},
