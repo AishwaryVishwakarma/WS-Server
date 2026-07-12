@@ -41,6 +41,28 @@ describe('Comments (integration)', () => {
     return {client, token, author, story: story.body};
   };
 
+  it('lets an admin search all comments by content', async () => {
+    const {client, token, story} = await createStoryFixture();
+    await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'The attic scene was chilling', storyId: story.id})
+      .expect(201);
+    await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Lovely pacing throughout', storyId: story.id})
+      .expect(201);
+
+    const admin = await seedAdmin(testApp);
+    const response = await admin
+      .get('/admin/comments?search=chilling')
+      .expect(200);
+
+    expect(response.body.total).toBe(1);
+    expect(response.body.data[0].content).toContain('attic');
+  });
+
   it('creates a comment on a story', async () => {
     const {client, token, story} = await createStoryFixture();
 

@@ -3,7 +3,7 @@ import {RegisterUserDto} from './dto/register-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {User} from './entities/user.entity';
-import {Repository} from 'typeorm';
+import {Like, Repository, type FindOptionsWhere} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
@@ -62,12 +62,19 @@ export class UsersService {
     }
   }
 
-  async findAll(page: number = 1, limit: number = 20) {
+  async findAll(page: number = 1, limit: number = 20, search?: string) {
     const {skip, take} = paginate(page, limit);
+
+    let where: FindOptionsWhere<User>[] | undefined;
+    if (search) {
+      const like = Like(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      where = [{name: like}, {email: like}];
+    }
 
     const [users, total] = await this.usersRepository.findAndCount({
       skip,
       take,
+      where,
       withDeleted: true,
       order: {createdAt: 'DESC'},
     });

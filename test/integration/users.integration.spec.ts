@@ -159,6 +159,32 @@ describe('Users (integration)', () => {
     });
   });
 
+  describe('GET /admin/users search', () => {
+    it('filters by name or email substring', async () => {
+      await registerUser(agent(), {
+        name: 'Edgar Allan Crow',
+        email: 'edgar@test.com',
+      });
+      await registerUser(agent(), {
+        name: 'Mary Shelly-Duck',
+        email: 'mary@test.com',
+      });
+      const adminAgent = await seedAdmin(testApp);
+
+      const byName = await adminAgent
+        .get('/admin/users?search=crow')
+        .expect(200);
+      expect(byName.body.total).toBe(1);
+      expect(byName.body.data[0].email).toBe('edgar@test.com');
+
+      const byEmail = await adminAgent
+        .get('/admin/users?search=mary@')
+        .expect(200);
+      expect(byEmail.body.total).toBe(1);
+      expect(byEmail.body.data[0].name).toBe('Mary Shelly-Duck');
+    });
+  });
+
   describe('live session revocation', () => {
     it('invalidates an active session once the user is blocked', async () => {
       const client = agent();

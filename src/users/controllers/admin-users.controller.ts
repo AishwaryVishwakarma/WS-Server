@@ -13,7 +13,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
-import {PaginationDto} from 'src/common/dto/pagination.dto';
+import {SearchPaginationDto} from 'src/common/dto/search-pagination.dto';
 import type {Request} from 'express';
 import {User} from '../entities/user.entity';
 import {CreateUserDto} from '../dto/create-user.dto';
@@ -49,10 +49,11 @@ export class AdminUsersController {
   }
 
   @Get()
-  async findAll(@Query() paginationDto: PaginationDto) {
+  async findAll(@Query() query: SearchPaginationDto) {
     const result = await this.usersService.findAll(
-      paginationDto.page,
-      paginationDto.limit
+      query.page,
+      query.limit,
+      query.search
     );
 
     return {
