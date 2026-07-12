@@ -10,7 +10,11 @@ import {
 } from 'class-validator';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 
-export const STORY_SORT_OPTIONS = ['newest', 'oldest'] as const;
+export const STORY_SORT_OPTIONS = [
+  'newest',
+  'oldest',
+  'most-commented',
+] as const;
 export type StorySortOption = (typeof STORY_SORT_OPTIONS)[number];
 
 export class StoryQueryDto extends PaginationDto {

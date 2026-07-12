@@ -10,6 +10,7 @@ import {UpdateCommentDto} from './dto/update-comment.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import type {Repository} from 'typeorm';
 import {StoriesService} from 'src/stories/stories.service';
+import {Story} from 'src/stories/entities/story.entity';
 import {Comment} from './entities/comment.entity';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {UsersService} from 'src/users/users.service';
@@ -43,7 +44,7 @@ export class CommentsService {
   private async _findOrThrow(id: string) {
     const comment = await this.commentsRepository.findOne({
       where: {id},
-      relations: ['user'],
+      relations: ['user', 'story'],
     });
     if (!comment)
       throw new NotFoundException(`Comment with ID ${id} not found`);
@@ -74,7 +75,16 @@ export class CommentsService {
       user,
     });
 
-    return this.commentsRepository.save(comment);
+    const saved = await this.commentsRepository.save(comment);
+
+    await this.commentsRepository.manager.increment(
+      Story,
+      {id: story.id},
+      'commentCount',
+      1
+    );
+
+    return saved;
   }
 
   async findAll(page: number = 1, limit: number = 20, search?: string) {
@@ -166,6 +176,15 @@ export class CommentsService {
     const comment = await this._findOrThrow(id);
     this._authorize(comment.user.id, userId, role);
 
-    return this.commentsRepository.delete(id);
+    const result = await this.commentsRepository.delete(id);
+
+    await this.commentsRepository.manager.decrement(
+      Story,
+      {id: comment.story.id},
+      'commentCount',
+      1
+    );
+
+    return result;
   }
 }

@@ -1,5 +1,7 @@
 import {User} from 'src/users/entities/user.entity';
 import {
+  BeforeInsert,
+  BeforeUpdate,
   Column,
   CreateDateColumn,
   Entity,
@@ -37,6 +39,14 @@ export class Story {
   @Column({default: false})
   isFlagged: boolean;
 
+  /** Kept in sync by the hook below; powers reading-time estimates. */
+  @Column({type: 'int', default: 0})
+  wordCount: number;
+
+  /** Denormalized counter maintained by CommentsService (create/remove). */
+  @Column({type: 'int', default: 0})
+  commentCount: number;
+
   @Column({
     type: 'enum',
     enum: StoryStatus,
@@ -63,4 +73,14 @@ export class Story {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  computeWordCount() {
+    if (this.content !== undefined) {
+      this.wordCount = this.content.trim()
+        ? this.content.trim().split(/\s+/).length
+        : 0;
+    }
+  }
 }

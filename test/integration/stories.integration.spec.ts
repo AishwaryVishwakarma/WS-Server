@@ -330,6 +330,68 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('word and comment counts', () => {
+    it('computes wordCount on create and update', async () => {
+      const {client, token, story} = await createStory({
+        title: 'Counted',
+        content: 'one two three four five',
+        scareLevel: 1,
+      });
+      expect(story.wordCount).toBe(5);
+
+      const updated = await client
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', token)
+        .send({content: 'one two three'})
+        .expect(200);
+      expect(updated.body.wordCount).toBe(3);
+    });
+
+    it('keeps commentCount in sync through comment create and delete', async () => {
+      const {client, token, story} = await createStory();
+      await approveStory(story.id);
+
+      const comment = await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'Boo', storyId: story.id})
+        .expect(201);
+
+      const after = await client.get(`/stories/${story.id}`).expect(200);
+      expect(after.body.commentCount).toBe(1);
+
+      await client
+        .delete(`/comments/${comment.body.id}`)
+        .set('x-csrf-token', token)
+        .expect(204);
+
+      const final = await client.get(`/stories/${story.id}`).expect(200);
+      expect(final.body.commentCount).toBe(0);
+    });
+
+    it('sorts by most-commented', async () => {
+      const {story: quiet} = await createStory(STORY_PAYLOAD, 'a@test.com');
+      const admin = await approveStory(quiet.id);
+      const {client, token, story: loud} = await createStory(
+        {...STORY_PAYLOAD, title: 'The Loud One'},
+        'b@test.com'
+      );
+      await approveStory(loud.id, admin);
+
+      await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'First!', storyId: loud.id})
+        .expect(201);
+
+      const response = await client
+        .get('/stories?sort=most-commented')
+        .expect(200);
+      expect(response.body.data[0].id).toBe(loud.id);
+      expect(response.body.data[0].commentCount).toBe(1);
+    });
+  });
+
   describe('anonymous access', () => {
     it('serves the approved feed, story, and comments without a session', async () => {
       const {client, token, story} = await createStory();

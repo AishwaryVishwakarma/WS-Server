@@ -30,6 +30,8 @@ const SELECTED_FIELDS = {
   isFlagged: true,
   status: true,
   excerpt: true,
+  wordCount: true,
+  commentCount: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -203,11 +205,19 @@ export class StoriesService {
       .leftJoinAndSelect('story.author', 'author')
       .leftJoinAndSelect('story.tags', 'tags')
       .where('story.status = :status', {status: StoryStatus.Approved})
-      .orderBy('story.createdAt', sort === 'oldest' ? 'ASC' : 'DESC')
       .skip(skip)
       .take(take)
       // Same rationale as findOne: keep stories by soft-deleted authors.
       .withDeleted();
+
+    if (sort === 'most-commented') {
+      qb.orderBy('story.commentCount', 'DESC').addOrderBy(
+        'story.createdAt',
+        'DESC'
+      );
+    } else {
+      qb.orderBy('story.createdAt', sort === 'oldest' ? 'ASC' : 'DESC');
+    }
 
     if (tag) {
       // Second join purely as a filter — `tags` above still loads the story's
