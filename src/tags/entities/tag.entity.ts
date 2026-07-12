@@ -22,6 +22,9 @@ export class Tag {
   @ManyToMany(() => Story, (story) => story.tags)
   stories: Story[];
 
+  /** Not a column — mapped by TagsService.findAll (approved stories only). */
+  storyCount?: number;
+
   @BeforeInsert()
   @BeforeUpdate()
   normalizeName() {

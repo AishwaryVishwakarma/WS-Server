@@ -6,6 +6,7 @@ import {Tag} from './entities/tag.entity';
 import {In, Repository} from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
+import {StoryStatus} from 'src/stories/enums/story-status.enum';
 
 @Injectable()
 export class TagsService {
@@ -27,17 +28,19 @@ export class TagsService {
   async findAll(page: number = 1, limit: number = 50) {
     const {skip, take} = paginate(page, limit);
 
-    // We don't need to select the stories associated with each tag
-    const [tags, total] = await this.tagsRepository.findAndCount({
-      skip,
-      take,
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-      },
-      order: {name: 'ASC'},
-    });
+    // Counts publicly visible (approved) stories per tag instead of loading
+    // the stories themselves
+    const [tags, total] = await this.tagsRepository
+      .createQueryBuilder('tag')
+      .loadRelationCountAndMap('tag.storyCount', 'tag.stories', 'story', (qb) =>
+        qb.andWhere('story.status = :approvedStatus', {
+          approvedStatus: StoryStatus.Approved,
+        })
+      )
+      .orderBy('tag.name', 'ASC')
+      .skip(skip)
+      .take(take)
+      .getManyAndCount();
 
     return getPaginatedResponse<Tag>(tags, total, page, limit);
   }

@@ -126,10 +126,15 @@ export class CommentsService {
     return getPaginatedResponse<Comment>(comments, total, page, limit);
   }
 
-  async findAllByUserId(userId: string, page: number = 1, limit: number = 20) {
+  async findAllByUserId(
+    userId: string,
+    page: number = 1,
+    limit: number = 20,
+    search?: string
+  ) {
     const {skip, take} = paginate(page, limit);
 
-    const [comments, total] = await this.commentsRepository
+    const qb = this.commentsRepository
       .createQueryBuilder('comment')
       .innerJoin('comment.user', 'user')
       .leftJoin('comment.story', 'story')
@@ -137,8 +142,14 @@ export class CommentsService {
       .where('user.id = :userId', {userId})
       .skip(skip)
       .take(take)
-      .orderBy('comment.createdAt', 'DESC')
-      .getManyAndCount();
+      .orderBy('comment.createdAt', 'DESC');
+
+    if (search) {
+      const escaped = search.replace(/[\\%_]/g, '\\$&');
+      qb.andWhere('comment.content LIKE :search', {search: `%${escaped}%`});
+    }
+
+    const [comments, total] = await qb.getManyAndCount();
 
     return getPaginatedResponse<Comment>(comments, total, page, limit);
   }

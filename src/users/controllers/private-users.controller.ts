@@ -19,7 +19,8 @@ import {UpdateProfileDto} from '../dto/update-profile.dto';
 import {UserPrivateResponseDto} from '../dto/user-response.dto';
 import {plainToInstance} from 'class-transformer';
 import {SessionService} from 'src/session/session.service';
-import {PaginationDto} from 'src/common/dto/pagination.dto';
+import {SearchPaginationDto} from 'src/common/dto/search-pagination.dto';
+import {MyStoriesQueryDto} from 'src/stories/dto/my-stories-query.dto';
 import {CommentsService} from 'src/comments/comments.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from '../users.service';
@@ -51,26 +52,24 @@ export class PrivateUsersController {
   @Get('comments')
   async findMyComments(
     @Req() req: Request,
-    @Query() paginationDto: PaginationDto
+    @Query() query: SearchPaginationDto
   ) {
-    const comments = await this.commentsService.findAllByUserId(
+    return await this.commentsService.findAllByUserId(
       req.session.userId!,
-      paginationDto.page,
-      paginationDto.limit
+      query.page,
+      query.limit,
+      query.search
     );
-
-    return comments;
   }
 
   @Get('stories')
-  async findMyStories(
-    @Req() req: Request,
-    @Query() paginationDto: PaginationDto
-  ) {
+  async findMyStories(@Req() req: Request, @Query() query: MyStoriesQueryDto) {
     return await this.storiesService.findAllByUserId(
       req.session.userId!,
-      paginationDto.page,
-      paginationDto.limit
+      query.page,
+      query.limit,
+      query.search,
+      query.status
     );
   }
 

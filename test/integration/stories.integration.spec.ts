@@ -330,6 +330,42 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('GET /users/me/stories filters', () => {
+    it('filters own stories by search and status', async () => {
+      const client = agent();
+      await registerUser(client, {email: 'shelf@test.com'});
+      const token = await getCsrfToken(client);
+
+      await client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({...STORY_PAYLOAD, title: 'The Cellar Door'})
+        .expect(201);
+      await client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({...STORY_PAYLOAD, title: 'Attic Notes', draft: true})
+        .expect(201);
+
+      const bySearch = await client
+        .get('/users/me/stories?search=cellar')
+        .expect(200);
+      expect(bySearch.body.total).toBe(1);
+      expect(bySearch.body.data[0].title).toBe('The Cellar Door');
+
+      const drafts = await client
+        .get('/users/me/stories?status=draft')
+        .expect(200);
+      expect(drafts.body.total).toBe(1);
+      expect(drafts.body.data[0].title).toBe('Attic Notes');
+
+      const combined = await client
+        .get('/users/me/stories?search=attic&status=pending')
+        .expect(200);
+      expect(combined.body.total).toBe(0);
+    });
+  });
+
   describe('drafts', () => {
     const createDraft = async () => {
       const client = agent();

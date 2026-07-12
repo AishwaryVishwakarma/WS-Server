@@ -148,11 +148,31 @@ export class StoriesService {
     return getPaginatedResponse<Story>(stories, total, page, limit);
   }
 
-  async findAllByUserId(userId: string, page: number = 1, limit: number = 20) {
+  async findAllByUserId(
+    userId: string,
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    status?: StoryStatus
+  ) {
     const {skip, take} = paginate(page, limit);
 
+    const base: FindOptionsWhere<Story> = {
+      author: {id: userId},
+      ...(status ? {status} : {}),
+    };
+    let where: FindOptionsWhere<Story> | FindOptionsWhere<Story>[] = base;
+
+    if (search) {
+      const like = Like(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      where = [
+        {...base, title: like},
+        {...base, excerpt: like},
+      ];
+    }
+
     const [stories, total] = await this.storiesRepository.findAndCount({
-      where: {author: {id: userId}},
+      where,
       relations: ['tags'],
       skip,
       take,

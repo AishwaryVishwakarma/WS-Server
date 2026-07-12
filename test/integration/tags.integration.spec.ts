@@ -113,6 +113,36 @@ describe('Tags (integration)', () => {
       expect(response.status).toBe(400);
     });
 
+    it('reports approved story counts per tag', async () => {
+      const admin = await seedAdmin(testApp);
+      const tag = await createTag(admin, 'haunted');
+
+      // One approved story with the tag, one still pending
+      const client = agent();
+      await registerUser(client);
+      const token = await getCsrfToken(client);
+      const approvedStory = await client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({title: 'Counted', content: 'Boo', tags: [tag.body.id]})
+        .expect(201);
+      await client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({title: 'Not counted', content: 'Boo', tags: [tag.body.id]})
+        .expect(201);
+
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/admin/stories/${approvedStory.body.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: 'approved'})
+        .expect(200);
+
+      const response = await agent().get('/tags').expect(200);
+      expect(response.body.data[0].storyCount).toBe(1);
+    });
+
     it('includes slugs in the public listing', async () => {
       const admin = await seedAdmin(testApp);
       await createTag(admin, 'Dark Magic');
