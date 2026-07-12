@@ -329,6 +329,25 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('GET /admin/stories', () => {
+    it('filters by status for the moderation queue', async () => {
+      const {story: approved} = await createStory(STORY_PAYLOAD, 'a@test.com');
+      const admin = await approveStory(approved.id);
+      await createStory({...STORY_PAYLOAD, title: 'Pending one'}, 'b@test.com');
+
+      const pending = await admin
+        .get('/admin/stories?status=pending')
+        .expect(200);
+      expect(pending.body.total).toBe(1);
+      expect(pending.body.data[0].title).toBe('Pending one');
+
+      const all = await admin.get('/admin/stories').expect(200);
+      expect(all.body.total).toBe(2);
+
+      await admin.get('/admin/stories?status=published').expect(400);
+    });
+  });
+
   describe('re-moderation on edit', () => {
     it('resets an approved story to pending when the author edits content', async () => {
       const {client, token, story} = await createStory();

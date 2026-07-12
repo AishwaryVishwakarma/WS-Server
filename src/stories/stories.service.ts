@@ -89,15 +89,18 @@ export class StoriesService {
     return this.storiesRepository.save(story);
   }
 
-  async findAll(page: number = 1, limit: number = 20) {
+  async findAll(page: number = 1, limit: number = 20, status?: StoryStatus) {
     const {skip, take} = paginate(page, limit);
 
     const [stories, total] = await this.storiesRepository.findAndCount({
       skip,
       take,
+      where: status ? {status} : {},
       relations: ['author', 'tags'],
       select: SELECTED_FIELDS,
       order: {createdAt: 'DESC'},
+      // Admins should see stories whose authors were soft-deleted
+      withDeleted: true,
     });
 
     return getPaginatedResponse<Story>(stories, total, page, limit);

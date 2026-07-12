@@ -13,8 +13,8 @@ import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
 import {Role} from 'src/users/enums/role';
-import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {UpdateStoryStatusDto} from '../dto/update-story-status.dto';
+import {AdminStoryQueryDto} from '../dto/admin-story-query.dto';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(Role.Admin)
@@ -23,8 +23,8 @@ export class AdminStoriesController {
   constructor(private readonly storiesService: StoriesService) {}
 
   @Get()
-  findAll(@Query() paginationDto: PaginationDto) {
-    return this.storiesService.findAll(paginationDto.page, paginationDto.limit);
+  findAll(@Query() query: AdminStoryQueryDto) {
+    return this.storiesService.findAll(query.page, query.limit, query.status);
   }
 
   @Patch(':id/status')
