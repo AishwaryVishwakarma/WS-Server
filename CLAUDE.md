@@ -10,9 +10,13 @@ content. NestJS 11 (TypeScript) + TypeORM (MySQL) + Redis-backed sessions.
 
 The frontend lives in the sibling repo `../ws-web` (Next.js + SCSS). It proxies
 `/api/*` to this server so the session cookie stays first-party — this API needs
-no CORS config. The whole site is members-only (every controller sits behind
-`SessionAuthGuard`); tags carry a URL `slug` generated in the entity hook, and
-`GET /stories` accepts `?tag=<slug>&search=&scareLevel=&sort=newest|oldest`.
+no CORS config. **Reading is public, participating is not**: story/tag/author
+GETs use `OptionalSessionAuthGuard` (anonymous allowed; a valid session still
+identifies the viewer, and stale/revoked sessions degrade to anonymous), while
+every mutation sits behind `SessionAuthGuard`. Public reads carry a 60/min
+`@Throttle` override on top of the global 10/min ThrottlerGuard. Tags carry a
+URL `slug` generated in the entity hook, and `GET /stories` accepts
+`?tag=<slug>&search=&scareLevel=&sort=newest|oldest`.
 
 ## Commands
 

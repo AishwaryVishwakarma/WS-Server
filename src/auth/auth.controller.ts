@@ -3,6 +3,7 @@ import {
   Post,
   Body,
   Req,
+  Res,
   HttpCode,
   BadRequestException,
   Get,
@@ -10,7 +11,7 @@ import {
 } from '@nestjs/common';
 import {AuthService} from './auth.service';
 import {LoginInfoDto} from './dto/login-info.dto';
-import type {Request} from 'express';
+import type {Request, Response} from 'express';
 import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {User} from 'src/users/entities/user.entity';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
@@ -67,7 +68,13 @@ export class AuthController {
   @Post('logout')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
-  logout(@Req() req: Request) {
-    return this.authService.logout(req);
+  async logout(
+    @Req() req: Request,
+    @Res({passthrough: true}) res: Response
+  ) {
+    await this.authService.logout(req);
+    // Reads are public now, so a lingering cookie would keep passing the
+    // frontend's cheap "has a session cookie" checks after sign-out
+    res.clearCookie('connect.sid');
   }
 }

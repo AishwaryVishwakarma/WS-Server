@@ -7,12 +7,13 @@ import {
   HttpCode,
   UseGuards,
   Req,
+  Res,
   Query,
   Inject,
   forwardRef,
 } from '@nestjs/common';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
-import type {Request} from 'express';
+import type {Request, Response} from 'express';
 import {User} from '../entities/user.entity';
 import {UpdateProfileDto} from '../dto/update-profile.dto';
 import {UserPrivateResponseDto} from '../dto/user-response.dto';
@@ -87,8 +88,12 @@ export class PrivateUsersController {
 
   @Delete()
   @HttpCode(204)
-  async removeMe(@Req() req: Request) {
+  async removeMe(
+    @Req() req: Request,
+    @Res({passthrough: true}) res: Response
+  ) {
     await this.usersService.remove(req.session.userId!);
-    return this.sessionService.destroy(req);
+    await this.sessionService.destroy(req);
+    res.clearCookie('connect.sid');
   }
 }
