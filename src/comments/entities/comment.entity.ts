@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Entity,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -26,6 +27,19 @@ export class Comment {
     onDelete: 'CASCADE',
   })
   story: Story;
+
+  // Self-referential one-level threading: a reply points at its top-level
+  // parent. Deleting a parent cascades to its replies (the service adjusts the
+  // story's commentCount accordingly). Replies never nest further — the service
+  // re-roots a reply-to-a-reply onto the same top-level parent.
+  @ManyToOne(() => Comment, (comment) => comment.replies, {
+    nullable: true,
+    onDelete: 'CASCADE',
+  })
+  parent: Comment | null;
+
+  @OneToMany(() => Comment, (comment) => comment.parent)
+  replies: Comment[];
 
   @CreateDateColumn()
   createdAt: Date;

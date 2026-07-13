@@ -6,5 +6,9 @@
 // import the new class here and append it to the array.
 
 import {Baseline1783883957794} from './1783883957794-Baseline';
+import {AddCommentParent1783938584720} from './1783938584720-AddCommentParent';
 
-export const migrations = [Baseline1783883957794];
+export const migrations = [
+  Baseline1783883957794,
+  AddCommentParent1783938584720,
+];

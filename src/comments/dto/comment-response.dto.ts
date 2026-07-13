@@ -7,6 +7,10 @@ export class CommentPreviewResponseDto {
   @Expose() createdAt: Date;
   @Expose() updatedAt: Date;
 
+  // Present on top-level comments (mapped by loadRelationCountAndMap); omitted
+  // on reply rows, which never carry their own replies.
+  @Expose() replyCount?: number;
+
   @Expose()
   @Type(() => UserPreviewResponseDto)
   user: UserPreviewResponseDto;

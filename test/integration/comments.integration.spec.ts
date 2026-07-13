@@ -168,6 +168,120 @@ describe('Comments (integration)', () => {
       .expect(404);
   });
 
+  it('creates a reply and keeps it out of the top-level list', async () => {
+    const {client, token, story} = await createStoryFixture();
+
+    const parent = await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'The ending got me', storyId: story.id})
+      .expect(201);
+
+    await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Right? I did not see it coming', storyId: story.id, parentId: parent.body.id})
+      .expect(201);
+
+    // Top-level list shows only the parent, annotated with its reply count.
+    const topLevel = await client
+      .get(`/stories/${story.id}/comments`)
+      .expect(200);
+    expect(topLevel.body.total).toBe(1);
+    expect(topLevel.body.data[0].id).toBe(parent.body.id);
+    expect(topLevel.body.data[0].replyCount).toBe(1);
+
+    // The dedicated replies route returns the child.
+    const replies = await client
+      .get(`/stories/${story.id}/comments/${parent.body.id}/replies`)
+      .expect(200);
+    expect(replies.body.total).toBe(1);
+    expect(replies.body.data[0].content).toContain('see it coming');
+  });
+
+  it('re-roots a reply-to-a-reply onto the top-level parent (one level deep)', async () => {
+    const {client, token, story} = await createStoryFixture();
+
+    const parent = await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Top level', storyId: story.id})
+      .expect(201);
+
+    const reply = await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'A reply', storyId: story.id, parentId: parent.body.id})
+      .expect(201);
+
+    // Replying to the reply should attach to the same top-level parent.
+    await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Reply to the reply', storyId: story.id, parentId: reply.body.id})
+      .expect(201);
+
+    const replies = await client
+      .get(`/stories/${story.id}/comments/${parent.body.id}/replies`)
+      .expect(200);
+    expect(replies.body.total).toBe(2);
+  });
+
+  it('rejects replying to a comment from a different story', async () => {
+    const {client, token, story} = await createStoryFixture();
+    const parent = await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Parent here', storyId: story.id})
+      .expect(201);
+
+    const other = await client
+      .post('/stories')
+      .set('x-csrf-token', token)
+      .send({title: 'A different tale', content: 'Elsewhere'})
+      .expect(201);
+
+    await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Wrong story', storyId: other.body.id, parentId: parent.body.id})
+      .expect(400);
+  });
+
+  it('cascades reply deletion and keeps the story comment count correct', async () => {
+    const {client, token, story} = await createStoryFixture();
+
+    const parent = await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Parent', storyId: story.id})
+      .expect(201);
+    for (let i = 1; i <= 2; i++) {
+      await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: `Reply ${i}`, storyId: story.id, parentId: parent.body.id})
+        .expect(201);
+    }
+
+    const before = await client.get(`/stories/${story.id}`).expect(200);
+    expect(before.body.commentCount).toBe(3);
+
+    // Deleting the parent cascades its two replies; the count sheds all three.
+    await client
+      .delete(`/comments/${parent.body.id}`)
+      .set('x-csrf-token', token)
+      .expect(204);
+
+    const after = await client.get(`/stories/${story.id}`).expect(200);
+    expect(after.body.commentCount).toBe(0);
+
+    const topLevel = await client
+      .get(`/stories/${story.id}/comments`)
+      .expect(200);
+    expect(topLevel.body.total).toBe(0);
+  });
+
   it('exposes all comments to admins only', async () => {
     const {client, token, story} = await createStoryFixture();
 

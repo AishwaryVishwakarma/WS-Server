@@ -128,6 +128,38 @@ export class PublicStoriesController {
     };
   }
 
+  @Get(':id/comments/:commentId/replies')
+  @Throttle(PUBLIC_READ_THROTTLE)
+  @UseGuards(OptionalSessionAuthGuard)
+  async getRepliesForComment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Query() paginationDto: PaginationDto,
+    @Req() req: Request
+  ) {
+    // Gate on the parent story's visibility, exactly like the comment list.
+    await this.storiesService.findOneVisible(
+      id,
+      req.session.userId,
+      req.session.role
+    );
+
+    const {data, ...rest} = await this.commentsService.findReplies(
+      commentId,
+      paginationDto.page,
+      paginationDto.limit
+    );
+
+    return {
+      ...rest,
+      data: data.map((comment) =>
+        plainToInstance(CommentPreviewResponseDto, comment, {
+          excludeExtraneousValues: true,
+        })
+      ),
+    };
+  }
+
   @Patch(':id/submit')
   @UseGuards(SessionAuthGuard)
   async submitDraft(
