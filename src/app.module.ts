@@ -30,8 +30,12 @@ import {migrations} from './database/migrations';
         },
       ],
       errorMessage: 'Too many requests, please try again later.',
-      // Rate limiting would fail integration tests after a few requests
-      skipIf: () => process.env.NODE_ENV === 'test',
+      // Rate limiting would fail integration tests after a few requests, and
+      // an e2e run drives many flows from one IP — THROTTLE_DISABLED lets the
+      // Playwright backend opt out without affecting real deployments.
+      skipIf: () =>
+        process.env.NODE_ENV === 'test' ||
+        process.env.THROTTLE_DISABLED === 'true',
     }),
     // Load environment variables from .env file
     ConfigModule.forRoot({
