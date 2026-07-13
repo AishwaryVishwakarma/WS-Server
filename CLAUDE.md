@@ -125,7 +125,9 @@ npm run dev:infra:down
 
 ## Known gaps (not yet addressed)
 
-No app Dockerfile, no Swagger/OpenAPI, and `csurf` is deprecated. (Migrations,
-graceful shutdown with Redis `quit()`, the throttle-exempt `GET /health`
-probe, GitHub Actions CI, a global `AllExceptionsFilter` + request-logging
-interceptor — both wired in `app.setup.ts` — are in place.)
+`csurf` is deprecated (still in use). (Migrations, graceful shutdown with Redis
+`quit()`, the throttle-exempt `GET /health` probe, GitHub Actions CI, a global
+`AllExceptionsFilter` + request-logging interceptor wired in `app.setup.ts`,
+production Dockerfiles for both repos, and Swagger docs at `/docs` — via the
+`@nestjs/swagger` CLI plugin in `nest-cli.json`, mounted in `main.ts` — are all
+in place.)

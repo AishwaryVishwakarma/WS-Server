@@ -1,5 +1,6 @@
 import {Logger} from '@nestjs/common';
 import {NestFactory} from '@nestjs/core';
+import {DocumentBuilder, SwaggerModule} from '@nestjs/swagger';
 import type {RedisClientType} from 'redis';
 import {AppModule} from './app.module';
 import {setupApp} from './app.setup';
@@ -15,6 +16,20 @@ async function bootstrap() {
     logger.error(`App setup failed: ${error}`);
     process.exit(1); // Exit the process if setup (e.g. Redis connection) fails
   }
+
+  // OpenAPI docs at /docs. Set up here (not in the shared app.setup) so the
+  // integration test harness stays untouched. The @nestjs/swagger CLI plugin
+  // (nest-cli.json) supplies schemas from the DTO types — no manual decorators.
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Whispering Shadows API')
+    .setDescription('Story-sharing backend — auth, stories, tags, comments.')
+    .setVersion('1.0')
+    .build();
+  SwaggerModule.setup(
+    'docs',
+    app,
+    SwaggerModule.createDocument(app, swaggerConfig)
+  );
 
   // Graceful shutdown: stop accepting connections, let Nest close the DB
   // pool via its lifecycle hooks, then release the session-store Redis
