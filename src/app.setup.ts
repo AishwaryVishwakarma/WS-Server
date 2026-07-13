@@ -2,7 +2,8 @@ import {Logger, ValidationPipe, type INestApplication} from '@nestjs/common';
 import {RedisStore} from 'connect-redis';
 import session from 'express-session';
 import {createClient, type RedisClientType} from 'redis';
-import {CsrfExceptionFilter} from './common/filters/csrf-exception.filter';
+import {AllExceptionsFilter} from './common/filters/all-exceptions.filter';
+import {LoggingInterceptor} from './common/interceptors/logging.interceptor';
 
 // Applies the app-level wiring that lives outside the Nest module graph
 // (pipes, filters, Redis-backed session middleware). Shared by main.ts and
@@ -16,7 +17,8 @@ export async function setupApp(
       whitelist: true,
     })
   );
-  app.useGlobalFilters(new CsrfExceptionFilter());
+  app.useGlobalFilters(new AllExceptionsFilter());
+  app.useGlobalInterceptors(new LoggingInterceptor());
 
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   const redisClient: RedisClientType = createClient({url: redisUrl});

@@ -125,7 +125,7 @@ npm run dev:infra:down
 
 ## Known gaps (not yet addressed)
 
-No global exception filter or request logging, no app Dockerfile, no
-Swagger/OpenAPI, and `csurf` is deprecated. (Migrations, graceful shutdown
-with Redis `quit()`, the throttle-exempt `GET /health` probe, and GitHub
-Actions CI are in place.)
+No app Dockerfile, no Swagger/OpenAPI, and `csurf` is deprecated. (Migrations,
+graceful shutdown with Redis `quit()`, the throttle-exempt `GET /health`
+probe, GitHub Actions CI, a global `AllExceptionsFilter` + request-logging
+interceptor — both wired in `app.setup.ts` — are in place.)
