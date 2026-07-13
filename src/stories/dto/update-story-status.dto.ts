@@ -1,8 +1,5 @@
 import {IsIn} from 'class-validator';
-import {
-  MODERATION_STATUSES,
-  StoryStatus,
-} from '../enums/story-status.enum';
+import {MODERATION_STATUSES, StoryStatus} from '../enums/story-status.enum';
 
 export class UpdateStoryStatusDto {
   // Admins moderate between the four public statuses; they cannot push a

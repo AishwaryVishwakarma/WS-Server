@@ -17,6 +17,7 @@ import {TagsModule} from './tags/tags.module';
 import {Tag} from './tags/entities/tag.entity';
 import {CommentsModule} from './comments/comments.module';
 import {Comment} from './comments/entities/comment.entity';
+import {migrations} from './database/migrations';
 
 @Module({
   imports: [
@@ -72,8 +73,8 @@ import {Comment} from './comments/entities/comment.entity';
           );
         }
 
-        // Fail fast on a typo'd NODE_ENV — it gates cookie security and
-        // TypeORM synchronize, so a bad value silently weakens production.
+        // Fail fast on a typo'd NODE_ENV — it gates cookie security, so a
+        // bad value silently weakens production.
         const nodeEnv = config.NODE_ENV;
         if (
           typeof nodeEnv === 'string' &&
@@ -87,7 +88,9 @@ import {Comment} from './comments/entities/comment.entity';
         return config;
       },
     }),
-    // Configure TypeORM with MySQL
+    // Configure TypeORM with MySQL. The schema is owned by migrations
+    // (src/database/migrations), applied automatically on boot — synchronize
+    // stays off everywhere so dev/test/prod all run the same DDL.
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -99,7 +102,9 @@ import {Comment} from './comments/entities/comment.entity';
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
         entities: [User, Story, Tag, Comment],
-        synchronize: configService.get('NODE_ENV') !== 'production',
+        synchronize: false,
+        migrations,
+        migrationsRun: true,
       }),
     }),
     AuthModule,

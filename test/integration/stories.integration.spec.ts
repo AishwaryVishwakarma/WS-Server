@@ -502,7 +502,11 @@ describe('Stories (integration)', () => {
     it('sorts by most-commented', async () => {
       const {story: quiet} = await createStory(STORY_PAYLOAD, 'a@test.com');
       const admin = await approveStory(quiet.id);
-      const {client, token, story: loud} = await createStory(
+      const {
+        client,
+        token,
+        story: loud,
+      } = await createStory(
         {...STORY_PAYLOAD, title: 'The Loud One'},
         'b@test.com'
       );

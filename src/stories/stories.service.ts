@@ -276,8 +276,9 @@ export class StoriesService {
   ) {
     const story = await this._getStoryIfAuthorized(id, userId, role);
 
+    const {tags: tagIds, ...rest} = updateStoryDto;
     // `draft` only applies at creation; submission goes through submitDraft
-    const {tags: tagIds, draft: _draft, ...rest} = updateStoryDto;
+    delete rest.draft;
 
     if (tagIds?.length) {
       story.tags = await this._getTagsIfExists(tagIds);

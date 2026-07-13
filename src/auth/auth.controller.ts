@@ -68,10 +68,7 @@ export class AuthController {
   @Post('logout')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
-  async logout(
-    @Req() req: Request,
-    @Res({passthrough: true}) res: Response
-  ) {
+  async logout(@Req() req: Request, @Res({passthrough: true}) res: Response) {
     await this.authService.logout(req);
     // Reads are public now, so a lingering cookie would keep passing the
     // frontend's cheap "has a session cookie" checks after sign-out

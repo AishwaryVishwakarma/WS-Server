@@ -67,6 +67,10 @@ export async function cleanDatabase(dataSource: DataSource) {
   await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
   try {
     for (const {table_name} of tables) {
+      // The migrations ledger must survive cleaning — truncating it would
+      // make the next app boot re-run migrations against existing tables
+      if (table_name === 'migrations') continue;
+
       await dataSource.query(`TRUNCATE TABLE \`${table_name}\``);
     }
   } finally {

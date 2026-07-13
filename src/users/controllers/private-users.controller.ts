@@ -87,10 +87,7 @@ export class PrivateUsersController {
 
   @Delete()
   @HttpCode(204)
-  async removeMe(
-    @Req() req: Request,
-    @Res({passthrough: true}) res: Response
-  ) {
+  async removeMe(@Req() req: Request, @Res({passthrough: true}) res: Response) {
     await this.usersService.remove(req.session.userId!);
     await this.sessionService.destroy(req);
     res.clearCookie('connect.sid');

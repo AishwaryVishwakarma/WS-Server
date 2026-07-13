@@ -27,6 +27,10 @@ npm run typecheck          # tsc --noEmit (use this, not just build — it also 
 npm run lint               # eslint --fix over {src,test}
 npm run seed               # seed the DB in .env (through the app); add `-- --fresh` to wipe first
 
+npm run migration:generate -- src/database/migrations/<Name>  # diff entities vs DB
+npm run migration:run      # apply pending migrations (also happens on app boot)
+npm run migration:revert   # roll back the last one
+
 npm test                   # unit tests (mocked, no infrastructure needed)
 npm run test:cov           # unit tests + coverage
 
@@ -81,11 +85,17 @@ npm run dev:infra:down
   `DB_*`, `SESSION_SECRET` (≥16 chars, known example values rejected when
   `NODE_ENV=production`), and `REDIS_URL`; validates `NODE_ENV`. No silent
   fallbacks — add new required env vars here.
-- **TypeORM `synchronize` owns the schema** (on when `NODE_ENV !== 'production'`);
-  there are **no migrations**. Entities are the single source of truth. Don't
-  write raw SQL that hardcodes table/column names, and seed **through the
-  services** (`src/database/seed.ts`) so hashing, entity hooks (tag
-  normalization, excerpts), and moderation stay correct.
+- **Migrations own the schema** (`synchronize` is off everywhere). They live in
+  `src/database/migrations/` and run automatically on boot (`migrationsRun`).
+  After changing an entity: `npm run migration:generate -- src/database/migrations/<Name>`
+  (needs the dev DB reachable), then **register the new class in
+  `src/database/migrations/index.ts`** — the registry is an explicit array so
+  ts-jest and dist builds load identically. The CLI uses the compiled
+  `dist/database/data-source.ts`; keep its options in sync with
+  `app.module.ts`. Don't write raw SQL that hardcodes table/column names in
+  app code, and seed **through the services** (`src/database/seed.ts`) so
+  hashing, entity hooks (tag normalization/slugs, word counts), and moderation
+  stay correct.
 - **Editor vs CLI TypeScript**: VS Code may bundle a newer TS than the project's
   5.9. `tsconfig.json` is written to be valid under both (uses `esModuleInterop`,
   `paths` not `baseUrl`, explicit `strict: false` + `strictNullChecks`). Modules
@@ -115,7 +125,7 @@ npm run dev:infra:down
 
 ## Known gaps (not yet addressed)
 
-No migrations, no graceful shutdown / Redis `quit()` on SIGTERM, no `/health`
-endpoint, no global exception filter or request logging, no CI, no app
-Dockerfile, no Swagger/OpenAPI, and `csurf` is deprecated. Tackle the
-migrations + graceful-shutdown + health-check trio before any real deployment.
+No global exception filter or request logging, no CI, no app Dockerfile, no
+Swagger/OpenAPI, and `csurf` is deprecated. (Migrations, graceful shutdown
+with Redis `quit()`, and the throttle-exempt `GET /health` probe are in
+place.)

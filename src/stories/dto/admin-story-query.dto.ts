@@ -1,9 +1,6 @@
 import {IsIn, IsOptional, IsString, MaxLength} from 'class-validator';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
-import {
-  MODERATION_STATUSES,
-  StoryStatus,
-} from '../enums/story-status.enum';
+import {MODERATION_STATUSES, StoryStatus} from '../enums/story-status.enum';
 
 export class AdminStoryQueryDto extends PaginationDto {
   /**
