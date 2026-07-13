@@ -15,7 +15,9 @@ import type {Request, Response} from 'express';
 import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {User} from 'src/users/entities/user.entity';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
+import {Throttle} from '@nestjs/throttler';
 import {generateCsrfToken} from 'src/middlewares/csrf';
+import {AUTH_THROTTLE} from 'src/common/constants/throttle';
 import {plainToInstance} from 'class-transformer';
 import {
   UserPreviewResponseDto,
@@ -49,6 +51,7 @@ export class AuthController {
   }
 
   @Post('register')
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(201)
   async register(
     @Body() registerUserDto: RegisterUserDto,
@@ -61,6 +64,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle(AUTH_THROTTLE)
   async login(@Body() loginInfoDto: LoginInfoDto, @Req() req: Request) {
     if (req.session.userId) throw new BadRequestException('Already logged in');
 

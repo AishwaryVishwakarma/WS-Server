@@ -133,6 +133,9 @@ The main known gaps are closed: migrations, graceful shutdown with Redis
 `AllExceptionsFilter` + request-logging interceptor (wired in `app.setup.ts`),
 production Dockerfiles for both repos, Swagger docs at `/docs` (via the
 `@nestjs/swagger` CLI plugin in `nest-cli.json`, mounted in `main.ts`), and
-`csurf` replaced by the maintained `csrf-csrf`. Remaining nice-to-haves: no
-request-id correlation, no metrics, no rate-limit tuning per route beyond the
-public-read override.
+`csurf` replaced by the maintained `csrf-csrf`. Rate limiting is tiered (`src/common/constants/throttle.ts`): a per-user
+default (100/min, tracked by session id via `SessionThrottlerGuard` so it
+survives the shared-proxy IP), a strict 10/min on login/register
+(brute-force), and a 120/min public-read override; `trust proxy` is set for
+the anonymous IP fallback. Remaining nice-to-haves: no request-id correlation,
+no metrics.

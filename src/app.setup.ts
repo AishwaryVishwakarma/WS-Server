@@ -1,6 +1,7 @@
 import {Logger, ValidationPipe, type INestApplication} from '@nestjs/common';
 import {RedisStore} from 'connect-redis';
 import cookieParser from 'cookie-parser';
+import type {Express} from 'express';
 import session from 'express-session';
 import {createClient, type RedisClientType} from 'redis';
 import {AllExceptionsFilter} from './common/filters/all-exceptions.filter';
@@ -20,6 +21,12 @@ export async function setupApp(
   );
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());
+
+  // Behind one reverse proxy in production (and the Next.js /api proxy),
+  // trust the first X-Forwarded-For hop so req.ip is the real client for the
+  // throttler's anonymous IP fallback.
+  const expressApp = app.getHttpAdapter().getInstance() as Express;
+  expressApp.set('trust proxy', 1);
 
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   const redisClient: RedisClientType = createClient({url: redisUrl});

@@ -3,8 +3,10 @@ import {AppController} from './app.controller';
 import {AppService} from './app.service';
 import {ConfigModule, ConfigService} from '@nestjs/config';
 import {TypeOrmModule} from '@nestjs/typeorm';
-import {ThrottlerGuard, ThrottlerModule} from '@nestjs/throttler';
+import {ThrottlerModule} from '@nestjs/throttler';
 import {APP_GUARD} from '@nestjs/core';
+import {SessionThrottlerGuard} from './common/gaurds/session-throttler.gaurd';
+import {DEFAULT_THROTTLE} from './common/constants/throttle';
 import {UsersModule} from './users/users.module';
 import {User} from './users/entities/user.entity';
 import {AuthModule} from './auth/auth.module';
@@ -21,14 +23,10 @@ import {migrations} from './database/migrations';
 
 @Module({
   imports: [
-    // Default throttler configuration (10 requests per minute)
+    // Per-user (or per-IP) rate limiting — see SessionThrottlerGuard and
+    // src/common/constants/throttle.ts for the tiers.
     ThrottlerModule.forRoot({
-      throttlers: [
-        {
-          ttl: 60 * 1000,
-          limit: 10,
-        },
-      ],
+      throttlers: [DEFAULT_THROTTLE],
       errorMessage: 'Too many requests, please try again later.',
       // Rate limiting would fail integration tests after a few requests, and
       // an e2e run drives many flows from one IP — THROTTLE_DISABLED lets the
@@ -123,7 +121,7 @@ import {migrations} from './database/migrations';
     AppService,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: SessionThrottlerGuard,
     },
     SessionService,
   ],
