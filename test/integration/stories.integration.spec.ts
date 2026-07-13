@@ -560,31 +560,32 @@ describe('Stories (integration)', () => {
       const {story} = await createStory();
       await approveStory(story.id);
 
-      // Without a CSRF token the middleware rejects first (403)
+      // Anonymous requests carry no session, so their CSRF token is unusable
+      // (double-submit binds it to a persisted session) — the CSRF middleware
+      // rejects every mutation with 403 before it reaches the auth guard.
       const anonymous = agent();
       await anonymous.post('/stories').send(STORY_PAYLOAD).expect(403);
 
-      // With a token, the auth guard rejects the missing session (401)
       const token = await getCsrfToken(anonymous);
       await anonymous
         .post('/stories')
         .set('x-csrf-token', token)
         .send(STORY_PAYLOAD)
-        .expect(401);
+        .expect(403);
       await anonymous
         .patch(`/stories/${story.id}`)
         .set('x-csrf-token', token)
         .send({title: 'Hijacked'})
-        .expect(401);
+        .expect(403);
       await anonymous
         .delete(`/stories/${story.id}`)
         .set('x-csrf-token', token)
-        .expect(401);
+        .expect(403);
       await anonymous
         .post('/comments')
         .set('x-csrf-token', token)
         .send({content: 'Anon', storyId: story.id})
-        .expect(401);
+        .expect(403);
     });
 
     it('degrades a revoked session to anonymous, clearing a stale role', async () => {

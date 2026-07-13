@@ -22,7 +22,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    // CSRF errors thrown by csurf (connect-compatible middleware)
+    // CSRF errors thrown by the csrf middleware (code set in middlewares/csrf.ts)
     if (this.isCsrfError(exception)) {
       return response.status(HttpStatus.FORBIDDEN).json({
         statusCode: HttpStatus.FORBIDDEN,

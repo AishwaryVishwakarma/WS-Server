@@ -1,5 +1,6 @@
 import {Logger, ValidationPipe, type INestApplication} from '@nestjs/common';
 import {RedisStore} from 'connect-redis';
+import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import {createClient, type RedisClientType} from 'redis';
 import {AllExceptionsFilter} from './common/filters/all-exceptions.filter';
@@ -31,6 +32,10 @@ export async function setupApp(
   const store = new RedisStore({
     client: redisClient,
   });
+
+  // csrf-csrf's double-submit reads/writes real cookies, so req.cookies must
+  // be populated before the CSRF middleware runs.
+  app.use(cookieParser());
 
   // Middleware to handle session management
   app.use(

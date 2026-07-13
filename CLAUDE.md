@@ -61,10 +61,13 @@ npm run dev:infra:down
   `SessionAuthGuard` reloads the user from the DB on every request (so blocking
   or deleting a user invalidates live sessions and refreshes their role).
   `RolesGuard` + `@Roles(Role.Admin)` for admin routes.
-- **CSRF**: `csurf` in session mode (`cookie: false`, token in `x-csrf-token`
-  header). Excluded for login/logout/register. `session.regenerate()` on
-  login/register wipes the csrf secret, so clients must re-fetch
-  `GET /auth/csrf-token` *after* authenticating.
+- **CSRF**: `csrf-csrf` double-submit (`src/middlewares/csrf.ts`), token in the
+  `x-csrf-token` header + a first-party cookie, bound to the session id via
+  `getSessionIdentifier`. Needs `cookie-parser` (wired in `app.setup.ts`).
+  Excluded for login/logout/register. `session.regenerate()` on login/register
+  changes the session id, so clients must re-fetch `GET /auth/csrf-token`
+  *after* authenticating. Anonymous (session-less) requests can't hold a valid
+  token, so mutations without a session fail CSRF (403) before the auth guard.
 - **Moderation**: stories default to `pending`; admins transition via
   `PATCH /admin/stories/:id/status`. `StoriesService.findOneVisible()` gates
   non-approved reads to author/admin. A non-admin editing a moderated story
@@ -125,9 +128,11 @@ npm run dev:infra:down
 
 ## Known gaps (not yet addressed)
 
-`csurf` is deprecated (still in use). (Migrations, graceful shutdown with Redis
+The main known gaps are closed: migrations, graceful shutdown with Redis
 `quit()`, the throttle-exempt `GET /health` probe, GitHub Actions CI, a global
-`AllExceptionsFilter` + request-logging interceptor wired in `app.setup.ts`,
-production Dockerfiles for both repos, and Swagger docs at `/docs` — via the
-`@nestjs/swagger` CLI plugin in `nest-cli.json`, mounted in `main.ts` — are all
-in place.)
+`AllExceptionsFilter` + request-logging interceptor (wired in `app.setup.ts`),
+production Dockerfiles for both repos, Swagger docs at `/docs` (via the
+`@nestjs/swagger` CLI plugin in `nest-cli.json`, mounted in `main.ts`), and
+`csurf` replaced by the maintained `csrf-csrf`. Remaining nice-to-haves: no
+request-id correlation, no metrics, no rate-limit tuning per route beyond the
+public-read override.

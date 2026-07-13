@@ -109,9 +109,9 @@ export async function seedAdmin(testApp: TestApp): Promise<Agent> {
   return agent;
 }
 
-// csurf stores its secret in the session, so the token is only valid for
-// requests made by the same agent. Fetch it AFTER register/login — the
-// session is regenerated on auth, which discards any earlier secret.
+// The CSRF token is bound to the session id (csrf-csrf double-submit), so it
+// is only valid for the same agent. Fetch it AFTER register/login — the
+// session is regenerated on auth, which changes the id the token is tied to.
 export async function getCsrfToken(agent: Agent): Promise<string> {
   const response = await agent.get('/auth/csrf-token').expect(200);
   return response.body.csrfToken as string;

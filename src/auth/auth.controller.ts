@@ -15,6 +15,7 @@ import type {Request, Response} from 'express';
 import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {User} from 'src/users/entities/user.entity';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
+import {generateCsrfToken} from 'src/middlewares/csrf';
 import {plainToInstance} from 'class-transformer';
 import {
   UserPreviewResponseDto,
@@ -37,9 +38,11 @@ export class AuthController {
   }
 
   @Get('csrf-token')
-  getCsrfToken(@Req() req: Request) {
+  getCsrfToken(@Req() req: Request, @Res({passthrough: true}) res: Response) {
     try {
-      return {csrfToken: req.csrfToken()};
+      // Sets the CSRF cookie on res and returns the matching header token,
+      // both bound to the current session id
+      return {csrfToken: generateCsrfToken(req, res)};
     } catch {
       throw new BadRequestException('Could not generate CSRF token');
     }
