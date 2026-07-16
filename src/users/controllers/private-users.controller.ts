@@ -22,6 +22,7 @@ import {SessionService} from 'src/session/session.service';
 import {SearchPaginationDto} from 'src/common/dto/search-pagination.dto';
 import {MyStoriesQueryDto} from 'src/stories/dto/my-stories-query.dto';
 import {CommentsService} from 'src/comments/comments.service';
+import {MyCommentActivityResponseDto} from 'src/comments/dto/comment-response.dto';
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from '../users.service';
 
@@ -54,12 +55,21 @@ export class PrivateUsersController {
     @Req() req: Request,
     @Query() query: SearchPaginationDto
   ) {
-    return await this.commentsService.findAllByUserId(
+    const {data, ...rest} = await this.commentsService.findAllByUserId(
       req.session.userId!,
       query.page,
       query.limit,
       query.search
     );
+
+    return {
+      ...rest,
+      data: data.map((comment) =>
+        plainToInstance(MyCommentActivityResponseDto, comment, {
+          excludeExtraneousValues: true,
+        })
+      ),
+    };
   }
 
   @Get('stories')

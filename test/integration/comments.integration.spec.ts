@@ -111,6 +111,71 @@ describe('Comments (integration)', () => {
     expect(response.body.data[0].content).toBe('Mine');
   });
 
+  it('returns /me comments as an activity feed with story context and reply engagement', async () => {
+    const {client, token, story} = await createStoryFixture();
+
+    const mine = await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'A thread I started', storyId: story.id})
+      .expect(201);
+
+    // Someone else replies to my comment (author can see their own pending story).
+    await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({
+        content: 'A reply to my own thread',
+        storyId: story.id,
+        parentId: mine.body.id,
+      })
+      .expect(201);
+
+    const response = await client.get('/users/me/comments').expect(200);
+    expect(response.body.total).toBe(2);
+
+    const started = response.body.data.find(
+      (c: {id: string}) => c.id === mine.body.id
+    );
+    const reply = response.body.data.find(
+      (c: {content: string}) => c.content === 'A reply to my own thread'
+    );
+
+    // The started comment carries engagement + embedded story context.
+    expect(started.replyCount).toBe(1);
+    expect(started.parentId).toBeNull();
+    expect(started.story.id).toBe(story.id);
+    expect(started.story.title).toBe('A story to discuss');
+
+    // The reply points back at its parent.
+    expect(reply.parentId).toBe(mine.body.id);
+    expect(reply.replyCount).toBe(0);
+  });
+
+  it('does not leak moderation fields on /me comments', async () => {
+    const {client, token, story} = await createStoryFixture();
+    const mine = await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Report me', storyId: story.id})
+      .expect(201);
+
+    // A different member reports it, so the raw entity now has isFlagged/reportCount.
+    const reporter = agent();
+    await registerUser(reporter, {email: 'nosy@test.com'});
+    const reporterToken = await getCsrfToken(reporter);
+    await reporter
+      .post(`/comments/${mine.body.id}/report`)
+      .set('x-csrf-token', reporterToken)
+      .expect(204);
+
+    const response = await client.get('/users/me/comments').expect(200);
+    const item = response.body.data[0];
+    expect(item).not.toHaveProperty('reportCount');
+    expect(item).not.toHaveProperty('isFlagged');
+    expect(item).not.toHaveProperty('user');
+  });
+
   it('allows the author to update and delete their comment', async () => {
     const {client, token, story} = await createStoryFixture();
 

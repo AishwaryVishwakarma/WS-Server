@@ -347,6 +347,35 @@ const COMMENTS: {story: string; author: string; content: string}[] = [
   },
 ];
 
+// A few replies to existing comments so the /me activity feed shows real
+// engagement (replyCount > 0 on the comments people started) and the one-level
+// thread view has content. Matched to the handcrafted COMMENTS by content.
+const REPLIES: {
+  parentContent: string;
+  story: string;
+  author: string;
+  content: string;
+}[] = [
+  {
+    parentContent: 'Folk horror done right. The last line is perfect.',
+    story: "The Ferryman's Toll",
+    author: 'carol@whisperingshadows.dev',
+    content: 'Agreed — that ending recontextualises the whole custom.',
+  },
+  {
+    parentContent: 'Folk horror done right. The last line is perfect.',
+    story: "The Ferryman's Toll",
+    author: 'bob@whisperingshadows.dev',
+    content: 'Thank you — the toll was the seed the whole story grew from.',
+  },
+  {
+    parentContent: 'The sealed attic detail got me. Excellent pacing.',
+    story: 'The House on Hollow Lane',
+    author: 'alice@whisperingshadows.dev',
+    content: 'That was the very image I started from. Glad it landed.',
+  },
+];
+
 // A few member-reported comments so the admin moderation queue
 // (GET /admin/comments?flagged=true) has content. Reporters must differ from
 // the comment's author (self-reports are rejected); the differing report
@@ -480,6 +509,18 @@ async function seed() {
       commentIdsByContent.set(content, comment.id);
     }
 
+    // Replies (created through the real service with a parentId so the
+    // one-level re-rooting and story commentCount stay correct)
+    for (const {parentContent, story, author, content} of REPLIES) {
+      const parentId = commentIdsByContent.get(parentContent);
+      if (!parentId) continue;
+      await commentsService.create(
+        {content, storyId: storyIdsByTitle.get(story)!, parentId},
+        usersByEmail.get(author)!.id,
+        Role.User
+      );
+    }
+
     // Reports (through the real service so isFlagged/reportCount and the
     // per-member unique constraint behave exactly as in production)
     let reportedComments = 0;
@@ -499,7 +540,8 @@ async function seed() {
     log(
       `Seeded ${usersByEmail.size} users, ${tagIdsByName.size} tags, ` +
         `${storyIdsByTitle.size} stories (${statusSummary}), ` +
-        `${allComments.length} comments (${reportedComments} reported)`
+        `${allComments.length} comments + ${REPLIES.length} replies ` +
+        `(${reportedComments} reported)`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`

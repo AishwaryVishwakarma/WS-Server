@@ -244,11 +244,18 @@ export class CommentsService {
   ) {
     const {skip, take} = paginate(page, limit);
 
+    // An activity feed of the member's own comments: each carries its story
+    // (for an in-context link) plus replyCount (engagement on comments they
+    // started) and parentId (null = they started the thread, set = it's their
+    // reply). The story is joined but not selected wholesale — only the preview
+    // fields, so nothing sensitive rides along.
     const qb = this.commentsRepository
       .createQueryBuilder('comment')
       .innerJoin('comment.user', 'user')
       .leftJoin('comment.story', 'story')
       .addSelect(STORY_SELECTED_FIELDS)
+      .loadRelationCountAndMap('comment.replyCount', 'comment.replies')
+      .loadRelationIdAndMap('comment.parentId', 'comment.parent')
       .where('user.id = :userId', {userId})
       .skip(skip)
       .take(take)
