@@ -21,12 +21,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    const requestId = request.requestId;
 
     // CSRF errors thrown by the csrf middleware (code set in middlewares/csrf.ts)
     if (this.isCsrfError(exception)) {
       return response.status(HttpStatus.FORBIDDEN).json({
         statusCode: HttpStatus.FORBIDDEN,
         message: 'Invalid CSRF token',
+        requestId,
       });
     }
 
@@ -34,7 +36,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const status = exception.getStatus();
       if (status >= 500) {
         this.logger.error(
-          `${request.method} ${request.url} → ${status}`,
+          `[${requestId}] ${request.method} ${request.url} → ${status}`,
           exception.stack
         );
       }
@@ -43,12 +45,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     // Anything else is an unhandled server error — log it in full
     this.logger.error(
-      `${request.method} ${request.url} → 500 (unhandled)`,
+      `[${requestId}] ${request.method} ${request.url} → 500 (unhandled)`,
       exception instanceof Error ? exception.stack : String(exception)
     );
     return response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       message: 'Internal server error',
+      requestId,
     });
   }
 

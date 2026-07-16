@@ -144,5 +144,9 @@ production Dockerfiles for both repos, Swagger docs at `/docs` (via the
 default (100/min, tracked by session id via `SessionThrottlerGuard` so it
 survives the shared-proxy IP), a strict 10/min on login/register
 (brute-force), and a 120/min public-read override; `trust proxy` is set for
-the anonymous IP fallback. Remaining nice-to-haves: no request-id correlation,
-no metrics.
+the anonymous IP fallback. Request-id correlation is in place
+(`src/middlewares/request-id.ts`, wired first in `app.setup.ts`): each request
+gets a `req.requestId` (a validated upstream `X-Request-Id` or a generated
+UUID), echoed on the response header and logged by the interceptor and
+`AllExceptionsFilter` (which also returns it in the error bodies it owns).
+Remaining nice-to-have: no metrics.

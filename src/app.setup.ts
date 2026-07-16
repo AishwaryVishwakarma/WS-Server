@@ -6,6 +6,7 @@ import session from 'express-session';
 import {createClient, type RedisClientType} from 'redis';
 import {AllExceptionsFilter} from './common/filters/all-exceptions.filter';
 import {LoggingInterceptor} from './common/interceptors/logging.interceptor';
+import {requestIdMiddleware} from './middlewares/request-id';
 
 // Applies the app-level wiring that lives outside the Nest module graph
 // (pipes, filters, Redis-backed session middleware). Shared by main.ts and
@@ -13,6 +14,12 @@ import {LoggingInterceptor} from './common/interceptors/logging.interceptor';
 export async function setupApp(
   app: INestApplication
 ): Promise<RedisClientType> {
+  // First in the chain: stamp every request with a correlation id (req.requestId
+  // + X-Request-Id response header) so logs, errors and clients can line up. Set
+  // before session/CSRF so even a rejected request is traceable.
+  const expressApp = app.getHttpAdapter().getInstance() as Express;
+  expressApp.use(requestIdMiddleware);
+
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
@@ -25,7 +32,6 @@ export async function setupApp(
   // Behind one reverse proxy in production (and the Next.js /api proxy),
   // trust the first X-Forwarded-For hop so req.ip is the real client for the
   // throttler's anonymous IP fallback.
-  const expressApp = app.getHttpAdapter().getInstance() as Express;
   expressApp.set('trust proxy', 1);
 
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
