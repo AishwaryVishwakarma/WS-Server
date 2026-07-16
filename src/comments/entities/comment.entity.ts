@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import {CommentReport} from './comment-report.entity';
 
 @Entity()
 export class Comment {
@@ -40,6 +41,20 @@ export class Comment {
 
   @OneToMany(() => Comment, (comment) => comment.parent)
   replies: Comment[];
+
+  // Set true when a member reports this comment; the admin moderation queue
+  // filters on it, and an admin clears it (dropping the reports) on resolve.
+  @Column({default: false})
+  isFlagged: boolean;
+
+  // Recomputed from the reports rows on every report/resolve (see
+  // CommentsService) — an orderable mirror of the source-of-truth report count
+  // so the moderation queue can sort most-reported-first without raw SQL.
+  @Column({type: 'int', default: 0})
+  reportCount: number;
+
+  @OneToMany(() => CommentReport, (report) => report.comment)
+  reports: CommentReport[];
 
   @CreateDateColumn()
   createdAt: Date;

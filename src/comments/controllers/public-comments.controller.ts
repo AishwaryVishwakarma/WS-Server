@@ -68,4 +68,12 @@ export class PublicCommentsController {
       req.session.role!
     );
   }
+
+  // Flag a comment for moderation. Idempotent per member — a second report
+  // from the same person is rejected with 409 by the unique constraint.
+  @Post(':id/report')
+  @HttpCode(204)
+  async report(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    await this.commentsService.report(id, req.session.userId!);
+  }
 }

@@ -19,6 +19,7 @@ import {TagsModule} from './tags/tags.module';
 import {Tag} from './tags/entities/tag.entity';
 import {CommentsModule} from './comments/comments.module';
 import {Comment} from './comments/entities/comment.entity';
+import {CommentReport} from './comments/entities/comment-report.entity';
 import {migrations} from './database/migrations';
 
 @Module({
@@ -103,7 +104,7 @@ import {migrations} from './database/migrations';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
-        entities: [User, Story, Tag, Comment],
+        entities: [User, Story, Tag, Comment, CommentReport],
         synchronize: false,
         migrations,
         migrationsRun: true,

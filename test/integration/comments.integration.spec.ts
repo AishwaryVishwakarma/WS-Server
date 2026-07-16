@@ -180,7 +180,11 @@ describe('Comments (integration)', () => {
     await client
       .post('/comments')
       .set('x-csrf-token', token)
-      .send({content: 'Right? I did not see it coming', storyId: story.id, parentId: parent.body.id})
+      .send({
+        content: 'Right? I did not see it coming',
+        storyId: story.id,
+        parentId: parent.body.id,
+      })
       .expect(201);
 
     // Top-level list shows only the parent, annotated with its reply count.
@@ -218,7 +222,11 @@ describe('Comments (integration)', () => {
     await client
       .post('/comments')
       .set('x-csrf-token', token)
-      .send({content: 'Reply to the reply', storyId: story.id, parentId: reply.body.id})
+      .send({
+        content: 'Reply to the reply',
+        storyId: story.id,
+        parentId: reply.body.id,
+      })
       .expect(201);
 
     const replies = await client
@@ -244,7 +252,11 @@ describe('Comments (integration)', () => {
     await client
       .post('/comments')
       .set('x-csrf-token', token)
-      .send({content: 'Wrong story', storyId: other.body.id, parentId: parent.body.id})
+      .send({
+        content: 'Wrong story',
+        storyId: other.body.id,
+        parentId: parent.body.id,
+      })
       .expect(400);
   });
 
@@ -260,7 +272,11 @@ describe('Comments (integration)', () => {
       await client
         .post('/comments')
         .set('x-csrf-token', token)
-        .send({content: `Reply ${i}`, storyId: story.id, parentId: parent.body.id})
+        .send({
+          content: `Reply ${i}`,
+          storyId: story.id,
+          parentId: parent.body.id,
+        })
         .expect(201);
     }
 
@@ -296,5 +312,131 @@ describe('Comments (integration)', () => {
     const admin = await seedAdmin(testApp);
     const response = await admin.get('/admin/comments').expect(200);
     expect(response.body.total).toBe(1);
+  });
+
+  describe('moderation via member reports', () => {
+    // An authored comment plus a second member ready to report it.
+    const reportFixture = async () => {
+      const {client, token, story} = await createStoryFixture();
+      const comment = await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'Something objectionable', storyId: story.id})
+        .expect(201);
+
+      const reporter = agent();
+      await registerUser(reporter, {email: 'reporter@test.com'});
+      const reporterToken = await getCsrfToken(reporter);
+
+      return {
+        commentId: comment.body.id as string,
+        reporter,
+        reporterToken,
+      };
+    };
+
+    it('flags a reported comment into the admin queue and resolves it', async () => {
+      const {commentId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/comments/${commentId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      const admin = await seedAdmin(testApp);
+
+      // The queue surfaces only reported comments, annotated with the count.
+      const queue = await admin.get('/admin/comments?flagged=true').expect(200);
+      expect(queue.body.total).toBe(1);
+      expect(queue.body.data[0].id).toBe(commentId);
+      expect(queue.body.data[0].isFlagged).toBe(true);
+      expect(queue.body.data[0].reportCount).toBe(1);
+
+      // Resolving clears the flag, emptying the queue but keeping the comment.
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/admin/comments/${commentId}/resolve`)
+        .set('x-csrf-token', adminToken)
+        .expect(200);
+
+      const afterQueue = await admin
+        .get('/admin/comments?flagged=true')
+        .expect(200);
+      expect(afterQueue.body.total).toBe(0);
+
+      const fullList = await admin.get('/admin/comments').expect(200);
+      expect(fullList.body.total).toBe(1);
+    });
+
+    it('rejects a duplicate report from the same member with 409', async () => {
+      const {commentId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/comments/${commentId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      await reporter
+        .post(`/comments/${commentId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(409);
+
+      const admin = await seedAdmin(testApp);
+      const queue = await admin.get('/admin/comments?flagged=true').expect(200);
+      expect(queue.body.data[0].reportCount).toBe(1);
+    });
+
+    it('forbids reporting your own comment', async () => {
+      const {client, token, story} = await createStoryFixture();
+      const comment = await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'My own words', storyId: story.id})
+        .expect(201);
+
+      await client
+        .post(`/comments/${comment.body.id}/report`)
+        .set('x-csrf-token', token)
+        .expect(400);
+    });
+
+    it('orders the queue by report count, most-reported first', async () => {
+      const {client, token, story} = await createStoryFixture();
+      const lightly = await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'Mildly disliked', storyId: story.id})
+        .expect(201);
+      const heavily = await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'Widely reported', storyId: story.id})
+        .expect(201);
+
+      // Two members pile onto the second comment; one reports the first.
+      for (const email of ['a@test.com', 'b@test.com']) {
+        const reporter = agent();
+        await registerUser(reporter, {email});
+        const rt = await getCsrfToken(reporter);
+        await reporter
+          .post(`/comments/${heavily.body.id}/report`)
+          .set('x-csrf-token', rt)
+          .expect(204);
+      }
+      const solo = agent();
+      await registerUser(solo, {email: 'c@test.com'});
+      const soloToken = await getCsrfToken(solo);
+      await solo
+        .post(`/comments/${lightly.body.id}/report`)
+        .set('x-csrf-token', soloToken)
+        .expect(204);
+
+      const admin = await seedAdmin(testApp);
+      const queue = await admin.get('/admin/comments?flagged=true').expect(200);
+      expect(queue.body.total).toBe(2);
+      expect(queue.body.data[0].id).toBe(heavily.body.id);
+      expect(queue.body.data[0].reportCount).toBe(2);
+      expect(queue.body.data[1].id).toBe(lightly.body.id);
+    });
   });
 });

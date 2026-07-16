@@ -13,9 +13,11 @@ import type {Repository} from 'typeorm';
 import {StoriesService} from 'src/stories/stories.service';
 import {Story} from 'src/stories/entities/story.entity';
 import {Comment} from './entities/comment.entity';
+import {CommentReport} from './entities/comment-report.entity';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {UsersService} from 'src/users/users.service';
 import {Role} from 'src/users/enums/role';
+import {handleQueryFailedError} from 'src/utils/handle-query-error';
 
 const STORY_SELECTED_FIELDS = [
   'story.id',
@@ -34,6 +36,9 @@ export class CommentsService {
   constructor(
     @InjectRepository(Comment)
     private readonly commentsRepository: Repository<Comment>,
+
+    @InjectRepository(CommentReport)
+    private readonly reportsRepository: Repository<CommentReport>,
 
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
@@ -103,9 +108,7 @@ export class CommentsService {
     });
 
     if (!target) {
-      throw new NotFoundException(
-        `Comment with ID ${parentId} not found`
-      );
+      throw new NotFoundException(`Comment with ID ${parentId} not found`);
     }
     if (target.story.id !== storyId) {
       throw new BadRequestException(
@@ -116,7 +119,12 @@ export class CommentsService {
     return target.parent ?? target;
   }
 
-  async findAll(page: number = 1, limit: number = 20, search?: string) {
+  async findAll(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    flagged?: boolean
+  ) {
     const {skip, take} = paginate(page, limit);
 
     const qb = this.commentsRepository
@@ -125,17 +133,67 @@ export class CommentsService {
       .leftJoin('comment.story', 'story')
       .addSelect(STORY_SELECTED_FIELDS)
       .skip(skip)
-      .take(take)
-      .orderBy('comment.createdAt', 'DESC');
+      .take(take);
+
+    // The moderation queue: only reported comments, most-reported first so the
+    // worst offenders surface at the top. Otherwise the full list, newest first.
+    if (flagged) {
+      qb.where('comment.isFlagged = :isFlagged', {isFlagged: true})
+        .orderBy('comment.reportCount', 'DESC')
+        .addOrderBy('comment.createdAt', 'DESC');
+    } else {
+      qb.orderBy('comment.createdAt', 'DESC');
+    }
 
     if (search) {
       const escaped = search.replace(/[\\%_]/g, '\\$&');
-      qb.where('comment.content LIKE :search', {search: `%${escaped}%`});
+      qb.andWhere('comment.content LIKE :search', {search: `%${escaped}%`});
     }
 
     const [comments, total] = await qb.getManyAndCount();
 
     return getPaginatedResponse<Comment>(comments, total, page, limit);
+  }
+
+  // A member flags a comment for moderation. The unique (user, comment)
+  // constraint blocks double-reporting (mapped to 409); the denormalized
+  // reportCount is recomputed from the rows so it can never drift.
+  async report(commentId: string, userId: string) {
+    const comment = await this._findOrThrow(commentId);
+
+    if (comment.user.id === userId) {
+      throw new BadRequestException(`You cannot report your own comment`);
+    }
+
+    const user = await this.usersService.findOne(userId);
+
+    try {
+      await this.reportsRepository.save(
+        this.reportsRepository.create({comment, user})
+      );
+    } catch (error) {
+      handleQueryFailedError(error, 'report comment');
+    }
+
+    comment.reportCount = await this.reportsRepository.countBy({
+      comment: {id: commentId},
+    });
+    comment.isFlagged = true;
+    await this.commentsRepository.save(comment);
+
+    return comment;
+  }
+
+  // Admin dismisses the reports on a comment (without deleting the comment):
+  // drop the report rows and clear the flag so it leaves the queue.
+  async resolve(commentId: string) {
+    const comment = await this._findOrThrow(commentId);
+
+    await this.reportsRepository.delete({comment: {id: commentId}});
+    comment.reportCount = 0;
+    comment.isFlagged = false;
+
+    return await this.commentsRepository.save(comment);
   }
 
   async findAllByStoryId(
@@ -162,11 +220,7 @@ export class CommentsService {
     return getPaginatedResponse<Comment>(comments, total, page, limit);
   }
 
-  async findReplies(
-    parentId: string,
-    page: number = 1,
-    limit: number = 50
-  ) {
+  async findReplies(parentId: string, page: number = 1, limit: number = 50) {
     const {skip, take} = paginate(page, limit);
 
     // Replies read best oldest-first (the conversation flows downward).

@@ -347,6 +347,22 @@ const COMMENTS: {story: string; author: string; content: string}[] = [
   },
 ];
 
+// A few member-reported comments so the admin moderation queue
+// (GET /admin/comments?flagged=true) has content. Reporters must differ from
+// the comment's author (self-reports are rejected); the differing report
+// counts exercise the most-reported-first ordering. Matched to the handcrafted
+// COMMENTS above by their (unique) content.
+const REPORTS: {commentContent: string; reporters: string[]}[] = [
+  {
+    commentContent: 'What happens if the bulb just burns out?',
+    reporters: ['alice@whisperingshadows.dev', 'bob@whisperingshadows.dev'],
+  },
+  {
+    commentContent: 'I live near a Hollow Lane. Thanks, I hate it.',
+    reporters: ['bob@whisperingshadows.dev'],
+  },
+];
+
 async function wipeDatabase(dataSource: DataSource) {
   const tables: {table_name: string}[] = await dataSource.query(
     'SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = DATABASE()'
@@ -355,6 +371,11 @@ async function wipeDatabase(dataSource: DataSource) {
   await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
   try {
     for (const {table_name} of tables) {
+      // Preserve the migrations ledger — truncating it makes the next app boot
+      // (migrationsRun) re-run migrations against tables that still exist and
+      // fail. Mirrors cleanDatabase in the integration test helpers.
+      if (table_name === 'migrations') continue;
+
       await dataSource.query(`TRUNCATE TABLE \`${table_name}\``);
     }
   } finally {
@@ -449,12 +470,26 @@ async function seed() {
 
     // Comments
     const allComments = [...COMMENTS, ...generateComments()];
+    const commentIdsByContent = new Map<string, string>();
     for (const {story, author, content} of allComments) {
-      await commentsService.create(
+      const comment = await commentsService.create(
         {content, storyId: storyIdsByTitle.get(story)!},
         usersByEmail.get(author)!.id,
         Role.User
       );
+      commentIdsByContent.set(content, comment.id);
+    }
+
+    // Reports (through the real service so isFlagged/reportCount and the
+    // per-member unique constraint behave exactly as in production)
+    let reportedComments = 0;
+    for (const {commentContent, reporters} of REPORTS) {
+      const commentId = commentIdsByContent.get(commentContent);
+      if (!commentId) continue;
+      for (const email of reporters) {
+        await commentsService.report(commentId, usersByEmail.get(email)!.id);
+      }
+      reportedComments++;
     }
 
     const statusSummary = [...statusCounts.entries()]
@@ -463,7 +498,8 @@ async function seed() {
 
     log(
       `Seeded ${usersByEmail.size} users, ${tagIdsByName.size} tags, ` +
-        `${storyIdsByTitle.size} stories (${statusSummary}), ${allComments.length} comments`
+        `${storyIdsByTitle.size} stories (${statusSummary}), ` +
+        `${allComments.length} comments (${reportedComments} reported)`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`

@@ -72,6 +72,13 @@ npm run dev:infra:down
   `PATCH /admin/stories/:id/status`. `StoriesService.findOneVisible()` gates
   non-approved reads to author/admin. A non-admin editing a moderated story
   resets it to `pending`. `isFlagged` mirrors `status === flagged`.
+  **Comments** have no approval gate; instead members report them
+  (`POST /comments/:id/report`, one per member via a unique `(user, comment)`
+  on `comment_report`). A report sets `Comment.isFlagged` and recomputes
+  `reportCount` from the rows (orderable, drift-free). The admin queue is
+  `GET /admin/comments?flagged=true` (reported only, most-reported first);
+  `PATCH /admin/comments/:id/resolve` drops the reports and clears the flag,
+  while `DELETE /comments/:id` removes an abusive comment outright.
 - **Shared utils**: `src/utils/pagination.ts` (`paginate`, `getPaginatedResponse`
   — the `{message,data,total,page,limit,totalPages}` envelope) and
   `handle-query-error.ts` (maps MySQL duplicate → 409).

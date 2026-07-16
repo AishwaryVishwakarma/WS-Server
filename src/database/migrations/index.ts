@@ -7,8 +7,10 @@
 
 import {Baseline1783883957794} from './1783883957794-Baseline';
 import {AddCommentParent1783938584720} from './1783938584720-AddCommentParent';
+import {AddCommentReports1784177051286} from './1784177051286-AddCommentReports';
 
 export const migrations = [
   Baseline1783883957794,
   AddCommentParent1783938584720,
+  AddCommentReports1784177051286,
 ];
