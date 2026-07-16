@@ -157,6 +157,66 @@ describe('Users (integration)', () => {
         .send({email: DEFAULT_USER.email, password: DEFAULT_USER.password})
         .expect(201);
     });
+
+    it('fetches a single member for the edit form (admin tier)', async () => {
+      const {body} = await registerUser(agent(), {
+        name: 'Ada Umbral',
+        email: 'ada@test.com',
+      });
+
+      const adminAgent = await seedAdmin(testApp);
+      const response = await adminAgent
+        .get(`/admin/users/${body.id}`)
+        .expect(200);
+
+      expect(response.body.id).toBe(body.id);
+      expect(response.body.email).toBe('ada@test.com');
+      expect(response.body.role).toBe('user');
+      expect(response.body.isBlocked).toBe(false);
+      expect(response.body).toHaveProperty('isVerified');
+    });
+
+    it('404s fetching an unknown member', async () => {
+      const adminAgent = await seedAdmin(testApp);
+      await adminAgent
+        .get('/admin/users/00000000-0000-0000-0000-000000000000')
+        .expect(404);
+    });
+
+    it("updates a member's details, role, and verification", async () => {
+      const {body} = await registerUser(agent(), {
+        name: 'Old Name',
+        email: 'edit-me@test.com',
+      });
+
+      const adminAgent = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(adminAgent);
+
+      const response = await adminAgent
+        .patch(`/admin/users/${body.id}`)
+        .set('x-csrf-token', adminToken)
+        .send({
+          name: 'New Name',
+          bio: 'Rewritten by a keeper.',
+          isVerified: true,
+          role: 'admin',
+        })
+        .expect(200);
+
+      expect(response.body.name).toBe('New Name');
+      expect(response.body.bio).toBe('Rewritten by a keeper.');
+      expect(response.body.isVerified).toBe(true);
+      expect(response.body.role).toBe('admin');
+
+      // Persisted through to the guards: the promoted member now reaches
+      // admin-only routes.
+      const promoted = agent();
+      await promoted
+        .post('/auth/login')
+        .send({email: 'edit-me@test.com', password: DEFAULT_USER.password})
+        .expect(201);
+      await promoted.get('/admin/users').expect(200);
+    });
   });
 
   describe('GET /admin/users search', () => {
