@@ -27,12 +27,19 @@ const WRITERS = [
     email: 'alice@whisperingshadows.dev',
     isVerified: true,
     bio: 'Collector of small-town hauntings.',
+    // Deterministic placeholder avatars (DiceBear) so the byline demonstrates
+    // the profile-picture path. Carol is left imageless on purpose to exercise
+    // the initial-letter fallback.
+    profileImageUrl:
+      'https://api.dicebear.com/9.x/thumbs/svg?seed=Alice%20Mortlake',
   },
   {
     name: 'Bob Greaves',
     email: 'bob@whisperingshadows.dev',
     isVerified: true,
     bio: 'I write down what the river tells me.',
+    profileImageUrl:
+      'https://api.dicebear.com/9.x/thumbs/svg?seed=Bob%20Greaves',
   },
   {
     name: 'Carol Finch',

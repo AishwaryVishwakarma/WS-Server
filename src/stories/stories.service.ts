@@ -138,6 +138,9 @@ export class StoriesService {
 
     const [stories, total] = await this.storiesRepository.findAndCount({
       where: {author: {id: userId}, status: StoryStatus.Approved},
+      // No author relation: these stories are always shown in the author's own
+      // context (the author page and "more from author"), where the card
+      // hides the byline — so the author would be unused payload.
       relations: ['tags'],
       skip,
       take,

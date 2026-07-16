@@ -219,6 +219,20 @@ describe('Stories (integration)', () => {
       expect(response.body.data[0].id).toBe(approved.id);
       expect(response.body.data[0].content).toBeUndefined();
     });
+
+    it('includes the author (preview tier: name, no email) for the byline', async () => {
+      const {story: approved} = await createStory(STORY_PAYLOAD, 'a@test.com');
+      await approveStory(approved.id);
+
+      const response = await agent().get('/stories').expect(200);
+
+      const {author} = response.body.data[0];
+      expect(author).toBeDefined();
+      expect(author.id).toBeDefined();
+      expect(author.name).toBe('Test User');
+      // Preview tier must not leak the author's email.
+      expect(author.email).toBeUndefined();
+    });
   });
 
   describe('GET /stories filters', () => {

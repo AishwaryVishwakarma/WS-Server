@@ -53,6 +53,10 @@ npm run dev:infra:down
 - **Response DTO tiers** (via `plainToInstance(dto, entity, {excludeExtraneousValues: true})`):
   `*PreviewResponseDto` (public) → `*PrivateResponseDto` (self, adds email) →
   `*ResponseDto` (admin, adds role/flags). Follow this when adding fields.
+  `StoryPreviewResponseDto` carries a `UserPreviewResponseDto author` for the
+  public listing byline; it's populated only when the query loads the relation
+  (`GET /stories` does; an author's own `GET /users/:id/stories` omits it as
+  redundant) and is null for a soft-deleted author.
 - **`src/app.setup.ts`** applies the global `ValidationPipe`, CSRF filter, Redis
   client, and session middleware. It is shared by `main.ts` **and** the
   integration test harness — put app-level wiring here, not in `main.ts`, so
