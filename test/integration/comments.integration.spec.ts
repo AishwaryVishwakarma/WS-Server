@@ -433,6 +433,28 @@ describe('Comments (integration)', () => {
       expect(fullList.body.total).toBe(1);
     });
 
+    it('does not mark a reported comment as edited (updatedAt preserved)', async () => {
+      const {client, token, story} = await createStoryFixture();
+      const created = await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'Perfectly civil', storyId: story.id})
+        .expect(201);
+
+      const reporter = agent();
+      await registerUser(reporter, {email: 'watcher@test.com'});
+      const reporterToken = await getCsrfToken(reporter);
+      await reporter
+        .post(`/comments/${created.body.id}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      const admin = await seedAdmin(testApp);
+      const queue = await admin.get('/admin/comments?flagged=true').expect(200);
+      // A report is not an edit, so updatedAt must be untouched.
+      expect(queue.body.data[0].updatedAt).toBe(created.body.updatedAt);
+    });
+
     it('rejects a duplicate report from the same member with 409', async () => {
       const {commentId, reporter, reporterToken} = await reportFixture();
 

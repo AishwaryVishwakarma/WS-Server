@@ -175,12 +175,22 @@ export class CommentsService {
       handleQueryFailedError(error, 'report comment');
     }
 
-    comment.reportCount = await this.reportsRepository.countBy({
+    const reportCount = await this.reportsRepository.countBy({
       comment: {id: commentId},
     });
-    comment.isFlagged = true;
-    await this.commentsRepository.save(comment);
 
+    // A report is moderation metadata, not a content edit — persist it with a
+    // targeted update that carries the existing updatedAt, so it never trips
+    // the client's "edited" indicator. (TypeORM only auto-bumps the update-date
+    // column when it isn't among the columns being set.)
+    await this.commentsRepository.update(commentId, {
+      isFlagged: true,
+      reportCount,
+      updatedAt: comment.updatedAt,
+    });
+
+    comment.isFlagged = true;
+    comment.reportCount = reportCount;
     return comment;
   }
 
@@ -190,10 +200,17 @@ export class CommentsService {
     const comment = await this._findOrThrow(commentId);
 
     await this.reportsRepository.delete({comment: {id: commentId}});
-    comment.reportCount = 0;
-    comment.isFlagged = false;
 
-    return await this.commentsRepository.save(comment);
+    // Same as report(): clearing the flag is not an edit, so preserve updatedAt.
+    await this.commentsRepository.update(commentId, {
+      isFlagged: false,
+      reportCount: 0,
+      updatedAt: comment.updatedAt,
+    });
+
+    comment.isFlagged = false;
+    comment.reportCount = 0;
+    return comment;
   }
 
   async findAllByStoryId(
