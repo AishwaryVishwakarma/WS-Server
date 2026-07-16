@@ -20,6 +20,7 @@ import {Tag} from './tags/entities/tag.entity';
 import {CommentsModule} from './comments/comments.module';
 import {Comment} from './comments/entities/comment.entity';
 import {CommentReport} from './comments/entities/comment-report.entity';
+import {MetricsModule} from './metrics/metrics.module';
 import {migrations} from './database/migrations';
 
 @Module({
@@ -76,6 +77,15 @@ import {migrations} from './database/migrations';
           );
         }
 
+        // /metrics is bearer-token protected; in production the token is
+        // mandatory (fail-closed guard denies scrapes without it). Optional
+        // locally/in tests so the endpoint simply stays closed there.
+        if (config.NODE_ENV === 'production' && !config.METRICS_TOKEN) {
+          throw new Error(
+            'METRICS_TOKEN is required in production to protect the /metrics endpoint'
+          );
+        }
+
         // Fail fast on a typo'd NODE_ENV — it gates cookie security, so a
         // bad value silently weakens production.
         const nodeEnv = config.NODE_ENV;
@@ -116,6 +126,7 @@ import {migrations} from './database/migrations';
     StoriesModule,
     TagsModule,
     CommentsModule,
+    MetricsModule,
   ],
   controllers: [AppController],
   providers: [

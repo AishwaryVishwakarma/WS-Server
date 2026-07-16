@@ -149,4 +149,11 @@ the anonymous IP fallback. Request-id correlation is in place
 gets a `req.requestId` (a validated upstream `X-Request-Id` or a generated
 UUID), echoed on the response header and logged by the interceptor and
 `AllExceptionsFilter` (which also returns it in the error bodies it owns).
-Remaining nice-to-have: no metrics.
+Prometheus metrics are exposed at `GET /metrics` (`src/metrics/`): a
+bearer-token-protected (`METRICS_TOKEN`, required in production), throttle-exempt
+scrape target owning a private `prom-client` registry — Node runtime defaults,
+HTTP counter/histogram/in-flight (recorded by `src/middlewares/http-metrics.ts`,
+labelled by route *template* to bound cardinality), on-scrape moderation gauges
+(`ws_stories_by_status`, `ws_flagged_comments`), and `ws_db_up`/`ws_redis_up`
+health. Per-event counters are intentionally omitted where derivable from the
+HTTP route+status series. The main known gaps are now all closed.

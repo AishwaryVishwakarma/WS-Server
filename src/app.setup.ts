@@ -7,6 +7,8 @@ import {createClient, type RedisClientType} from 'redis';
 import {AllExceptionsFilter} from './common/filters/all-exceptions.filter';
 import {LoggingInterceptor} from './common/interceptors/logging.interceptor';
 import {requestIdMiddleware} from './middlewares/request-id';
+import {createHttpMetricsMiddleware} from './middlewares/http-metrics';
+import {MetricsService} from './metrics/metrics.service';
 
 // Applies the app-level wiring that lives outside the Nest module graph
 // (pipes, filters, Redis-backed session middleware). Shared by main.ts and
@@ -19,6 +21,11 @@ export async function setupApp(
   // before session/CSRF so even a rejected request is traceable.
   const expressApp = app.getHttpAdapter().getInstance() as Express;
   expressApp.use(requestIdMiddleware);
+
+  // Record HTTP metrics for every request (including those later rejected by
+  // session/CSRF), so put it early too. Timing closes on response 'finish'.
+  const metricsService = app.get(MetricsService);
+  expressApp.use(createHttpMetricsMiddleware(metricsService));
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -41,6 +48,10 @@ export async function setupApp(
   new Logger('AppSetup', {timestamp: true}).log(
     `Connected to Redis, running on ${redisUrl}`
   );
+
+  // Redis lives outside the Nest graph, so hand it to MetricsService for the
+  // ws_redis_up health gauge.
+  metricsService.bindRedis(redisClient);
 
   const store = new RedisStore({
     client: redisClient,
