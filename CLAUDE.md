@@ -139,8 +139,7 @@ npm run dev:infra:down
 
 ## Git
 
-- Conventional commits, one concern per commit. End messages with
-  `Co-Authored-By: Claude <noreply@anthropic.com>`.
+- Conventional commits, one concern per commit. No `Co-Authored-By` trailer.
 - Work happens directly on `master`. The GitHub repo was renamed to `WS-Server`;
   the local remote still says `ws-server` and redirects (harmless).
 
