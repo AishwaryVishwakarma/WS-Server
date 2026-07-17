@@ -35,11 +35,11 @@ npm test                   # unit tests (mocked, no infrastructure needed)
 npm run test:cov           # unit tests + coverage
 
 # Integration tests need Docker running:
-npm run test:infra:up      # start test MySQL (:3307) + Redis (:6380)
+npm run test:infra:up      # start test MySQL (:3311) + Redis (:6381)
 npm run test:integration   # boots the real app against them
 npm run test:infra:down    # tear down + remove volumes
 
-npm run dev:infra:up       # dockerized dev MySQL (:3308) + Redis (:6381)
+npm run dev:infra:up       # dockerized dev MySQL (:3310) + Redis (:6380)
 npm run dev:infra:down
 ```
 

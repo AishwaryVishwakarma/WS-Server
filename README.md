@@ -49,8 +49,8 @@ is weak.
 ## Development database
 
 The app needs MySQL and Redis. The `.env.example` defaults point at the
-dockerized dev infrastructure, which runs on alternate ports (MySQL `3308`,
-Redis `6381`) so it coexists with any natively installed instances:
+dockerized dev infrastructure, which runs on alternate ports (MySQL `3310`,
+Redis `6380`) so it coexists with any natively installed instances:
 
 ```bash
 # start dev MySQL + Redis (data persists in a named volume)
@@ -97,7 +97,7 @@ npm run test:cov
 
 Integration tests boot the real application against a dedicated MySQL and
 Redis, provisioned via Docker Compose (requires [Docker Desktop](https://www.docker.com/products/docker-desktop/)).
-They run on separate ports (MySQL `3307`, Redis `6380`), so they never touch
+They run on separate ports (MySQL `3311`, Redis `6381`), so they never touch
 your dev databases. Configuration lives in `.env.test`.
 
 ```bash

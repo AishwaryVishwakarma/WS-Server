@@ -1,5 +1,5 @@
-# Local development infrastructure. Runs on alternate ports (MySQL 3308,
-# Redis 6381) so it can coexist with natively installed MySQL/Redis — point
+# Local development infrastructure. Runs on alternate ports (MySQL 3310,
+# Redis 6380) so it can coexist with natively installed MySQL/Redis — point
 # .env at it to use it (see README "Development database").
 services:
   mysql-dev:
@@ -9,7 +9,7 @@ services:
       MYSQL_ROOT_PASSWORD: dev
       MYSQL_DATABASE: ws_dev
     ports:
-      - '3308:3306'
+      - '3310:3306'
     healthcheck:
       test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-pdev']
       interval: 2s
@@ -22,7 +22,7 @@ services:
     image: redis:7
     container_name: ws-redis-dev
     ports:
-      - '6381:6379'
+      - '6380:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 2s
