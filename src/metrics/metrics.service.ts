@@ -182,15 +182,18 @@ export class MetricsService {
   }
 
   private async refreshRedisHealth() {
-    if (!this.redisClient) {
-      this.redisUp.set(0);
-      return;
-    }
+    this.redisUp.set((await this.isRedisHealthy()) ? 1 : 0);
+  }
+
+  // Liveness check for the /health probe — shares the session Redis client
+  // bound in app.setup. False if Redis is unbound or unreachable.
+  async isRedisHealthy(): Promise<boolean> {
+    if (!this.redisClient) return false;
     try {
       await this.redisClient.ping();
-      this.redisUp.set(1);
+      return true;
     } catch {
-      this.redisUp.set(0);
+      return false;
     }
   }
 }
