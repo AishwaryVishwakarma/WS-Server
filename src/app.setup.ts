@@ -9,6 +9,7 @@ import {LoggingInterceptor} from './common/interceptors/logging.interceptor';
 import {requestIdMiddleware} from './middlewares/request-id';
 import {createHttpMetricsMiddleware} from './middlewares/http-metrics';
 import {MetricsService} from './metrics/metrics.service';
+import {NotificationsStream} from './notifications/notifications-stream.service';
 
 // Applies the app-level wiring that lives outside the Nest module graph
 // (pipes, filters, Redis-backed session middleware). Shared by main.ts and
@@ -52,6 +53,23 @@ export async function setupApp(
   // Redis lives outside the Nest graph, so hand it to MetricsService for the
   // ws_redis_up health gauge.
   metricsService.bindRedis(redisClient);
+
+  // Wire notification pub/sub: the main client publishes, a dedicated
+  // subscriber connection (a client in subscribe mode can't run commands) feeds
+  // events into the SSE stream service. The subscriber is closed via the
+  // service's onModuleDestroy on app shutdown.
+  const notificationsStream = app.get(NotificationsStream);
+  const subscriber = redisClient.duplicate();
+  await subscriber.connect();
+  notificationsStream.bindPublisher(redisClient);
+  notificationsStream.bindSubscriber(subscriber);
+  await subscriber.subscribe(notificationsStream.channel, (message: string) => {
+    try {
+      notificationsStream.dispatch(JSON.parse(message) as {userId: string});
+    } catch {
+      // Ignore malformed messages rather than crash the subscriber.
+    }
+  });
 
   const store = new RedisStore({
     client: redisClient,

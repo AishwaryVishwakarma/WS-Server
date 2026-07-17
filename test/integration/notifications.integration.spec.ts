@@ -1,4 +1,6 @@
 import request from 'supertest';
+import {filter, firstValueFrom, timeout} from 'rxjs';
+import {NotificationsStream} from 'src/notifications/notifications-stream.service';
 import {
   cleanDatabase,
   closeTestApp,
@@ -8,6 +10,9 @@ import {
   seedAdmin,
   type TestApp,
 } from './test-utils';
+
+const eventType = (event: {data: unknown}) =>
+  (event.data as {type: string}).type;
 
 describe('Notifications (integration)', () => {
   let testApp: TestApp;
@@ -107,7 +112,11 @@ describe('Notifications (integration)', () => {
 
   it('does not notify the actor, only the recipient', async () => {
     const {story, parentComment} = await setup();
-    const replier = await replyAs('replier@test.com', story.id, parentComment.id);
+    const replier = await replyAs(
+      'replier@test.com',
+      story.id,
+      parentComment.id
+    );
 
     const list = await replier.get('/users/me/notifications').expect(200);
     expect(list.body.total).toBe(0);
@@ -183,5 +192,39 @@ describe('Notifications (integration)', () => {
       .get('/users/me/notifications/unread-count')
       .expect(200);
     expect(count.body.count).toBe(0);
+  });
+
+  it('streams a live event to the recipient over Redis pub/sub', async () => {
+    const stream = testApp.app.get(NotificationsStream);
+    const userId = 'stream-user-1';
+
+    // Grab the first real notification event (ignore heartbeats).
+    const received = firstValueFrom(
+      stream.streamFor(userId).pipe(
+        filter((event) => eventType(event) === 'notification'),
+        timeout({first: 3000})
+      )
+    );
+
+    await stream.publish(userId);
+
+    expect(eventType(await received)).toBe('notification');
+  });
+
+  it("does not deliver a user's event to another user's stream", async () => {
+    const stream = testApp.app.get(NotificationsStream);
+
+    const outcome = firstValueFrom(
+      stream.streamFor('stream-user-a').pipe(
+        filter((event) => eventType(event) === 'notification'),
+        timeout({first: 800})
+      )
+    )
+      .then(() => 'received')
+      .catch(() => 'none');
+
+    await stream.publish('stream-user-b');
+
+    expect(await outcome).toBe('none');
   });
 });

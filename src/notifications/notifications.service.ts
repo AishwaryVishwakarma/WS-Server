@@ -3,6 +3,7 @@ import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {Notification} from './entities/notification.entity';
+import {NotificationsStream} from './notifications-stream.service';
 
 interface ReplyNotificationInput {
   recipientId: string;
@@ -16,7 +17,8 @@ interface ReplyNotificationInput {
 export class NotificationsService {
   constructor(
     @InjectRepository(Notification)
-    private readonly notificationsRepository: Repository<Notification>
+    private readonly notificationsRepository: Repository<Notification>,
+    private readonly stream: NotificationsStream
   ) {}
 
   async createReplyNotification(input: ReplyNotificationInput) {
@@ -28,7 +30,11 @@ export class NotificationsService {
       storyTitle: input.storyTitle,
       commentId: input.commentId,
     });
-    return this.notificationsRepository.save(notification);
+    const saved = await this.notificationsRepository.save(notification);
+    // Push a live signal to any open SSE stream for the recipient (best-effort;
+    // the client also polls as a fallback).
+    await this.stream.publish(input.recipientId);
+    return saved;
   }
 
   async findAllForUser(userId: string, page: number = 1, limit: number = 20) {
