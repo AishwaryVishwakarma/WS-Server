@@ -32,12 +32,12 @@ import {migrations} from './database/migrations';
     ThrottlerModule.forRoot({
       throttlers: [DEFAULT_THROTTLE],
       errorMessage: 'Too many requests, please try again later.',
-      // Rate limiting would fail integration tests after a few requests, and
-      // an e2e run drives many flows from one IP — THROTTLE_DISABLED lets the
-      // Playwright backend opt out without affecting real deployments.
-      skipIf: () =>
-        process.env.NODE_ENV === 'test' ||
-        process.env.THROTTLE_DISABLED === 'true',
+      // Rate limiting would fail integration tests after a few requests, and an
+      // e2e run drives many flows from one IP — THROTTLE_DISABLED lets those
+      // opt out (set in .env.test, and by the Playwright backend) without
+      // affecting real deployments. Kept flag-only, not tied to NODE_ENV, so a
+      // dedicated test can boot with it off and exercise the guard.
+      skipIf: () => process.env.THROTTLE_DISABLED === 'true',
     }),
     // Load environment variables from .env file
     ConfigModule.forRoot({
