@@ -42,6 +42,10 @@ import {migrations} from './database/migrations';
     // Load environment variables from .env file
     ConfigModule.forRoot({
       isGlobal: true,
+      // NODE_ENV=test reads .env.test (throwaway test infra: ws_test on 3311,
+      // Redis 6381, PORT 8001) so the e2e suite never touches the dev DB.
+      // Everything else uses .env.
+      envFilePath: process.env.NODE_ENV === 'test' ? '.env.test' : '.env',
       validate: (config: Record<string, unknown>) => {
         const requiredConfig = [
           'DB_HOST',
