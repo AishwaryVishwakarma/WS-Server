@@ -55,8 +55,13 @@ npm run dev:infra:down
   parent's author (unless it's a self-reply), fired from `CommentsService.create`
   via `NotificationsService`. The row denormalizes its display fields
   (`actorName`, `storyId/Title`, `commentId`) so the `/users/me/notifications`
-  feed needs no joins and survives later deletes. Endpoints: list, `unread-count`
-  (polled by the client bell), `PATCH :id/read`, `PATCH read` (all).
+  feed needs no joins and survives later deletes. Endpoints: list, `unread-count`,
+  `PATCH :id/read`, `PATCH read` (all), and `GET :id/../stream` — a live `@Sse`
+  feed. `createReplyNotification` publishes to a Redis channel; a dedicated
+  subscriber (wired in `app.setup`, closed in `NotificationsStream.onModuleDestroy`)
+  fans events into the per-user SSE stream, so a reply on any instance reaches
+  the recipient's open connection. The client bell uses it live and polls as a
+  fallback.
 - **Response DTO tiers** (via `plainToInstance(dto, entity, {excludeExtraneousValues: true})`):
   `*PreviewResponseDto` (public) → `*PrivateResponseDto` (self, adds email) →
   `*ResponseDto` (admin, adds role/flags). Follow this when adding fields.
