@@ -18,6 +18,7 @@ import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {UsersService} from 'src/users/users.service';
 import {Role} from 'src/users/enums/role';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
+import {NotificationsService} from 'src/notifications/notifications.service';
 
 const STORY_SELECTED_FIELDS = [
   'story.id',
@@ -44,7 +45,9 @@ export class CommentsService {
     private readonly usersService: UsersService,
 
     @Inject(forwardRef(() => StoriesService))
-    private readonly storiesService: StoriesService
+    private readonly storiesService: StoriesService,
+
+    private readonly notificationsService: NotificationsService
   ) {}
 
   private async _findOrThrow(id: string) {
@@ -95,6 +98,18 @@ export class CommentsService {
       1
     );
 
+    // Notify the parent's author of a reply — unless they replied to
+    // themselves, or the parent's author was since removed.
+    if (parent?.user && parent.user.id !== userId) {
+      await this.notificationsService.createReplyNotification({
+        recipientId: parent.user.id,
+        actorName: user.name,
+        storyId: story.id,
+        storyTitle: story.title,
+        commentId: saved.id,
+      });
+    }
+
     return saved;
   }
 
@@ -104,7 +119,8 @@ export class CommentsService {
   private async _resolveReplyParent(parentId: string, storyId: string) {
     const target = await this.commentsRepository.findOne({
       where: {id: parentId},
-      relations: ['story', 'parent'],
+      // `user`/`parent.user` so the caller can notify the parent's author.
+      relations: ['story', 'parent', 'user', 'parent.user'],
     });
 
     if (!target) {

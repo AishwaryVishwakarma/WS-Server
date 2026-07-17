@@ -48,8 +48,15 @@ npm run dev:infra:down
 
 ## Architecture
 
-- **Per-domain modules**: `auth`, `users`, `stories`, `tags`, `comments`. Each
-  domain splits controllers by audience: `public-*`, `private-*` (`/me`), `admin-*`.
+- **Per-domain modules**: `auth`, `users`, `stories`, `tags`, `comments`,
+  `notifications`. Each domain splits controllers by audience: `public-*`,
+  `private-*` (`/me`), `admin-*`.
+- **Notifications**: replying to a comment creates a `Notification` for the
+  parent's author (unless it's a self-reply), fired from `CommentsService.create`
+  via `NotificationsService`. The row denormalizes its display fields
+  (`actorName`, `storyId/Title`, `commentId`) so the `/users/me/notifications`
+  feed needs no joins and survives later deletes. Endpoints: list, `unread-count`
+  (polled by the client bell), `PATCH :id/read`, `PATCH read` (all).
 - **Response DTO tiers** (via `plainToInstance(dto, entity, {excludeExtraneousValues: true})`):
   `*PreviewResponseDto` (public) → `*PrivateResponseDto` (self, adds email) →
   `*ResponseDto` (admin, adds role/flags). Follow this when adding fields.

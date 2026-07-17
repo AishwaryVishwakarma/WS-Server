@@ -20,6 +20,8 @@ import {Tag} from './tags/entities/tag.entity';
 import {CommentsModule} from './comments/comments.module';
 import {Comment} from './comments/entities/comment.entity';
 import {CommentReport} from './comments/entities/comment-report.entity';
+import {Notification} from './notifications/entities/notification.entity';
+import {NotificationsModule} from './notifications/notifications.module';
 import {MetricsModule} from './metrics/metrics.module';
 import {migrations} from './database/migrations';
 
@@ -114,7 +116,7 @@ import {migrations} from './database/migrations';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
-        entities: [User, Story, Tag, Comment, CommentReport],
+        entities: [User, Story, Tag, Comment, CommentReport, Notification],
         synchronize: false,
         migrations,
         migrationsRun: true,
@@ -126,6 +128,7 @@ import {migrations} from './database/migrations';
     StoriesModule,
     TagsModule,
     CommentsModule,
+    NotificationsModule,
     MetricsModule,
   ],
   controllers: [AppController],
