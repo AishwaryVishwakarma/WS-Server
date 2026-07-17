@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {ConfigService} from '@nestjs/config';
+import {timingSafeEqual} from 'crypto';
 import type {Request} from 'express';
 
 // Guards GET /metrics with a static bearer token. Fail-closed: if METRICS_TOKEN
@@ -30,9 +31,18 @@ export class MetricsTokenGuard implements CanActivate {
       ? header.slice('Bearer '.length)
       : undefined;
 
-    if (!provided || provided !== expected) {
+    if (!provided || !this.tokensMatch(provided, expected)) {
       throw new UnauthorizedException('Invalid metrics token');
     }
     return true;
+  }
+
+  // Constant-time comparison so a wrong token can't be recovered byte-by-byte
+  // from response-timing differences. Unequal lengths short-circuit (that only
+  // reveals length, not content).
+  private tokensMatch(provided: string, expected: string): boolean {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    return a.length === b.length && timingSafeEqual(a, b);
   }
 }
