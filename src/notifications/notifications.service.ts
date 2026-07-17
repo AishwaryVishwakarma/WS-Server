@@ -1,4 +1,4 @@
-import {Injectable} from '@nestjs/common';
+import {Injectable, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
@@ -49,12 +49,20 @@ export class NotificationsService {
   }
 
   async markRead(id: string, userId: string) {
-    await this.notificationsRepository
-      .createQueryBuilder()
-      .update()
-      .set({isRead: true})
-      .where('id = :id AND recipientId = :userId', {id, userId})
-      .execute();
+    // Scope the lookup to the caller so a missing id and someone else's
+    // notification are indistinguishable — both 404 rather than silently
+    // "succeeding". A row UPDATE can't tell these apart from an idempotent
+    // re-read (MySQL reports 0 changed rows for both), so check existence.
+    const notification = await this.notificationsRepository.findOne({
+      where: {id, recipient: {id: userId}},
+    });
+    if (!notification) {
+      throw new NotFoundException('Notification not found');
+    }
+    if (!notification.isRead) {
+      notification.isRead = true;
+      await this.notificationsRepository.save(notification);
+    }
   }
 
   async markAllRead(userId: string) {

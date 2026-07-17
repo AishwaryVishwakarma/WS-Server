@@ -131,6 +131,44 @@ describe('Notifications (integration)', () => {
     expect(count.body.count).toBe(0);
   });
 
+  it('404s when marking a notification that does not exist', async () => {
+    const {author, authorToken} = await setup();
+
+    await author
+      .patch(
+        '/users/me/notifications/00000000-0000-0000-0000-000000000000/read'
+      )
+      .set('x-csrf-token', authorToken)
+      .expect(404);
+  });
+
+  it("404s when marking another member's notification", async () => {
+    const {author, story, parentComment} = await setup();
+    const replier = await replyAs(
+      'replier@test.com',
+      story.id,
+      parentComment.id
+    );
+
+    // The notification belongs to the author.
+    const list = await author.get('/users/me/notifications').expect(200);
+    const id = list.body.data[0].id;
+
+    // A different member can't mark it read — it's not theirs, so it 404s
+    // rather than silently succeeding.
+    const replierToken = await getCsrfToken(replier);
+    await replier
+      .patch(`/users/me/notifications/${id}/read`)
+      .set('x-csrf-token', replierToken)
+      .expect(404);
+
+    // It stays unread for the real recipient.
+    const count = await author
+      .get('/users/me/notifications/unread-count')
+      .expect(200);
+    expect(count.body.count).toBe(1);
+  });
+
   it('marks all notifications read', async () => {
     const {author, authorToken, story, parentComment} = await setup();
     await replyAs('one@test.com', story.id, parentComment.id);
