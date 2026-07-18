@@ -98,19 +98,51 @@ export class CommentsService {
       1
     );
 
-    // Notify the parent's author of a reply — unless they replied to
-    // themselves, or the parent's author was since removed.
-    if (parent?.user && parent.user.id !== userId) {
-      await this.notificationsService.createReplyNotification({
-        recipientId: parent.user.id,
-        actorName: user.name,
-        storyId: story.id,
-        storyTitle: story.title,
-        commentId: saved.id,
-      });
-    }
+    await this._notify(parent, story, user, saved.id, userId);
 
     return saved;
+  }
+
+  // Fire the right notification for a new comment. A reply notifies the parent
+  // thread's author; a top-level comment notifies the story's author. In both
+  // cases we skip self-actions and recipients who were since removed.
+  private async _notify(
+    parent: Comment | null,
+    story: Story,
+    actor: {name: string},
+    commentId: string,
+    actorId: string
+  ) {
+    if (parent) {
+      if (parent.user && parent.user.id !== actorId) {
+        await this.notificationsService.createNotification({
+          type: 'reply',
+          recipientId: parent.user.id,
+          actorName: actor.name,
+          storyId: story.id,
+          storyTitle: story.title,
+          commentId,
+          parentId: parent.id,
+        });
+      }
+      return;
+    }
+
+    if (
+      story.author &&
+      !story.author.deletedAt &&
+      story.author.id !== actorId
+    ) {
+      await this.notificationsService.createNotification({
+        type: 'comment',
+        recipientId: story.author.id,
+        actorName: actor.name,
+        storyId: story.id,
+        storyTitle: story.title,
+        commentId,
+        parentId: null,
+      });
+    }
   }
 
   // Resolve the effective parent for a reply. Enforces that the target lives on

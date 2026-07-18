@@ -51,17 +51,22 @@ npm run dev:infra:down
 - **Per-domain modules**: `auth`, `users`, `stories`, `tags`, `comments`,
   `notifications`. Each domain splits controllers by audience: `public-*`,
   `private-*` (`/me`), `admin-*`.
-- **Notifications**: replying to a comment creates a `Notification` for the
-  parent's author (unless it's a self-reply), fired from `CommentsService.create`
-  via `NotificationsService`. The row denormalizes its display fields
-  (`actorName`, `storyId/Title`, `commentId`) so the `/users/me/notifications`
+- **Notifications**: commenting creates a `Notification`, fired from
+  `CommentsService.create` via `NotificationsService.createNotification`. Two
+  `type`s: a **reply** notifies the parent thread's author (carrying `parentId`,
+  the top-level thread, so the reader can expand it before scrolling); a
+  top-level **comment** notifies the story's author. Both skip self-actions and
+  removed recipients. The row denormalizes its display fields (`actorName`,
+  `storyId/Title`, `commentId`, `parentId`) so the `/users/me/notifications`
   feed needs no joins and survives later deletes. Endpoints: list, `unread-count`,
-  `PATCH :id/read`, `PATCH read` (all), and `GET :id/../stream` — a live `@Sse`
-  feed. `createReplyNotification` publishes to a Redis channel; a dedicated
-  subscriber (wired in `app.setup`, closed in `NotificationsStream.onModuleDestroy`)
-  fans events into the per-user SSE stream, so a reply on any instance reaches
-  the recipient's open connection. The client bell uses it live and polls as a
-  fallback.
+  `PATCH :id/read`, `PATCH read` (all), `DELETE :id` (one), `DELETE read`
+  (clear read — no auto-delete), and `GET :id/../stream` — a live `@Sse` feed.
+  `createNotification` publishes `{userId, storyId}` to a Redis channel; a
+  dedicated subscriber (wired in `app.setup`, closed in
+  `NotificationsStream.onModuleDestroy`) fans events into the per-user SSE
+  stream, so a notification on any instance reaches the recipient's open
+  connection — and the `storyId` lets a reader viewing that story refresh its
+  thread live. The client bell uses it live and polls as a fallback.
 - **Response DTO tiers** (via `plainToInstance(dto, entity, {excludeExtraneousValues: true})`):
   `*PreviewResponseDto` (public) → `*PrivateResponseDto` (self, adds email) →
   `*ResponseDto` (admin, adds role/flags). Follow this when adding fields.

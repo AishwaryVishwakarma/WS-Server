@@ -7,7 +7,9 @@ import {
 } from 'typeorm';
 import {User} from 'src/users/entities/user.entity';
 
-export type NotificationType = 'reply';
+// 'reply' — someone replied to your comment; 'comment' — someone left a
+// top-level comment on your story.
+export type NotificationType = 'reply' | 'comment';
 
 @Entity()
 export class Notification {
@@ -36,6 +38,12 @@ export class Notification {
 
   @Column('uuid')
   commentId: string;
+
+  // The top-level parent comment id when this notification targets a reply, so
+  // the reader can expand the right thread before scrolling to it. Null for a
+  // top-level comment notification (the target is itself top-level).
+  @Column('uuid', {nullable: true})
+  parentId: string | null;
 
   @Column({default: false})
   isRead: boolean;

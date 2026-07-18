@@ -2,15 +2,21 @@ import {Injectable, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
-import {Notification} from './entities/notification.entity';
+import {
+  Notification,
+  type NotificationType,
+} from './entities/notification.entity';
 import {NotificationsStream} from './notifications-stream.service';
 
-interface ReplyNotificationInput {
+interface NotificationInput {
+  type: NotificationType;
   recipientId: string;
   actorName: string;
   storyId: string;
   storyTitle: string;
   commentId: string;
+  // Only set for a 'reply' — the top-level thread the reply lives under.
+  parentId?: string | null;
 }
 
 @Injectable()
@@ -21,19 +27,21 @@ export class NotificationsService {
     private readonly stream: NotificationsStream
   ) {}
 
-  async createReplyNotification(input: ReplyNotificationInput) {
+  async createNotification(input: NotificationInput) {
     const notification = this.notificationsRepository.create({
       recipient: {id: input.recipientId},
-      type: 'reply',
+      type: input.type,
       actorName: input.actorName,
       storyId: input.storyId,
       storyTitle: input.storyTitle,
       commentId: input.commentId,
+      parentId: input.parentId ?? null,
     });
     const saved = await this.notificationsRepository.save(notification);
     // Push a live signal to any open SSE stream for the recipient (best-effort;
-    // the client also polls as a fallback).
-    await this.stream.publish(input.recipientId);
+    // the client also polls as a fallback). The storyId lets a reader currently
+    // viewing that story refresh its thread without a full reload.
+    await this.stream.publish(input.recipientId, input.storyId);
     return saved;
   }
 
@@ -77,6 +85,27 @@ export class NotificationsService {
       .update()
       .set({isRead: true})
       .where('recipientId = :userId AND isRead = false', {userId})
+      .execute();
+  }
+
+  async remove(id: string, userId: string) {
+    // Same scoping as markRead: a missing id and someone else's notification
+    // both 404 rather than silently no-op. Notifications are ephemeral, so this
+    // is a hard delete.
+    const notification = await this.notificationsRepository.findOne({
+      where: {id, recipient: {id: userId}},
+    });
+    if (!notification) {
+      throw new NotFoundException('Notification not found');
+    }
+    await this.notificationsRepository.remove(notification);
+  }
+
+  async clearRead(userId: string) {
+    await this.notificationsRepository
+      .createQueryBuilder()
+      .delete()
+      .where('recipientId = :userId AND isRead = true', {userId})
       .execute();
   }
 }

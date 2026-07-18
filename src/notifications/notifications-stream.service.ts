@@ -15,6 +15,9 @@ const HEARTBEAT_MS = 25_000;
 
 interface StreamEvent {
   userId: string;
+  // The story the notification concerns, so a reader viewing that story can
+  // refresh its comment thread live. Absent on legacy/malformed messages.
+  storyId?: string;
 }
 
 // Fans reply-notification events out to Server-Sent Events streams. The Redis
@@ -44,16 +47,18 @@ export class NotificationsStream implements OnModuleDestroy {
     this.events$.next(event);
   }
 
-  async publish(userId: string): Promise<void> {
+  async publish(userId: string, storyId?: string): Promise<void> {
     if (!this.publisher) return;
-    await this.publisher.publish(CHANNEL, JSON.stringify({userId}));
+    await this.publisher.publish(CHANNEL, JSON.stringify({userId, storyId}));
   }
 
   // The SSE feed for one user: their notification events plus a heartbeat.
   streamFor(userId: string): Observable<MessageEvent> {
     const notifications = this.events$.pipe(
       filter((event) => event.userId === userId),
-      map((): MessageEvent => ({data: {type: 'notification'}}))
+      map((event): MessageEvent => ({
+        data: {type: 'notification', storyId: event.storyId},
+      }))
     );
     const heartbeat = interval(HEARTBEAT_MS).pipe(
       map((): MessageEvent => ({data: {type: 'ping'}}))

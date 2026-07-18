@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
@@ -75,5 +76,18 @@ export class PrivateNotificationsController {
   @HttpCode(204)
   async markRead(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     await this.notificationsService.markRead(id, req.session.userId!);
+  }
+
+  // Declared before ':id' so the literal 'read' segment wins the route match.
+  @Delete('read')
+  @HttpCode(204)
+  async clearRead(@Req() req: Request) {
+    await this.notificationsService.clearRead(req.session.userId!);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    await this.notificationsService.remove(id, req.session.userId!);
   }
 }

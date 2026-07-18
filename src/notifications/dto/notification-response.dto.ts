@@ -11,6 +11,7 @@ export class NotificationResponseDto {
   @Expose() storyId: string;
   @Expose() storyTitle: string;
   @Expose() commentId: string;
+  @Expose() parentId: string | null;
   @Expose() isRead: boolean;
   @Expose() createdAt: Date;
 
