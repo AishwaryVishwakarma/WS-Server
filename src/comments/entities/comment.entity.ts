@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -12,6 +13,11 @@ import {
 import {CommentReport} from './comment-report.entity';
 
 @Entity()
+// The moderation queue filters isFlagged and sorts by reportCount; a story's
+// thread reads its comments ordered by createdAt. Index both so neither scans
+// the whole comment table.
+@Index('IDX_comment_isFlagged_reportCount', ['isFlagged', 'reportCount'])
+@Index('IDX_comment_story_createdAt', ['story', 'createdAt'])
 export class Comment {
   @PrimaryGeneratedColumn('uuid')
   id: string;

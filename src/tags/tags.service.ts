@@ -84,16 +84,22 @@ export class TagsService {
   }
 
   async remove(id: string) {
-    const tag = await this.tagsRepository.findOne({
-      where: {id},
-      relations: ['stories'],
-    });
+    const tag = await this.tagsRepository.findOne({where: {id}});
 
     if (!tag) {
       throw new NotFoundException(`Tag with ID ${id} not found`);
     }
 
-    if (tag.stories.length) {
+    // Check *whether* any story uses the tag without loading the collection —
+    // hydrating `relations: ['stories']` would pull every full story (including
+    // the mediumtext `content`) into memory just to read `.length`.
+    const inUse = await this.tagsRepository
+      .createQueryBuilder('tag')
+      .innerJoin('tag.stories', 'story')
+      .where('tag.id = :id', {id})
+      .getExists();
+
+    if (inUse) {
       throw new ConflictException(
         `Tag with ID ${id} cannot be deleted because it is associated with stories`
       );

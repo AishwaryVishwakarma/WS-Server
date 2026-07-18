@@ -5,6 +5,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinTable,
   ManyToMany,
   ManyToOne,
@@ -17,6 +18,11 @@ import {Tag} from 'src/tags/entities/tag.entity';
 import {Comment} from 'src/comments/entities/comment.entity';
 
 @Entity()
+// The public feed filters status='approved' and sorts by createdAt (newest/
+// oldest) or commentCount (most-commented); these composite indexes turn those
+// hot listings from a full scan + filesort into an index range scan.
+@Index('IDX_story_status_createdAt', ['status', 'createdAt'])
+@Index('IDX_story_status_commentCount', ['status', 'commentCount'])
 export class Story {
   @PrimaryGeneratedColumn('uuid')
   id: string;

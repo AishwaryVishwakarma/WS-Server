@@ -6,6 +6,9 @@ export class PaginationDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  // Cap the page so a crawler can't force an enormous OFFSET scan
+  // (?page=1000000 would make MySQL read and discard millions of rows).
+  @Max(100_000)
   page?: number = 1;
 
   @IsOptional()

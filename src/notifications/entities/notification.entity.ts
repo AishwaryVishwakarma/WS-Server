@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
@@ -12,6 +13,10 @@ import {User} from 'src/users/entities/user.entity';
 export type NotificationType = 'reply' | 'comment';
 
 @Entity()
+// The bell polls unread-count (recipient + isRead) and lists the feed (recipient
+// ordered by createdAt); index both beyond the recipient FK alone.
+@Index('IDX_notification_recipient_isRead', ['recipient', 'isRead'])
+@Index('IDX_notification_recipient_createdAt', ['recipient', 'createdAt'])
 export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
