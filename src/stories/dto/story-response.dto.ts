@@ -1,7 +1,21 @@
 import {Expose, Type} from 'class-transformer';
 import type {StoryStatus} from '../enums/story-status.enum';
 import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
-import {UserPreviewResponseDto} from 'src/users/dto/user-response.dto';
+
+/**
+ * [public] — the byline author on a story listing/detail. A deliberately slim
+ * projection: cards and the reader only render the name, avatar, and profile
+ * link, so `bio`/`isVerified`/timestamps don't ride along on every card.
+ */
+export class StoryAuthorResponseDto {
+  @Expose() id: string;
+  @Expose() name: string;
+  @Expose() profileImageUrl?: string;
+
+  constructor(partial: Partial<StoryAuthorResponseDto>) {
+    Object.assign(this, partial);
+  }
+}
 
 /**
  * [public]
@@ -25,8 +39,8 @@ export class StoryPreviewResponseDto {
   // Omitted where it isn't (e.g. an author's own listing, where it's redundant)
   // and null for stories whose author was soft-deleted.
   @Expose()
-  @Type(() => UserPreviewResponseDto)
-  author?: UserPreviewResponseDto;
+  @Type(() => StoryAuthorResponseDto)
+  author?: StoryAuthorResponseDto;
 
   constructor(partial: Partial<StoryPreviewResponseDto>) {
     Object.assign(this, partial);
