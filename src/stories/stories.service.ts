@@ -8,13 +8,25 @@ import {CreateStoryDto} from './dto/create-story.dto';
 import {UpdateStoryDto} from './dto/update-story.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Story} from './entities/story.entity';
-import {In, Like, Not, Repository, type FindOptionsWhere} from 'typeorm';
+import {
+  In,
+  Like,
+  Not,
+  Repository,
+  type FindOptionsWhere,
+  type SelectQueryBuilder,
+} from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {StoryStatus} from './enums/story-status.enum';
 import type {StorySortOption} from './dto/story-query.dto';
+import {
+  decodeStoryCursor,
+  encodeStoryCursor,
+  type DecodedCursor,
+} from './story-cursor';
 
 interface StoryFilters {
   tag?: string;
@@ -260,12 +272,15 @@ export class StoriesService {
     return story;
   }
 
-  async findAllApproved(
-    page: number = 1,
-    limit: number = 20,
-    filters: StoryFilters = {}
-  ) {
-    const {skip, take} = paginate(page, limit);
+  // Shared query for the public approved listing: field selection, author/tag
+  // eager loads, the approved+withDeleted scope, the active filters, and the
+  // sort. Every sort ends in `story.id` as a tiebreaker so the order is total
+  // (rows with equal sort keys never shuffle) — this is what makes keyset
+  // paging stable and is harmless for offset paging. Callers add paging
+  // (skip/take for offset, a keyset WHERE + take for the cursor feed).
+  private _buildApprovedQuery(
+    filters: StoryFilters
+  ): SelectQueryBuilder<Story> {
     const {tag, search, scareLevel, sort} = filters;
 
     const qb = this.storiesRepository
@@ -274,18 +289,14 @@ export class StoriesService {
       .leftJoinAndSelect('story.author', 'author')
       .leftJoinAndSelect('story.tags', 'tags')
       .where('story.status = :status', {status: StoryStatus.Approved})
-      .skip(skip)
-      .take(take)
       // Same rationale as findOne: keep stories by soft-deleted authors.
       .withDeleted();
 
     if (sort === 'most-commented') {
-      qb.orderBy('story.commentCount', 'DESC').addOrderBy(
-        'story.createdAt',
-        'DESC'
-      );
+      qb.orderBy('story.commentCount', 'DESC').addOrderBy('story.id', 'DESC');
     } else {
-      qb.orderBy('story.createdAt', sort === 'oldest' ? 'ASC' : 'DESC');
+      const direction = sort === 'oldest' ? 'ASC' : 'DESC';
+      qb.orderBy('story.createdAt', direction).addOrderBy('story.id', direction);
     }
 
     if (tag) {
@@ -307,9 +318,107 @@ export class StoriesService {
       qb.andWhere('story.scareLevel = :scareLevel', {scareLevel});
     }
 
-    const [stories, total] = await qb.getManyAndCount();
+    return qb;
+  }
+
+  // Offset paging — kept for the tag/author shelves, which show numbered pages
+  // and a total. Fine at shallow depths; the feed uses keyset instead.
+  async findAllApproved(
+    page: number = 1,
+    limit: number = 20,
+    filters: StoryFilters = {}
+  ) {
+    const {skip, take} = paginate(page, limit);
+
+    const [stories, total] = await this._buildApprovedQuery(filters)
+      .skip(skip)
+      .take(take)
+      .getManyAndCount();
 
     return getPaginatedResponse<Story>(stories, total, page, limit);
+  }
+
+  // Keyset (cursor) paging for the infinite feed. Instead of OFFSET (which
+  // scans and discards every earlier row), it seeks straight past the cursor
+  // via `(sortKey, id)`, so page N costs the same as page 1. `total` is
+  // computed only on the first page (no cursor) — enough to show a count in
+  // the header without a COUNT on every scroll.
+  async findApprovedFeed(params: {
+    cursor?: string;
+    limit?: number;
+    filters?: StoryFilters;
+  }): Promise<{data: Story[]; nextCursor: string | null; total?: number}> {
+    const {cursor, limit = 20, filters = {}} = params;
+    const sort = filters.sort ?? 'newest';
+
+    const qb = this._buildApprovedQuery(filters);
+
+    // Count only the first page (no cursor). Cloned before the raw select
+    // below so getCount() sees a clean projection.
+    const total =
+      cursor === undefined ? await qb.clone().getCount() : undefined;
+
+    // createdAt is datetime(6), but a JS Date carries only milliseconds — so
+    // reading it off the entity would drop the microsecond tail and let the
+    // boundary row reappear on the next page. Pull it at full precision as a
+    // string for the cursor. It's in the SELECT only, never the WHERE, so the
+    // (status, createdAt) index still drives the keyset seek.
+    qb.addSelect(
+      "DATE_FORMAT(story.createdAt, '%Y-%m-%d %H:%i:%s.%f')",
+      'story_created_raw'
+    );
+
+    const decoded = cursor ? decodeStoryCursor(cursor) : null;
+    if (decoded) {
+      this._applyKeyset(qb, sort, decoded);
+    }
+
+    const {entities, raw} = await qb.take(limit).getRawAndEntities();
+    const last = entities.at(-1);
+    const nextCursor =
+      last && entities.length === limit
+        ? encodeStoryCursor(this._cursorKey(sort, last, raw), last.id)
+        : null;
+
+    return {data: entities, nextCursor, total};
+  }
+
+  // The sort key for the last row, as a string: the full-precision createdAt
+  // (from the raw projection) or the commentCount.
+  private _cursorKey(
+    sort: StorySortOption,
+    last: Story,
+    raw: Record<string, unknown>[]
+  ): string {
+    if (sort === 'most-commented') {
+      return String(last.commentCount);
+    }
+    // Joins fan the raw rows out per tag, so match on the root id rather than
+    // trusting positional alignment with `entities`.
+    const row = raw.find((r) => r.story_id === last.id);
+    return String(row?.story_created_raw ?? last.createdAt.toISOString());
+  }
+
+  // Row-value keyset predicate matching _buildApprovedQuery's ORDER BY. For a
+  // descending sort the next page is everything "less than" the cursor:
+  // `col < k OR (col = k AND id < cursorId)`; ascending flips the comparators.
+  private _applyKeyset(
+    qb: SelectQueryBuilder<Story>,
+    sort: StorySortOption,
+    cursor: DecodedCursor
+  ): void {
+    const ascending = sort === 'oldest';
+    const cmp = ascending ? '>' : '<';
+    const column =
+      sort === 'most-commented' ? 'story.commentCount' : 'story.createdAt';
+    // commentCount compares as a number; createdAt as the datetime(6) string
+    // MySQL parses back to full precision.
+    const key = sort === 'most-commented' ? Number(cursor.k) : cursor.k;
+
+    qb.andWhere(
+      `(${column} ${cmp} :ck OR (${column} = :ck AND story.id ${cmp} :cid))`,
+      {ck: key, cid: cursor.id}
+    );
   }
 
   async update(

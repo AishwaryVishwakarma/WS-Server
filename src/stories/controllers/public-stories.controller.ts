@@ -64,25 +64,37 @@ export class PublicStoriesController {
     return this._serialize(StoryResponseDto, story);
   }
 
+  // Dual-mode listing. An explicit `?page=` selects offset paging (numbered
+  // tag/author shelves); its absence selects keyset paging for the infinite
+  // feed, driven by an opaque `?cursor=`. Both share the same filters/sort and
+  // return the same story shape — only the paging metadata differs
+  // (`page/total/totalPages` vs `nextCursor`).
   @Get()
   @Throttle(PUBLIC_READ_THROTTLE)
   @UseGuards(OptionalSessionAuthGuard)
   async findAll(@Query() query: StoryQueryDto) {
-    const {page, limit, ...filters} = query;
+    const {page, limit, cursor, ...filters} = query;
+
+    if (page === undefined) {
+      const {data, nextCursor, total} =
+        await this.storiesService.findApprovedFeed({cursor, limit, filters});
+      return {message: 'Success', data: this._serializePreviews(data), nextCursor, total};
+    }
+
     const {data, ...rest} = await this.storiesService.findAllApproved(
       page,
       limit,
       filters
     );
+    return {...rest, data: this._serializePreviews(data)};
+  }
 
-    return {
-      ...rest,
-      data: data.map((story) =>
-        plainToInstance(StoryPreviewResponseDto, story, {
-          excludeExtraneousValues: true,
-        })
-      ),
-    };
+  private _serializePreviews(stories: Story[]) {
+    return stories.map((story) =>
+      plainToInstance(StoryPreviewResponseDto, story, {
+        excludeExtraneousValues: true,
+      })
+    );
   }
 
   @Get(':id')

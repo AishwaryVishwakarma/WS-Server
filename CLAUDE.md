@@ -16,7 +16,13 @@ identifies the viewer, and stale/revoked sessions degrade to anonymous), while
 every mutation sits behind `SessionAuthGuard`. Public reads carry a 60/min
 `@Throttle` override on top of the global 10/min ThrottlerGuard. Tags carry a
 URL `slug` generated in the entity hook, and `GET /stories` accepts
-`?tag=<slug>&search=&scareLevel=&sort=newest|oldest`.
+`?tag=<slug>&search=&scareLevel=&sort=newest|oldest|most-commented`. It is
+**dual-mode paging**: an explicit `?page=` returns the numbered offset envelope
+(`{data,total,page,totalPages}`) for the tag/author shelves, while *omitting*
+`page` returns a keyset page (`{data,nextCursor,total?}`) for the infinite feed
+— an opaque `?cursor=` seeks past the last row via `(sortKey, id)` instead of a
+growing OFFSET, and `total` rides only the first page. See
+`src/stories/story-cursor.ts` and `StoriesService.findApprovedFeed`.
 
 ## Commands
 

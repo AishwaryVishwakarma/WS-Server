@@ -295,6 +295,109 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('GET /stories keyset (cursor) paging', () => {
+    // Create `count` approved stories under distinct authors, returning the
+    // ids in creation order (oldest first). Created back-to-back, several may
+    // share a createdAt second — which is exactly what exercises the id
+    // tiebreak in the keyset predicate.
+    const seedApproved = async (count: number) => {
+      const admin = await seedAdmin(testApp);
+      const ids: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const {story} = await createStory(
+          {...STORY_PAYLOAD, title: `Keyset story ${i}`},
+          `keyset-${i}@test.com`
+        );
+        await approveStory(story.id, admin);
+        ids.push(story.id);
+      }
+      return ids;
+    };
+
+    // Walk the feed with a small limit, following nextCursor to the end.
+    const walkFeed = async (browser: Agent, query = '') => {
+      const ids: string[] = [];
+      let cursor: string | null = null;
+      for (let guard = 0; guard < 50; guard++) {
+        const url =
+          `/stories?limit=2${query}` +
+          (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+        const {body} = await browser.get(url).expect(200);
+        ids.push(...body.data.map((s: {id: string}) => s.id));
+        cursor = body.nextCursor;
+        if (!cursor) break;
+      }
+      return ids;
+    };
+
+    it('paginates the whole feed with no gaps or duplicates (newest)', async () => {
+      const created = await seedApproved(5); // oldest → newest
+      const browser = agent();
+
+      const walked = await walkFeed(browser);
+
+      // newest-first: reverse of creation order, every id exactly once.
+      expect(walked).toEqual([...created].reverse());
+      expect(new Set(walked).size).toBe(5);
+    });
+
+    it('agrees with a single large fetch under the oldest sort', async () => {
+      const created = await seedApproved(5);
+      const browser = agent();
+
+      const {body: oneShot} = await browser
+        .get('/stories?sort=oldest&limit=50')
+        .expect(200);
+      const walked = await walkFeed(browser, '&sort=oldest');
+
+      expect(walked).toEqual(created);
+      expect(oneShot.data.map((s: {id: string}) => s.id)).toEqual(created);
+      // A page that isn't full ends the feed.
+      expect(oneShot.nextCursor).toBeNull();
+    });
+
+    it('returns total only on the first page, then null cursor when exhausted', async () => {
+      await seedApproved(3);
+      const browser = agent();
+
+      const {body: first} = await browser.get('/stories?limit=2').expect(200);
+      expect(first.total).toBe(3);
+      expect(first.data).toHaveLength(2);
+      expect(first.nextCursor).toBeTruthy();
+
+      const {body: second} = await browser
+        .get(`/stories?limit=2&cursor=${encodeURIComponent(first.nextCursor)}`)
+        .expect(200);
+      // Subsequent pages skip the COUNT — no total.
+      expect(second.total).toBeUndefined();
+      expect(second.data).toHaveLength(1);
+      expect(second.nextCursor).toBeNull();
+    });
+
+    it('still supports offset paging when ?page= is given (tag/author shelves)', async () => {
+      await seedApproved(3);
+      const browser = agent();
+
+      const {body} = await browser.get('/stories?page=1&limit=2').expect(200);
+      expect(body.total).toBe(3);
+      expect(body.page).toBe(1);
+      expect(body.totalPages).toBe(2);
+      expect(body.data).toHaveLength(2);
+      // Offset responses carry no cursor.
+      expect(body.nextCursor).toBeUndefined();
+    });
+
+    it('ignores a malformed cursor and returns the first page', async () => {
+      await seedApproved(3);
+      const browser = agent();
+
+      const {body} = await browser
+        .get('/stories?limit=2&cursor=not-a-real-cursor')
+        .expect(200);
+      expect(body.data).toHaveLength(2);
+    });
+  });
+
   describe('GET /stories filters', () => {
     // Two approved stories: one tagged ghosts+demons (scare 2), one tagged
     // demons only (scare 5), created in that order.
