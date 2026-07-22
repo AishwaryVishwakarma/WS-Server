@@ -133,6 +133,47 @@ describe('Follows (integration)', () => {
     expect(feed.body.data[0].author.id).toBe(author.id);
   });
 
+  it('notifies the followed author (follow type, no story context)', async () => {
+    const author = await authorWithStory('author@test.com');
+    const {client, token} = await member('reader@test.com');
+
+    await client
+      .put(`/users/${author.id}/follow`)
+      .set('x-csrf-token', token)
+      .expect(204);
+
+    const notifs = await author.client
+      .get('/users/me/notifications')
+      .expect(200);
+    const follow = notifs.body.data.find(
+      (n: {type: string}) => n.type === 'follow'
+    );
+    expect(follow).toBeDefined();
+    expect(follow.actorId).toBeTruthy();
+    expect(follow.actorName).toBe('reader');
+    // A follow has no story/comment context.
+    expect(follow.storyId).toBeNull();
+    expect(follow.commentId).toBeNull();
+  });
+
+  it('does not notify again on a repeat (idempotent) follow', async () => {
+    const author = await authorWithStory('author@test.com');
+    const {client, token} = await member('reader@test.com');
+
+    const follow = () =>
+      client.put(`/users/${author.id}/follow`).set('x-csrf-token', token);
+    await follow().expect(204);
+    await follow().expect(204);
+
+    const notifs = await author.client
+      .get('/users/me/notifications')
+      .expect(200);
+    const follows = notifs.body.data.filter(
+      (n: {type: string}) => n.type === 'follow'
+    );
+    expect(follows).toHaveLength(1);
+  });
+
   it('requires a session for the gated routes', async () => {
     const author = await authorWithStory('author@test.com');
     const anon = agent();

@@ -8,9 +8,10 @@ export class NotificationResponseDto {
   @Expose() id: string;
   @Expose() type: NotificationType;
   @Expose() actorName: string;
-  @Expose() storyId: string;
-  @Expose() storyTitle: string;
-  @Expose() commentId: string;
+  @Expose() actorId: string | null;
+  @Expose() storyId: string | null;
+  @Expose() storyTitle: string | null;
+  @Expose() commentId: string | null;
   @Expose() parentId: string | null;
   @Expose() isRead: boolean;
   @Expose() createdAt: Date;

@@ -64,9 +64,8 @@ npm run dev:infra:down
   `GET /users/me/following/ids` (button state), `GET /users/me/feed` (the
   Following feed — approved stories by followed authors, via
   `StoriesService.findApprovedByAuthorIds`), and public
-  `GET /users/:id/follow-stats` (`{followers, following}` counts). Follow
-  *notifications* are intentionally deferred (the notification row denormalizes
-  story fields NOT NULL, so a follow type needs its own schema change).
+  `GET /users/:id/follow-stats` (`{followers, following}` counts). A new follow
+  fires a `follow` notification to the author (see Notifications).
 - **Bookmarks (reading list)**: a `Bookmark` (unique `(user, story)`, both
   cascade-delete) is a member saving a story. All routes are gated
   (`BookmarksController`, SessionAuthGuard): `PUT`/`DELETE /stories/:id/bookmark`
@@ -83,14 +82,16 @@ npm run dev:infra:down
   routes). Deduped per browser session (`session.viewedStoryIds`, capped);
   approved stories only, and the author's own views don't count. The count
   rides `StoryPreviewResponseDto`, so it shows on cards and the reader.
-- **Notifications**: commenting creates a `Notification`, fired from
-  `CommentsService.create` via `NotificationsService.createNotification`. Two
-  `type`s: a **reply** notifies the parent thread's author (carrying `parentId`,
-  the top-level thread, so the reader can expand it before scrolling); a
-  top-level **comment** notifies the story's author. Both skip self-actions and
-  removed recipients. The row denormalizes its display fields (`actorName`,
-  `storyId/Title`, `commentId`, `parentId`) so the `/users/me/notifications`
-  feed needs no joins and survives later deletes. Endpoints: list, `unread-count`,
+- **Notifications**: three `type`s. A **reply** notifies the parent thread's
+  author (carrying `parentId`, the top-level thread, so the reader can expand it
+  before scrolling); a top-level **comment** notifies the story's author (both
+  fired from `CommentsService.create`); a **follow** notifies the followed
+  author (fired from `FollowsService.follow`, only on a genuinely new follow).
+  All skip self-actions and removed recipients. The row denormalizes its display
+  fields (`actorName`, `actorId`, `storyId/Title`, `commentId`, `parentId`) so
+  the `/users/me/notifications` feed needs no joins and survives later deletes;
+  the story/comment fields are **nullable** (a follow has none — it links to the
+  actor's profile via `actorId`). Endpoints: list, `unread-count`,
   `PATCH :id/read`, `PATCH read` (all), `DELETE :id` (one), `DELETE read`
   (clear read — no auto-delete), and `GET :id/../stream` — a live `@Sse` feed.
   `createNotification` publishes `{userId, storyId}` to a Redis channel; a

@@ -15,6 +15,7 @@ import {AddBookmarks1784500000000} from './1784500000000-AddBookmarks';
 import {AddStoryViewCount1784600000000} from './1784600000000-AddStoryViewCount';
 import {AddFollows1784700000000} from './1784700000000-AddFollows';
 import {AddStoryViewCountIndex1784800000000} from './1784800000000-AddStoryViewCountIndex';
+import {AddFollowNotifications1784900000000} from './1784900000000-AddFollowNotifications';
 
 export const migrations = [
   Baseline1783883957794,
@@ -27,4 +28,5 @@ export const migrations = [
   AddStoryViewCount1784600000000,
   AddFollows1784700000000,
   AddStoryViewCountIndex1784800000000,
+  AddFollowNotifications1784900000000,
 ];

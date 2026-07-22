@@ -4,6 +4,7 @@ import {Repository} from 'typeorm';
 import {getPaginatedResponse} from 'src/utils/pagination';
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from 'src/users/users.service';
+import {NotificationsService} from 'src/notifications/notifications.service';
 import {Follow} from './entities/follow.entity';
 
 @Injectable()
@@ -12,12 +13,14 @@ export class FollowsService {
     @InjectRepository(Follow)
     private readonly followsRepository: Repository<Follow>,
     private readonly usersService: UsersService,
-    private readonly storiesService: StoriesService
+    private readonly storiesService: StoriesService,
+    private readonly notificationsService: NotificationsService
   ) {}
 
   // Follow an author. Validates the target exists (findOne 404s otherwise) and
   // rejects self-follows; the unique (follower, following) constraint makes a
-  // repeat follow a no-op, so the endpoint is idempotent.
+  // repeat follow a no-op, so the endpoint is idempotent — and only a genuinely
+  // new follow notifies the author.
   async follow(followerId: string, targetId: string): Promise<void> {
     if (followerId === targetId) {
       throw new BadRequestException('You cannot follow yourself');
@@ -36,6 +39,16 @@ export class FollowsService {
         following: {id: targetId},
       })
     );
+
+    // Notify the followed author (best-effort). A follow carries no story/
+    // comment — it links to the follower's profile via actorId.
+    const follower = await this.usersService.findOne(followerId);
+    await this.notificationsService.createNotification({
+      type: 'follow',
+      recipientId: targetId,
+      actorName: follower.name,
+      actorId: followerId,
+    });
   }
 
   // Unfollow. A no-op (still 204) when not following, so the toggle is safe

@@ -12,9 +12,11 @@ interface NotificationInput {
   type: NotificationType;
   recipientId: string;
   actorName: string;
-  storyId: string;
-  storyTitle: string;
-  commentId: string;
+  actorId: string;
+  // Story/comment context — present for 'comment'/'reply', omitted for 'follow'.
+  storyId?: string | null;
+  storyTitle?: string | null;
+  commentId?: string | null;
   // Only set for a 'reply' — the top-level thread the reply lives under.
   parentId?: string | null;
 }
@@ -32,16 +34,17 @@ export class NotificationsService {
       recipient: {id: input.recipientId},
       type: input.type,
       actorName: input.actorName,
-      storyId: input.storyId,
-      storyTitle: input.storyTitle,
-      commentId: input.commentId,
+      actorId: input.actorId,
+      storyId: input.storyId ?? null,
+      storyTitle: input.storyTitle ?? null,
+      commentId: input.commentId ?? null,
       parentId: input.parentId ?? null,
     });
     const saved = await this.notificationsRepository.save(notification);
     // Push a live signal to any open SSE stream for the recipient (best-effort;
     // the client also polls as a fallback). The storyId lets a reader currently
     // viewing that story refresh its thread without a full reload.
-    await this.stream.publish(input.recipientId, input.storyId);
+    await this.stream.publish(input.recipientId, input.storyId ?? undefined);
     return saved;
   }
 
