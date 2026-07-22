@@ -103,12 +103,18 @@ export class StoriesService {
     }
   }
 
-  async create(createStoryDto: CreateStoryDto, userId: string) {
+  async create(
+    createStoryDto: CreateStoryDto,
+    userId: string,
+    // Trusted callers (the seed) opt out of the user-facing publish limit so
+    // demo/pagination data can exceed it.
+    {enforcePublishLimit = true}: {enforcePublishLimit?: boolean} = {}
+  ) {
     const {tags: tagIds, excerpt, draft, ...rest} = createStoryDto;
 
     // Submitting straight to review counts against the publish limit; saving a
     // private draft does not.
-    if (!draft) {
+    if (!draft && enforcePublishLimit) {
       await this._assertWithinPublishLimit(userId);
     }
 

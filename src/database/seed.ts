@@ -493,7 +493,11 @@ async function seed() {
           tags: tags.map((name) => tagIdsByName.get(name)!),
           draft: status === StoryStatus.Draft,
         },
-        usersByEmail.get(author)!.id
+        usersByEmail.get(author)!.id,
+        // Seed authors intentionally exceed the free publish limit (rich
+        // feed/pagination data); the cap is a user-facing guard, not a
+        // system-setup one.
+        {enforcePublishLimit: false}
       );
 
       if (status !== StoryStatus.Pending && status !== StoryStatus.Draft) {
