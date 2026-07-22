@@ -8,7 +8,7 @@ import {CreateStoryDto} from './dto/create-story.dto';
 import {UpdateStoryDto} from './dto/update-story.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Story} from './entities/story.entity';
-import {Like, Not, Repository, type FindOptionsWhere} from 'typeorm';
+import {In, Like, Not, Repository, type FindOptionsWhere} from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
@@ -22,6 +22,18 @@ interface StoryFilters {
   scareLevel?: number;
   sort?: StorySortOption;
 }
+
+// Free accounts can have up to this many stories in the publication pipeline
+// (submitted, live, or flagged) at once. Drafts and rejected stories don't
+// count, so authors can keep working — the cap is on how much they push to the
+// keepers, both a fair-use limit and basic spam protection.
+export const FREE_PUBLISH_LIMIT = 10;
+
+const PUBLISH_PIPELINE_STATUSES = [
+  StoryStatus.Pending,
+  StoryStatus.Approved,
+  StoryStatus.Flagged,
+];
 
 const SELECTED_FIELDS = {
   id: true,
@@ -74,8 +86,31 @@ export class StoriesService {
     return tags;
   }
 
+  // Reject a publish (submit for review) once the author is at the free limit.
+  // Drafts are exempt — the cap is on the publication pipeline, not private work.
+  private async _assertWithinPublishLimit(userId: string) {
+    const count = await this.storiesRepository.count({
+      where: {
+        author: {id: userId},
+        status: In(PUBLISH_PIPELINE_STATUSES),
+      },
+    });
+    if (count >= FREE_PUBLISH_LIMIT) {
+      throw new ForbiddenException(
+        `You've reached the free limit of ${FREE_PUBLISH_LIMIT} published stories. ` +
+          'Delete one, or keep new work as a draft until you have room.'
+      );
+    }
+  }
+
   async create(createStoryDto: CreateStoryDto, userId: string) {
     const {tags: tagIds, excerpt, draft, ...rest} = createStoryDto;
+
+    // Submitting straight to review counts against the publish limit; saving a
+    // private draft does not.
+    if (!draft) {
+      await this._assertWithinPublishLimit(userId);
+    }
 
     const author = await this.usersService.findOne(userId);
 
@@ -319,6 +354,8 @@ export class StoriesService {
     if (story.status !== StoryStatus.Draft) {
       throw new BadRequestException('Only drafts can be submitted for review');
     }
+
+    await this._assertWithinPublishLimit(userId);
 
     story.status = StoryStatus.Pending;
 

@@ -1,5 +1,6 @@
 import {
   IsEmail,
+  IsEmpty,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -32,4 +33,9 @@ export class RegisterUserDto {
   @IsString()
   @MaxLength(500)
   bio?: string;
+
+  // Honeypot: a hidden field a real user never fills. Bots that auto-fill every
+  // input trip @IsEmpty and get a 400 before an account is created.
+  @IsEmpty()
+  website?: string;
 }

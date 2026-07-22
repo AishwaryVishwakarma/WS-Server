@@ -93,6 +93,14 @@ npm run dev:infra:down
   `PATCH /admin/stories/:id/status`. `StoriesService.findOneVisible()` gates
   non-approved reads to author/admin. A non-admin editing a moderated story
   resets it to `pending`. `isFlagged` mirrors `status === flagged`.
+- **Free publish limit**: an author may have at most `FREE_PUBLISH_LIMIT` (10)
+  stories in the publication pipeline (`pending`/`approved`/`flagged`) at once
+  — enforced in `StoriesService` on create-non-draft and `submitDraft` (403
+  when exceeded). Drafts and rejected stories don't count, so authors can keep
+  writing; it's a fair-use cap and basic spam protection.
+- **Honeypot**: `LoginInfoDto` and `RegisterUserDto` carry an `@IsEmpty()`
+  `website` field. Real forms leave the hidden input blank; a bot that fills
+  every field trips `ValidationPipe` (400) before any credential/DB work.
   **Comments** have no approval gate; instead members report them
   (`POST /comments/:id/report`, one per member via a unique `(user, comment)`
   on `comment_report`). A report sets `Comment.isFlagged` and recomputes

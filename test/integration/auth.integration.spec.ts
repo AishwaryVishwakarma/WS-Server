@@ -73,6 +73,17 @@ describe('Auth (integration)', () => {
       await agent().post('/auth/register').send(DEFAULT_USER).expect(409);
     });
 
+    it('rejects a registration that fills the honeypot (bot) with 400', async () => {
+      await agent()
+        .post('/auth/register')
+        .send({
+          ...DEFAULT_USER,
+          email: 'bot@test.com',
+          website: 'http://spam.example',
+        })
+        .expect(400);
+    });
+
     it('rejects weak passwords with 400', async () => {
       await agent()
         .post('/auth/register')
@@ -119,6 +130,17 @@ describe('Auth (integration)', () => {
         .post('/auth/login')
         .send({email: 'nobody@test.com', password: DEFAULT_USER.password})
         .expect(401);
+    });
+
+    it('rejects a login that fills the honeypot (bot) with 400', async () => {
+      await agent()
+        .post('/auth/login')
+        .send({
+          email: DEFAULT_USER.email,
+          password: DEFAULT_USER.password,
+          website: 'http://spam.example',
+        })
+        .expect(400);
     });
 
     it('rejects a blocked user with 401', async () => {

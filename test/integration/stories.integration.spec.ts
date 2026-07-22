@@ -69,6 +69,66 @@ describe('Stories (integration)', () => {
     return admin;
   };
 
+  describe('free publish limit', () => {
+    // One client that will publish repeatedly.
+    const primeAuthor = async (email: string) => {
+      const client = agent();
+      await registerUser(client, {email});
+      const token = await getCsrfToken(client);
+      const post = (title: string, draft = false) =>
+        client
+          .post('/stories')
+          .set('x-csrf-token', token)
+          .send({...STORY_PAYLOAD, title, draft});
+      return {client, token, post};
+    };
+
+    it('allows ten publishes, then blocks the next — but never drafts', async () => {
+      const {post} = await primeAuthor('prolific@test.com');
+
+      for (let i = 0; i < 10; i++) {
+        await post(`Tale ${i}`).expect(201);
+      }
+      // The eleventh submitted story is refused.
+      await post('One too many').expect(403);
+      // A private draft is still fine — drafts don't count against the limit.
+      await post('A quiet draft', true).expect(201);
+    });
+
+    it('blocks submitting a draft once at the limit', async () => {
+      const {client, token, post} = await primeAuthor('atlimit@test.com');
+
+      for (let i = 0; i < 10; i++) {
+        await post(`Tale ${i}`).expect(201);
+      }
+      const {body: draft} = await post('Held back', true).expect(201);
+
+      await client
+        .patch(`/stories/${draft.id}/submit`)
+        .set('x-csrf-token', token)
+        .expect(403);
+    });
+
+    it('frees a slot when a published story is deleted', async () => {
+      const {client, token, post} = await primeAuthor('recycler@test.com');
+
+      const ids: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const {body} = await post(`Tale ${i}`).expect(201);
+        ids.push(body.id);
+      }
+      await post('Blocked').expect(403);
+
+      await client
+        .delete(`/stories/${ids[0]}`)
+        .set('x-csrf-token', token)
+        .expect(204);
+
+      // With a slot freed, publishing works again.
+      await post('Now there is room').expect(201);
+    });
+  });
+
   describe('POST /stories', () => {
     it('creates a story with pending status and an auto-generated excerpt', async () => {
       const {story} = await createStory();
