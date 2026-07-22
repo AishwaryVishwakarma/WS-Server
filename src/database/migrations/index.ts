@@ -12,6 +12,7 @@ import {AddNotifications1784262275676} from './1784262275676-AddNotifications';
 import {AddNotificationParentId1784350000000} from './1784350000000-AddNotificationParentId';
 import {AddPerformanceIndexes1784400000000} from './1784400000000-AddPerformanceIndexes';
 import {AddBookmarks1784500000000} from './1784500000000-AddBookmarks';
+import {AddStoryViewCount1784600000000} from './1784600000000-AddStoryViewCount';
 
 export const migrations = [
   Baseline1783883957794,
@@ -21,4 +22,5 @@ export const migrations = [
   AddNotificationParentId1784350000000,
   AddPerformanceIndexes1784400000000,
   AddBookmarks1784500000000,
+  AddStoryViewCount1784600000000,
 ];

@@ -4,6 +4,7 @@ import {AppModule} from 'src/app.module';
 import {BookmarksService} from 'src/bookmarks/bookmarks.service';
 import {CommentsService} from 'src/comments/comments.service';
 import {StoriesService} from 'src/stories/stories.service';
+import {Story} from 'src/stories/entities/story.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import {TagsService} from 'src/tags/tags.service';
 import {CreateUserDto} from 'src/users/dto/create-user.dto';
@@ -445,6 +446,16 @@ const REPORTS: {commentContent: string; reporters: string[]}[] = [
   },
 ];
 
+// Seed read counts on a few popular (approved) stories so the feed shows some
+// life. viewCount is a pure denormalized counter, so it's set directly rather
+// than through recordView (which needs a viewer session).
+const VIEW_COUNTS: {story: string; views: number}[] = [
+  {story: "The Ferryman's Toll", views: 342},
+  {story: 'Whisper in the Walls', views: 218},
+  {story: 'The House on Hollow Lane', views: 197},
+  {story: 'Cold Spots', views: 129},
+];
+
 // Reading-list saves, so /me and the bookmark toggles have data. Targets are
 // approved stories (a member can only bookmark what they can see).
 const BOOKMARKS: {reader: string; story: string}[] = [
@@ -602,6 +613,13 @@ async function seed() {
         await commentsService.report(commentId, usersByEmail.get(email)!.id);
       }
       reportedComments++;
+    }
+
+    // Read counts (set the denormalized counter directly)
+    const storyRepository = dataSource.getRepository(Story);
+    for (const {story, views} of VIEW_COUNTS) {
+      const storyId = storyIdsByTitle.get(story);
+      if (storyId) await storyRepository.update(storyId, {viewCount: views});
     }
 
     // Bookmarks (through the real service so the visibility check and the

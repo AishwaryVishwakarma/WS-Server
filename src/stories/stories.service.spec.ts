@@ -15,7 +15,9 @@ describe('StoriesService', () => {
     save: jest.Mock;
     count: jest.Mock;
     findAndCount: jest.Mock;
+    findOne: jest.Mock;
     findOneOrFail: jest.Mock;
+    increment: jest.Mock;
     delete: jest.Mock;
   };
   let usersService: {findOne: jest.Mock};
@@ -30,7 +32,9 @@ describe('StoriesService', () => {
       // Publish-limit probe (_assertWithinPublishLimit) — under the free cap.
       count: jest.fn().mockResolvedValue(0),
       findAndCount: jest.fn().mockResolvedValue([[], 0]),
+      findOne: jest.fn(),
       findOneOrFail: jest.fn(),
+      increment: jest.fn().mockResolvedValue({affected: 1}),
       delete: jest.fn(),
     };
     usersService = {findOne: jest.fn().mockResolvedValue(author)};
@@ -190,6 +194,77 @@ describe('StoriesService', () => {
         expect.objectContaining({
           where: {author: {id: 'author-1'}, status: StoryStatus.Approved},
         })
+      );
+    });
+  });
+
+  describe('recordView', () => {
+    const approved = {
+      id: 'story-1',
+      status: StoryStatus.Approved,
+      viewCount: 5,
+      author: {id: 'author-1'},
+    };
+
+    it('increments an approved story once and marks the session', async () => {
+      repository.findOne.mockResolvedValue({...approved});
+      const session: {viewedStoryIds?: string[]} = {};
+
+      const result = await service.recordView('story-1', session, 'reader-1');
+
+      expect(result).toEqual({counted: true, viewCount: 6});
+      expect(repository.increment).toHaveBeenCalledWith(
+        {id: 'story-1'},
+        'viewCount',
+        1
+      );
+      expect(session.viewedStoryIds).toEqual(['story-1']);
+    });
+
+    it('does not double-count within the same session', async () => {
+      repository.findOne.mockResolvedValue({...approved});
+      const session = {viewedStoryIds: ['story-1']};
+
+      const result = await service.recordView('story-1', session, 'reader-1');
+
+      expect(result).toEqual({counted: false, viewCount: 5});
+      expect(repository.increment).not.toHaveBeenCalled();
+    });
+
+    it('does not count a non-approved story', async () => {
+      repository.findOne.mockResolvedValue({
+        ...approved,
+        status: StoryStatus.Pending,
+      });
+
+      const result = await service.recordView('story-1', {}, 'reader-1');
+
+      expect(result.counted).toBe(false);
+      expect(repository.increment).not.toHaveBeenCalled();
+    });
+
+    it("does not count the author's own view", async () => {
+      repository.findOne.mockResolvedValue({...approved});
+
+      const result = await service.recordView('story-1', {}, 'author-1');
+
+      expect(result.counted).toBe(false);
+      expect(repository.increment).not.toHaveBeenCalled();
+    });
+
+    it('counts an anonymous view (no viewerId)', async () => {
+      repository.findOne.mockResolvedValue({...approved});
+
+      const result = await service.recordView('story-1', {});
+
+      expect(result).toEqual({counted: true, viewCount: 6});
+    });
+
+    it('throws NotFoundException for a missing story', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(service.recordView('missing', {})).rejects.toThrow(
+        NotFoundException
       );
     });
   });

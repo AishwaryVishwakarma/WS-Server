@@ -35,6 +35,16 @@ interface StoryFilters {
   sort?: StorySortOption;
 }
 
+// The slice of session state recordView reads/writes. Structural so the service
+// stays decoupled from express-session (and trivially fakeable in unit tests).
+interface ViewSession {
+  viewedStoryIds?: string[];
+}
+
+// Cap the per-session viewed-id list so a long-lived session can't grow it
+// without bound; dropping the oldest ids just means a re-read could recount.
+const MAX_TRACKED_VIEWS = 200;
+
 // Free accounts can have up to this many stories in the publication pipeline
 // (submitted, live, or flagged) at once. Drafts and rejected stories don't
 // count, so authors can keep working — the cap is on how much they push to the
@@ -57,6 +67,7 @@ const SELECTED_FIELDS = {
   excerpt: true,
   wordCount: true,
   commentCount: true,
+  viewCount: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -381,6 +392,43 @@ export class StoriesService {
         : null;
 
     return {data: entities, nextCursor, total};
+  }
+
+  // Count a read of a story, deduped per viewer session. Only approved stories
+  // count (an author previewing their own pending story doesn't inflate it),
+  // self-views by the author don't count, and a story already in this session's
+  // viewed set is a no-op. Best-effort: the client fires it and ignores the
+  // result, but it returns the fresh count so a caller can reflect it.
+  async recordView(
+    storyId: string,
+    session: ViewSession,
+    viewerId?: string
+  ): Promise<{counted: boolean; viewCount: number}> {
+    const story = await this.storiesRepository.findOne({
+      where: {id: storyId},
+      // Narrow projection — never load the mediumtext content on a view ping.
+      select: {id: true, status: true, viewCount: true, author: {id: true}},
+      relations: {author: true},
+    });
+
+    if (!story) {
+      throw new NotFoundException(`Story with ID ${storyId} not found`);
+    }
+
+    const alreadyViewed = session.viewedStoryIds?.includes(storyId) ?? false;
+    const isAuthor = viewerId != null && viewerId === story.author?.id;
+
+    if (story.status !== StoryStatus.Approved || isAuthor || alreadyViewed) {
+      return {counted: false, viewCount: story.viewCount};
+    }
+
+    await this.storiesRepository.increment({id: storyId}, 'viewCount', 1);
+    session.viewedStoryIds = [
+      ...(session.viewedStoryIds ?? []),
+      storyId,
+    ].slice(-MAX_TRACKED_VIEWS);
+
+    return {counted: true, viewCount: story.viewCount + 1};
   }
 
   // The sort key for the last row, as a string: the full-precision createdAt

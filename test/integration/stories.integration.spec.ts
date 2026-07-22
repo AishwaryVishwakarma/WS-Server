@@ -703,6 +703,61 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('read counts (POST /stories/:id/view)', () => {
+    // Approve a story and return it plus its author agent.
+    const setup = async () => {
+      const {client: author, token, story} = await createStory();
+      await approveStory(story.id);
+      return {author, authorToken: token, story};
+    };
+
+    it('counts a read once per session (deduped), no CSRF token needed', async () => {
+      const {story} = await setup();
+      const reader = agent();
+
+      // Anonymous + CSRF-exempt: the ping works with no token.
+      const first = await reader.post(`/stories/${story.id}/view`).expect(200);
+      expect(first.body.viewCount).toBe(1);
+
+      // Same session again → deduped, count unchanged.
+      const again = await reader.post(`/stories/${story.id}/view`).expect(200);
+      expect(again.body.viewCount).toBe(1);
+
+      // A different session counts as a distinct reader.
+      const other = await agent().post(`/stories/${story.id}/view`).expect(200);
+      expect(other.body.viewCount).toBe(2);
+    });
+
+    it("does not count the author's own view", async () => {
+      const {author, story} = await setup();
+
+      const response = await author
+        .post(`/stories/${story.id}/view`)
+        .expect(200);
+      expect(response.body.viewCount).toBe(0);
+    });
+
+    it('does not count a view of a non-approved story', async () => {
+      const {story} = await createStory(); // pending
+
+      const response = await agent()
+        .post(`/stories/${story.id}/view`)
+        .expect(200);
+      expect(response.body.viewCount).toBe(0);
+    });
+
+    it('surfaces the count on the story and the feed', async () => {
+      const {story} = await setup();
+      await agent().post(`/stories/${story.id}/view`).expect(200);
+
+      const detail = await agent().get(`/stories/${story.id}`).expect(200);
+      expect(detail.body.viewCount).toBe(1);
+
+      const feed = await agent().get('/stories').expect(200);
+      expect(feed.body.data[0].viewCount).toBe(1);
+    });
+  });
+
   describe('anonymous access', () => {
     it('serves the approved feed, story, and comments without a session', async () => {
       const {client, token, story} = await createStory();

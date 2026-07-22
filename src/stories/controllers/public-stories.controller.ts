@@ -97,6 +97,26 @@ export class PublicStoriesController {
     );
   }
 
+  // Best-effort read counter. Public (anonymous reads count too) and
+  // CSRF-exempt — it's a low-value denormalized counter, not a sensitive
+  // mutation — so anonymous browsers, which can't hold a CSRF token, still
+  // count. Deduped per session in the service.
+  @Post(':id/view')
+  @HttpCode(200)
+  @Throttle(PUBLIC_READ_THROTTLE)
+  @UseGuards(OptionalSessionAuthGuard)
+  async recordView(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request
+  ) {
+    const {viewCount} = await this.storiesService.recordView(
+      id,
+      req.session,
+      req.session.userId
+    );
+    return {viewCount};
+  }
+
   @Get(':id')
   @Throttle(PUBLIC_READ_THROTTLE)
   @UseGuards(OptionalSessionAuthGuard)

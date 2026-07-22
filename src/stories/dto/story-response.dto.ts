@@ -28,6 +28,7 @@ export class StoryPreviewResponseDto {
   @Expose() excerpt: string;
   @Expose() wordCount: number;
   @Expose() commentCount: number;
+  @Expose() viewCount: number;
   @Expose() createdAt: Date;
   @Expose() updatedAt: Date;
 

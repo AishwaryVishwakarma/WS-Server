@@ -66,6 +66,13 @@ npm run dev:infra:down
   first, serialized like the public feed), and `GET /users/me/bookmarks/ids`
   (the id set, fetched once so the web client shows bookmark state on cards/
   reader without the hot feed query joining per-viewer).
+- **Read counts**: `Story.viewCount` is a denormalized counter bumped by
+  `StoriesService.recordView` via `POST /stories/:id/view` — public and
+  **CSRF-exempt** (anonymous browsers can't hold a token, and it's a harmless
+  counter, not a real mutation; exemption is in `app.module` alongside the auth
+  routes). Deduped per browser session (`session.viewedStoryIds`, capped);
+  approved stories only, and the author's own views don't count. The count
+  rides `StoryPreviewResponseDto`, so it shows on cards and the reader.
 - **Notifications**: commenting creates a `Notification`, fired from
   `CommentsService.create` via `NotificationsService.createNotification`. Two
   `type`s: a **reply** notifies the parent thread's author (carrying `parentId`,

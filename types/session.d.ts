@@ -6,5 +6,9 @@ declare module 'express-session' {
     // Absent on anonymous sessions — public read routes allow those
     userId?: string;
     role?: Role;
+    // Story ids this session has already been counted as viewing, so
+    // StoriesService.recordView dedupes reads per browser session (works for
+    // anonymous sessions too — writing this persists the session). Capped.
+    viewedStoryIds?: string[];
   }
 }

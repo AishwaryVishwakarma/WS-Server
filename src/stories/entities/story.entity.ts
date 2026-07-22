@@ -53,6 +53,11 @@ export class Story {
   @Column({type: 'int', default: 0})
   commentCount: number;
 
+  /** Denormalized read counter, bumped by StoriesService.recordView (deduped
+   *  per viewer session, approved stories only, self-views excluded). */
+  @Column({type: 'int', default: 0})
+  viewCount: number;
+
   @Column({
     type: 'enum',
     enum: StoryStatus,

@@ -1,4 +1,4 @@
-import {Module, type MiddlewareConsumer} from '@nestjs/common';
+import {Module, RequestMethod, type MiddlewareConsumer} from '@nestjs/common';
 import {AppController} from './app.controller';
 import {AppService} from './app.service';
 import {ConfigModule, ConfigService} from '@nestjs/config';
@@ -160,7 +160,14 @@ export class AppModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(CsrfMiddleware)
-      .exclude('/auth/login', '/auth/logout', '/auth/register')
+      .exclude(
+        '/auth/login',
+        '/auth/logout',
+        '/auth/register',
+        // Anonymous read-counter ping — anonymous browsers can't hold a CSRF
+        // token, and it's a harmless denormalized counter, not a real mutation.
+        {path: 'stories/:id/view', method: RequestMethod.POST}
+      )
       .forRoutes('*');
   }
 }
