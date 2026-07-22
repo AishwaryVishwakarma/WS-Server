@@ -63,9 +63,13 @@ npm run dev:infra:down
   follow rejects self-follows and validates the target exists),
   `GET /users/me/following/ids` (button state), `GET /users/me/feed` (the
   Following feed — approved stories by followed authors, via
-  `StoriesService.findApprovedByAuthorIds`), and public
-  `GET /users/:id/follow-stats` (`{followers, following}` counts). A new follow
-  fires a `follow` notification to the author (see Notifications).
+  `StoriesService.findApprovedByAuthorIds`), and the self-only people lists
+  `GET /users/me/following` / `GET /users/me/followers` (paginated
+  `UserPreviewResponseDto`). **Privacy stance**: the detailed graph (who
+  follows whom, by name) is private — only the owner sees their own lists;
+  what's *public* is the aggregate `GET /users/:id/follow-stats`
+  (`{followers, following}` counts). A new follow fires a `follow` notification
+  to the author (see Notifications).
 - **Bookmarks (reading list)**: a `Bookmark` (unique `(user, story)`, both
   cascade-delete) is a member saving a story. All routes are gated
   (`BookmarksController`, SessionAuthGuard): `PUT`/`DELETE /stories/:id/bookmark`

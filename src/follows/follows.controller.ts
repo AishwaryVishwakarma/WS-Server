@@ -17,6 +17,8 @@ import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PUBLIC_READ_THROTTLE} from 'src/common/constants/throttle';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {StoryPreviewResponseDto} from 'src/stories/dto/story-response.dto';
+import {UserPreviewResponseDto} from 'src/users/dto/user-response.dto';
+import type {User} from 'src/users/entities/user.entity';
 import {FollowsService} from './follows.service';
 
 // Follow graph. Following/unfollowing, the id-set, and the personal feed are
@@ -65,9 +67,41 @@ export class FollowsController {
     };
   }
 
+  // Self-only people lists — the detailed graph (names) is private; only the
+  // aggregate counts (above) are public.
+  @Get('users/me/following')
+  @UseGuards(SessionAuthGuard)
+  async following(@Req() req: Request, @Query() query: PaginationDto) {
+    const {data, ...rest} = await this.followsService.following(
+      req.session.userId!,
+      query.page,
+      query.limit
+    );
+    return {...rest, data: this._serializeUsers(data)};
+  }
+
+  @Get('users/me/followers')
+  @UseGuards(SessionAuthGuard)
+  async followers(@Req() req: Request, @Query() query: PaginationDto) {
+    const {data, ...rest} = await this.followsService.followers(
+      req.session.userId!,
+      query.page,
+      query.limit
+    );
+    return {...rest, data: this._serializeUsers(data)};
+  }
+
   @Get('users/:id/follow-stats')
   @Throttle(PUBLIC_READ_THROTTLE)
   async stats(@Param('id', ParseUUIDPipe) id: string) {
     return this.followsService.stats(id);
+  }
+
+  private _serializeUsers(users: User[]) {
+    return users.map((user) =>
+      plainToInstance(UserPreviewResponseDto, user, {
+        excludeExtraneousValues: true,
+      })
+    );
   }
 }

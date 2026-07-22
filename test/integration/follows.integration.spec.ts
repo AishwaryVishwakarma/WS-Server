@@ -174,6 +174,30 @@ describe('Follows (integration)', () => {
     expect(follows).toHaveLength(1);
   });
 
+  it('lists who you follow and who follows you (self-only, no emails)', async () => {
+    const author = await authorWithStory('author@test.com');
+    const {client, token, id: readerId} = await member('reader@test.com');
+
+    await client
+      .put(`/users/${author.id}/follow`)
+      .set('x-csrf-token', token)
+      .expect(204);
+
+    // The reader's own "following" list contains the author.
+    const following = await client.get('/users/me/following').expect(200);
+    expect(following.body.total).toBe(1);
+    expect(following.body.data[0].id).toBe(author.id);
+    // Preview tier — no email leaks into the people list.
+    expect(following.body.data[0].email).toBeUndefined();
+
+    // The author's own "followers" list contains the reader.
+    const followers = await author.client
+      .get('/users/me/followers')
+      .expect(200);
+    expect(followers.body.total).toBe(1);
+    expect(followers.body.data[0].id).toBe(readerId);
+  });
+
   it('requires a session for the gated routes', async () => {
     const author = await authorWithStory('author@test.com');
     const anon = agent();
@@ -181,6 +205,8 @@ describe('Follows (integration)', () => {
     await anon.put(`/users/${author.id}/follow`).expect(403); // CSRF before auth
     await anon.get('/users/me/following/ids').expect(401);
     await anon.get('/users/me/feed').expect(401);
+    await anon.get('/users/me/following').expect(401);
+    await anon.get('/users/me/followers').expect(401);
     // Stats stay public.
     await anon.get(`/users/${author.id}/follow-stats`).expect(200);
   });

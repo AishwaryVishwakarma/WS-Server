@@ -1,7 +1,7 @@
 import {BadRequestException, Injectable} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
-import {getPaginatedResponse} from 'src/utils/pagination';
+import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from 'src/users/users.service';
 import {NotificationsService} from 'src/notifications/notifications.service';
@@ -80,6 +80,47 @@ export class FollowsService {
       this.followsRepository.countBy({follower: {id: userId}}),
     ]);
     return {followers, following};
+  }
+
+  // The members this user follows (most-recent first). Self-only in the API —
+  // a follow graph's detail is private; only the aggregate counts are public.
+  async following(userId: string, page = 1, limit = 20) {
+    const {skip, take} = paginate(page, limit);
+    const [rows, total] = await this.followsRepository
+      .createQueryBuilder('follow')
+      .innerJoinAndSelect('follow.following', 'user')
+      .where('follow.follower = :userId', {userId})
+      .orderBy('follow.createdAt', 'DESC')
+      .skip(skip)
+      .take(take)
+      .getManyAndCount();
+
+    return getPaginatedResponse(
+      rows.map((row) => row.following),
+      total,
+      page,
+      limit
+    );
+  }
+
+  // The members who follow this user (most-recent first). Self-only.
+  async followers(userId: string, page = 1, limit = 20) {
+    const {skip, take} = paginate(page, limit);
+    const [rows, total] = await this.followsRepository
+      .createQueryBuilder('follow')
+      .innerJoinAndSelect('follow.follower', 'user')
+      .where('follow.following = :userId', {userId})
+      .orderBy('follow.createdAt', 'DESC')
+      .skip(skip)
+      .take(take)
+      .getManyAndCount();
+
+    return getPaginatedResponse(
+      rows.map((row) => row.follower),
+      total,
+      page,
+      limit
+    );
   }
 
   // The Following feed: approved stories by the authors this member follows,
