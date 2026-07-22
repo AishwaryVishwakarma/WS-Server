@@ -23,6 +23,8 @@ import {CommentReport} from './comments/entities/comment-report.entity';
 import {Notification} from './notifications/entities/notification.entity';
 import {NotificationsModule} from './notifications/notifications.module';
 import {MetricsModule} from './metrics/metrics.module';
+import {Bookmark} from './bookmarks/entities/bookmark.entity';
+import {BookmarksModule} from './bookmarks/bookmarks.module';
 import {migrations} from './database/migrations';
 
 @Module({
@@ -120,7 +122,15 @@ import {migrations} from './database/migrations';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
-        entities: [User, Story, Tag, Comment, CommentReport, Notification],
+        entities: [
+          User,
+          Story,
+          Tag,
+          Comment,
+          CommentReport,
+          Notification,
+          Bookmark,
+        ],
         synchronize: false,
         migrations,
         migrationsRun: true,
@@ -134,6 +144,7 @@ import {migrations} from './database/migrations';
     CommentsModule,
     NotificationsModule,
     MetricsModule,
+    BookmarksModule,
   ],
   controllers: [AppController],
   providers: [

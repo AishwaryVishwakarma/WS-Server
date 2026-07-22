@@ -55,8 +55,17 @@ npm run dev:infra:down
 ## Architecture
 
 - **Per-domain modules**: `auth`, `users`, `stories`, `tags`, `comments`,
-  `notifications`. Each domain splits controllers by audience: `public-*`,
-  `private-*` (`/me`), `admin-*`.
+  `notifications`, `bookmarks`. Each domain splits controllers by audience:
+  `public-*`, `private-*` (`/me`), `admin-*`.
+- **Bookmarks (reading list)**: a `Bookmark` (unique `(user, story)`, both
+  cascade-delete) is a member saving a story. All routes are gated
+  (`BookmarksController`, SessionAuthGuard): `PUT`/`DELETE /stories/:id/bookmark`
+  (idempotent add/remove — add validates visibility via
+  `StoriesService.findOneVisible`, so you can only save what you can see),
+  `GET /users/me/bookmarks` (the list — approved stories only, newest-saved
+  first, serialized like the public feed), and `GET /users/me/bookmarks/ids`
+  (the id set, fetched once so the web client shows bookmark state on cards/
+  reader without the hot feed query joining per-viewer).
 - **Notifications**: commenting creates a `Notification`, fired from
   `CommentsService.create` via `NotificationsService.createNotification`. Two
   `type`s: a **reply** notifies the parent thread's author (carrying `parentId`,

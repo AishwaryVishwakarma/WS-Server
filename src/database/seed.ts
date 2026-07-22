@@ -1,6 +1,7 @@
 import {NestFactory} from '@nestjs/core';
 import {DataSource} from 'typeorm';
 import {AppModule} from 'src/app.module';
+import {BookmarksService} from 'src/bookmarks/bookmarks.service';
 import {CommentsService} from 'src/comments/comments.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
@@ -444,6 +445,15 @@ const REPORTS: {commentContent: string; reporters: string[]}[] = [
   },
 ];
 
+// Reading-list saves, so /me and the bookmark toggles have data. Targets are
+// approved stories (a member can only bookmark what they can see).
+const BOOKMARKS: {reader: string; story: string}[] = [
+  {reader: 'alice@whisperingshadows.dev', story: "The Ferryman's Toll"},
+  {reader: 'alice@whisperingshadows.dev', story: 'Whisper in the Walls'},
+  {reader: 'bob@whisperingshadows.dev', story: 'Whisper in the Walls'},
+  {reader: 'carol@whisperingshadows.dev', story: "The Ferryman's Toll"},
+];
+
 async function wipeDatabase(dataSource: DataSource) {
   const tables: {table_name: string}[] = await dataSource.query(
     'SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = DATABASE()'
@@ -481,6 +491,7 @@ async function seed() {
     const tagsService = app.get(TagsService);
     const storiesService = app.get(StoriesService);
     const commentsService = app.get(CommentsService);
+    const bookmarksService = app.get(BookmarksService);
 
     const existingAdmin = await dataSource
       .getRepository(User)
@@ -593,6 +604,17 @@ async function seed() {
       reportedComments++;
     }
 
+    // Bookmarks (through the real service so the visibility check and the
+    // per-member unique constraint behave as in production)
+    let bookmarks = 0;
+    for (const {reader, story} of BOOKMARKS) {
+      const storyId = storyIdsByTitle.get(story);
+      const readerId = usersByEmail.get(reader)?.id;
+      if (!storyId || !readerId) continue;
+      await bookmarksService.add(readerId, storyId);
+      bookmarks++;
+    }
+
     const statusSummary = [...statusCounts.entries()]
       .map(([status, count]) => `${count} ${status}`)
       .join(', ');
@@ -601,7 +623,7 @@ async function seed() {
       `Seeded ${usersByEmail.size} users, ${tagIdsByName.size} tags, ` +
         `${storyIdsByTitle.size} stories (${statusSummary}), ` +
         `${allComments.length} comments + ${REPLIES.length} replies ` +
-        `(${reportedComments} reported)`
+        `(${reportedComments} reported), ${bookmarks} bookmarks`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`
