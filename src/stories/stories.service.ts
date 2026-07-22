@@ -45,6 +45,17 @@ interface ViewSession {
 // without bound; dropping the oldest ids just means a re-read could recount.
 const MAX_TRACKED_VIEWS = 200;
 
+// Sorts that order by a numeric counter (DESC) rather than createdAt. Maps to
+// the story column; used by the order-by, the keyset predicate, and the cursor
+// key so all three stay consistent. `newest`/`oldest` are absent (they sort on
+// createdAt).
+const COUNT_SORT_COLUMN: Partial<
+  Record<StorySortOption, 'commentCount' | 'viewCount'>
+> = {
+  'most-commented': 'commentCount',
+  'most-read': 'viewCount',
+};
+
 // Free accounts can have up to this many stories in the publication pipeline
 // (submitted, live, or flagged) at once. Drafts and rejected stories don't
 // count, so authors can keep working — the cap is on how much they push to the
@@ -303,8 +314,9 @@ export class StoriesService {
       // Same rationale as findOne: keep stories by soft-deleted authors.
       .withDeleted();
 
-    if (sort === 'most-commented') {
-      qb.orderBy('story.commentCount', 'DESC').addOrderBy('story.id', 'DESC');
+    const countColumn = sort ? COUNT_SORT_COLUMN[sort] : undefined;
+    if (countColumn) {
+      qb.orderBy(`story.${countColumn}`, 'DESC').addOrderBy('story.id', 'DESC');
     } else {
       const direction = sort === 'oldest' ? 'ASC' : 'DESC';
       qb.orderBy('story.createdAt', direction).addOrderBy('story.id', direction);
@@ -458,8 +470,9 @@ export class StoriesService {
     last: Story,
     raw: Record<string, unknown>[]
   ): string {
-    if (sort === 'most-commented') {
-      return String(last.commentCount);
+    const countColumn = COUNT_SORT_COLUMN[sort];
+    if (countColumn) {
+      return String(last[countColumn]);
     }
     // Joins fan the raw rows out per tag, so match on the root id rather than
     // trusting positional alignment with `entities`.
@@ -477,11 +490,11 @@ export class StoriesService {
   ): void {
     const ascending = sort === 'oldest';
     const cmp = ascending ? '>' : '<';
-    const column =
-      sort === 'most-commented' ? 'story.commentCount' : 'story.createdAt';
-    // commentCount compares as a number; createdAt as the datetime(6) string
+    const countColumn = COUNT_SORT_COLUMN[sort];
+    const column = countColumn ? `story.${countColumn}` : 'story.createdAt';
+    // A counter compares as a number; createdAt as the datetime(6) string
     // MySQL parses back to full precision.
-    const key = sort === 'most-commented' ? Number(cursor.k) : cursor.k;
+    const key = countColumn ? Number(cursor.k) : cursor.k;
 
     qb.andWhere(
       `(${column} ${cmp} :ck OR (${column} = :ck AND story.id ${cmp} :cid))`,

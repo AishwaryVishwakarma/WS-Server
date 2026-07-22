@@ -23,6 +23,7 @@ import {Comment} from 'src/comments/entities/comment.entity';
 // hot listings from a full scan + filesort into an index range scan.
 @Index('IDX_story_status_createdAt', ['status', 'createdAt'])
 @Index('IDX_story_status_commentCount', ['status', 'commentCount'])
+@Index('IDX_story_status_viewCount', ['status', 'viewCount'])
 export class Story {
   @PrimaryGeneratedColumn('uuid')
   id: string;

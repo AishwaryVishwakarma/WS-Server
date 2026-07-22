@@ -701,6 +701,25 @@ describe('Stories (integration)', () => {
       expect(response.body.data[0].id).toBe(loud.id);
       expect(response.body.data[0].commentCount).toBe(1);
     });
+
+    it('sorts by most-read', async () => {
+      const {story: quiet} = await createStory(STORY_PAYLOAD, 'a@test.com');
+      const admin = await approveStory(quiet.id);
+      const {story: popular} = await createStory(
+        {...STORY_PAYLOAD, title: 'The Popular One'},
+        'b@test.com'
+      );
+      await approveStory(popular.id, admin);
+
+      // Two distinct sessions read the popular story; one reads the quiet one.
+      await agent().post(`/stories/${popular.id}/view`).expect(200);
+      await agent().post(`/stories/${popular.id}/view`).expect(200);
+      await agent().post(`/stories/${quiet.id}/view`).expect(200);
+
+      const response = await agent().get('/stories?sort=most-read').expect(200);
+      expect(response.body.data[0].id).toBe(popular.id);
+      expect(response.body.data[0].viewCount).toBe(2);
+    });
   });
 
   describe('read counts (POST /stories/:id/view)', () => {

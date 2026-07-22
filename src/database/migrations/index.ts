@@ -14,6 +14,7 @@ import {AddPerformanceIndexes1784400000000} from './1784400000000-AddPerformance
 import {AddBookmarks1784500000000} from './1784500000000-AddBookmarks';
 import {AddStoryViewCount1784600000000} from './1784600000000-AddStoryViewCount';
 import {AddFollows1784700000000} from './1784700000000-AddFollows';
+import {AddStoryViewCountIndex1784800000000} from './1784800000000-AddStoryViewCountIndex';
 
 export const migrations = [
   Baseline1783883957794,
@@ -25,4 +26,5 @@ export const migrations = [
   AddBookmarks1784500000000,
   AddStoryViewCount1784600000000,
   AddFollows1784700000000,
+  AddStoryViewCountIndex1784800000000,
 ];
