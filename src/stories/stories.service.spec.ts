@@ -13,6 +13,7 @@ describe('StoriesService', () => {
   let repository: {
     create: jest.Mock;
     save: jest.Mock;
+    count: jest.Mock;
     findAndCount: jest.Mock;
     findOneOrFail: jest.Mock;
     delete: jest.Mock;
@@ -26,6 +27,8 @@ describe('StoriesService', () => {
     repository = {
       create: jest.fn((data) => data),
       save: jest.fn((story) => Promise.resolve(story)),
+      // Publish-limit probe (_assertWithinPublishLimit) — under the free cap.
+      count: jest.fn().mockResolvedValue(0),
       findAndCount: jest.fn().mockResolvedValue([[], 0]),
       findOneOrFail: jest.fn(),
       delete: jest.fn(),
