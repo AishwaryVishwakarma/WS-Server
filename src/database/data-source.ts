@@ -8,6 +8,7 @@ import {CommentReport} from 'src/comments/entities/comment-report.entity';
 import {Notification} from 'src/notifications/entities/notification.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
+import {StoryLike} from 'src/likes/entities/story-like.entity';
 import {migrations} from './migrations';
 
 // CLI-facing DataSource for the typeorm binary (migration:generate/run/
@@ -29,6 +30,7 @@ export default new DataSource({
     Notification,
     Bookmark,
     Follow,
+    StoryLike,
   ],
   migrations,
 });

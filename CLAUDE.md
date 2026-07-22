@@ -55,8 +55,16 @@ npm run dev:infra:down
 ## Architecture
 
 - **Per-domain modules**: `auth`, `users`, `stories`, `tags`, `comments`,
-  `notifications`, `bookmarks`, `follows`. Each domain splits controllers by
-  audience: `public-*`, `private-*` (`/me`), `admin-*`.
+  `notifications`, `bookmarks`, `follows`, `likes`. Each domain splits
+  controllers by audience: `public-*`, `private-*` (`/me`), `admin-*`.
+- **Likes**: a `StoryLike` (table `story_like` — `like` is a MySQL reserved
+  word; unique `(user, story)`, both cascade-delete) is a member liking a
+  story. Gated `LikesController`: `PUT`/`DELETE /stories/:id/like` (idempotent;
+  like validates visibility) and `GET /users/me/likes/ids` (button state).
+  `story.likeCount` is a denormalized counter maintained by `LikesService` on
+  like/unlike (increment/decrement, mirroring `commentCount`), exposed on the
+  story DTO and drives the `most-liked` sort (see the `COUNT_SORT_COLUMN` map in
+  `StoriesService`, backed by a `(status, likeCount)` index).
 - **Follows**: a `Follow` (unique `(follower, following)`, both cascade-delete)
   is one member following another. `FollowsController` mixes gated and public
   routes via method-level guards: `PUT`/`DELETE /users/:id/follow` (idempotent;

@@ -50,10 +50,11 @@ const MAX_TRACKED_VIEWS = 200;
 // key so all three stay consistent. `newest`/`oldest` are absent (they sort on
 // createdAt).
 const COUNT_SORT_COLUMN: Partial<
-  Record<StorySortOption, 'commentCount' | 'viewCount'>
+  Record<StorySortOption, 'commentCount' | 'viewCount' | 'likeCount'>
 > = {
   'most-commented': 'commentCount',
   'most-read': 'viewCount',
+  'most-liked': 'likeCount',
 };
 
 // Free accounts can have up to this many stories in the publication pipeline
@@ -79,6 +80,7 @@ const SELECTED_FIELDS = {
   wordCount: true,
   commentCount: true,
   viewCount: true,
+  likeCount: true,
   createdAt: true,
   updatedAt: true,
 };

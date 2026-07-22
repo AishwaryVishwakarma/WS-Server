@@ -3,6 +3,7 @@ import {DataSource} from 'typeorm';
 import {AppModule} from 'src/app.module';
 import {BookmarksService} from 'src/bookmarks/bookmarks.service';
 import {FollowsService} from 'src/follows/follows.service';
+import {LikesService} from 'src/likes/likes.service';
 import {CommentsService} from 'src/comments/comments.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {Story} from 'src/stories/entities/story.entity';
@@ -457,6 +458,16 @@ const VIEW_COUNTS: {story: string; views: number}[] = [
   {story: 'Cold Spots', views: 129},
 ];
 
+// Likes on a few approved stories (each reader likes what they can see) so the
+// like counts and "most-liked" sort have data.
+const LIKES: {reader: string; story: string}[] = [
+  {reader: 'alice@whisperingshadows.dev', story: "The Ferryman's Toll"},
+  {reader: 'bob@whisperingshadows.dev', story: "The Ferryman's Toll"},
+  {reader: 'carol@whisperingshadows.dev', story: "The Ferryman's Toll"},
+  {reader: 'alice@whisperingshadows.dev', story: 'Whisper in the Walls'},
+  {reader: 'bob@whisperingshadows.dev', story: 'Cold Spots'},
+];
+
 // A small follow graph so the Following feed and follower counts have data.
 const FOLLOWS: {follower: string; following: string}[] = [
   {
@@ -525,6 +536,7 @@ async function seed() {
     const commentsService = app.get(CommentsService);
     const bookmarksService = app.get(BookmarksService);
     const followsService = app.get(FollowsService);
+    const likesService = app.get(LikesService);
 
     const existingAdmin = await dataSource
       .getRepository(User)
@@ -644,6 +656,16 @@ async function seed() {
       if (storyId) await storyRepository.update(storyId, {viewCount: views});
     }
 
+    // Likes (through the real service — validates visibility + keeps likeCount)
+    let likes = 0;
+    for (const {reader, story} of LIKES) {
+      const storyId = storyIdsByTitle.get(story);
+      const readerId = usersByEmail.get(reader)?.id;
+      if (!storyId || !readerId) continue;
+      await likesService.like(readerId, storyId);
+      likes++;
+    }
+
     // Follows (through the real service — validates target + unique pair)
     let follows = 0;
     for (const {follower, following} of FOLLOWS) {
@@ -673,7 +695,8 @@ async function seed() {
       `Seeded ${usersByEmail.size} users, ${tagIdsByName.size} tags, ` +
         `${storyIdsByTitle.size} stories (${statusSummary}), ` +
         `${allComments.length} comments + ${REPLIES.length} replies ` +
-        `(${reportedComments} reported), ${bookmarks} bookmarks, ${follows} follows`
+        `(${reportedComments} reported), ${bookmarks} bookmarks, ` +
+        `${follows} follows, ${likes} likes`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`

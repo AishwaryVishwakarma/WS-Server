@@ -15,6 +15,7 @@ export const STORY_SORT_OPTIONS = [
   'oldest',
   'most-commented',
   'most-read',
+  'most-liked',
 ] as const;
 export type StorySortOption = (typeof STORY_SORT_OPTIONS)[number];
 

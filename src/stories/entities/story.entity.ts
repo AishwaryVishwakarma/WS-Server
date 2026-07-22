@@ -24,6 +24,7 @@ import {Comment} from 'src/comments/entities/comment.entity';
 @Index('IDX_story_status_createdAt', ['status', 'createdAt'])
 @Index('IDX_story_status_commentCount', ['status', 'commentCount'])
 @Index('IDX_story_status_viewCount', ['status', 'viewCount'])
+@Index('IDX_story_status_likeCount', ['status', 'likeCount'])
 export class Story {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -58,6 +59,10 @@ export class Story {
    *  per viewer session, approved stories only, self-views excluded). */
   @Column({type: 'int', default: 0})
   viewCount: number;
+
+  /** Denormalized like counter, maintained by LikesService (like/unlike). */
+  @Column({type: 'int', default: 0})
+  likeCount: number;
 
   @Column({
     type: 'enum',
