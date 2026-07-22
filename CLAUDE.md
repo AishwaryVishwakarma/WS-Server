@@ -94,12 +94,14 @@ npm run dev:infra:down
   routes). Deduped per browser session (`session.viewedStoryIds`, capped);
   approved stories only, and the author's own views don't count. The count
   rides `StoryPreviewResponseDto`, so it shows on cards and the reader.
-- **Notifications**: three `type`s. A **reply** notifies the parent thread's
+- **Notifications**: four `type`s. A **reply** notifies the parent thread's
   author (carrying `parentId`, the top-level thread, so the reader can expand it
   before scrolling); a top-level **comment** notifies the story's author (both
   fired from `CommentsService.create`); a **follow** notifies the followed
-  author (fired from `FollowsService.follow`, only on a genuinely new follow).
-  All skip self-actions and removed recipients. The row denormalizes its display
+  author (fired from `FollowsService.follow`, only on a genuinely new follow);
+  a **like** notifies the story's author (fired from `LikesService.like`, only
+  on a genuinely new like, links to the story). All skip self-actions and
+  removed recipients. The row denormalizes its display
   fields (`actorName`, `actorId`, `storyId/Title`, `commentId`, `parentId`) so
   the `/users/me/notifications` feed needs no joins and survives later deletes;
   the story/comment fields are **nullable** (a follow has none — it links to the

@@ -3,6 +3,8 @@ import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
 import {StoriesService} from 'src/stories/stories.service';
 import {Story} from 'src/stories/entities/story.entity';
+import {UsersService} from 'src/users/users.service';
+import {NotificationsService} from 'src/notifications/notifications.service';
 import type {Role} from 'src/users/enums/role';
 import {StoryLike} from './entities/story-like.entity';
 
@@ -11,15 +13,23 @@ export class LikesService {
   constructor(
     @InjectRepository(StoryLike)
     private readonly likesRepository: Repository<StoryLike>,
-    private readonly storiesService: StoriesService
+    private readonly storiesService: StoriesService,
+    private readonly usersService: UsersService,
+    private readonly notificationsService: NotificationsService
   ) {}
 
   // Like a story. Validates it's visible to the member (findOneVisible 404s
   // otherwise), then upserts — the unique (user, story) constraint makes a
   // repeat like a no-op, so the endpoint is idempotent and the denormalized
   // story.likeCount only moves on a genuinely new like (mirrors commentCount).
+  // A genuinely new like notifies the author (best-effort; skips self-likes and
+  // removed authors).
   async like(userId: string, storyId: string, role?: Role): Promise<void> {
-    await this.storiesService.findOneVisible(storyId, userId, role);
+    const story = await this.storiesService.findOneVisible(
+      storyId,
+      userId,
+      role
+    );
 
     const exists = await this.likesRepository.existsBy({
       user: {id: userId},
@@ -39,6 +49,18 @@ export class LikesService {
       'likeCount',
       1
     );
+
+    if (story.author && !story.author.deletedAt && story.author.id !== userId) {
+      const liker = await this.usersService.findOne(userId);
+      await this.notificationsService.createNotification({
+        type: 'like',
+        recipientId: story.author.id,
+        actorName: liker.name,
+        actorId: userId,
+        storyId: story.id,
+        storyTitle: story.title,
+      });
+    }
   }
 
   // Remove a like. Decrements the counter only when a row was actually deleted,

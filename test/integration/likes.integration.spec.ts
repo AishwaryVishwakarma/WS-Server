@@ -36,7 +36,7 @@ describe('Likes (integration)', () => {
 
   const approvedStory = async () => {
     const author = agent();
-    await registerUser(author, {email: 'author@test.com'});
+    await registerUser(author, {email: 'author@test.com', name: 'author'});
     const authorToken = await getCsrfToken(author);
     const {body: story} = await author
       .post('/stories')
@@ -52,7 +52,7 @@ describe('Likes (integration)', () => {
       .send({status: StoryStatus.Approved})
       .expect(200);
 
-    return {story, admin, adminToken};
+    return {story, author, authorToken, admin, adminToken};
   };
 
   const reader = async (email = 'reader@test.com') => {
@@ -149,6 +149,31 @@ describe('Likes (integration)', () => {
     const feed = await agent().get('/stories?sort=most-liked').expect(200);
     expect(feed.body.data[0].id).toBe(popular.id);
     expect(feed.body.data[0].likeCount).toBe(2);
+  });
+
+  it('notifies the author when their story is liked (once, not on self/repeat)', async () => {
+    const {story, author, authorToken} = await approvedStory();
+
+    // The author liking their own story does not notify.
+    await author
+      .put(`/stories/${story.id}/like`)
+      .set('x-csrf-token', authorToken)
+      .expect(204);
+
+    // A reader likes it twice — one notification, no duplicate.
+    const {client, token} = await reader();
+    const like = () =>
+      client.put(`/stories/${story.id}/like`).set('x-csrf-token', token);
+    await like().expect(204);
+    await like().expect(204);
+
+    const notifs = await author.get('/users/me/notifications').expect(200);
+    const likes = notifs.body.data.filter(
+      (n: {type: string}) => n.type === 'like'
+    );
+    expect(likes).toHaveLength(1);
+    expect(likes[0].storyId).toBe(story.id);
+    expect(likes[0].actorId).toBeTruthy();
   });
 
   it('cannot like a story that is not visible (404), and gates anonymous', async () => {
