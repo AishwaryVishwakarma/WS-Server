@@ -62,6 +62,14 @@ const TAG_NAMES = [
   'psychological',
   'folk-tale',
   'haunted-places',
+  'supernatural',
+  'gothic',
+  'urban-legend',
+  'creature',
+  'cosmic-horror',
+  'cursed-objects',
+  'body-horror',
+  'survival',
 ];
 
 const STORIES: {
@@ -271,7 +279,12 @@ function generateStories(): typeof STORIES {
       title,
       content,
       scareLevel: (i % 5) + 1,
-      tags: [TAG_NAMES[i % TAG_NAMES.length]],
+      // Two distinct tags each, so stories are multi-tagged and every tag in
+      // the catalogue picks up a healthy story count.
+      tags: [
+        TAG_NAMES[i % TAG_NAMES.length],
+        TAG_NAMES[(i + 4) % TAG_NAMES.length],
+      ],
       status: generatedStatus(i),
     };
   });
@@ -284,7 +297,39 @@ const COMMENT_REACTIONS = [
   'This is going to live in my head rent-free. Like the thing in the story.',
   'Quietly the scariest thing on the shelves this month.',
   'The detail about the repainting broke me.',
+  'I did not breathe for the last three paragraphs.',
+  'The ending recontextualises the whole thing. Chef’s kiss.',
+  'My smart speaker turned itself on while I was reading this. Coincidence, surely.',
+  'Sent this to my sister. She has stopped speaking to me. Worth it.',
+  'The restraint here is the scary part — it never over-explains.',
+  'Bookmarking to never read again.',
 ];
+
+// Only approved stories — a member can't comment on one they can't see
+// (pending/rejected/flagged are gated to their author/admin).
+const SPREAD_COMMENT_TARGETS = [
+  "The Ferryman's Toll",
+  'Whisper in the Walls',
+  'Cold Spots',
+];
+
+// A couple of comments on several other stories, so discussion lives on more
+// than one thread (each of the feed's stories, not just Hollow Lane).
+function spreadComments(): typeof COMMENTS {
+  const voices = [
+    'bob@whisperingshadows.dev',
+    'carol@whisperingshadows.dev',
+    'alice@whisperingshadows.dev',
+  ];
+  let line = 0;
+  return SPREAD_COMMENT_TARGETS.flatMap((story, t) =>
+    Array.from({length: 2}, (_, i) => ({
+      story,
+      author: voices[(t + i) % voices.length],
+      content: COMMENT_REACTIONS[line++ % COMMENT_REACTIONS.length],
+    }))
+  );
+}
 
 // Pile comments onto one story so its thread paginates.
 function generateComments(): typeof COMMENTS {
@@ -509,7 +554,11 @@ async function seed() {
     }
 
     // Comments
-    const allComments = [...COMMENTS, ...generateComments()];
+    const allComments = [
+      ...COMMENTS,
+      ...generateComments(),
+      ...spreadComments(),
+    ];
     const commentIdsByContent = new Map<string, string>();
     for (const {story, author, content} of allComments) {
       const comment = await commentsService.create(
