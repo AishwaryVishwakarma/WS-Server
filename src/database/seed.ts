@@ -2,6 +2,7 @@ import {NestFactory} from '@nestjs/core';
 import {DataSource} from 'typeorm';
 import {AppModule} from 'src/app.module';
 import {BookmarksService} from 'src/bookmarks/bookmarks.service';
+import {FollowsService} from 'src/follows/follows.service';
 import {CommentsService} from 'src/comments/comments.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {Story} from 'src/stories/entities/story.entity';
@@ -456,6 +457,26 @@ const VIEW_COUNTS: {story: string; views: number}[] = [
   {story: 'Cold Spots', views: 129},
 ];
 
+// A small follow graph so the Following feed and follower counts have data.
+const FOLLOWS: {follower: string; following: string}[] = [
+  {
+    follower: 'alice@whisperingshadows.dev',
+    following: 'bob@whisperingshadows.dev',
+  },
+  {
+    follower: 'alice@whisperingshadows.dev',
+    following: 'carol@whisperingshadows.dev',
+  },
+  {
+    follower: 'bob@whisperingshadows.dev',
+    following: 'carol@whisperingshadows.dev',
+  },
+  {
+    follower: 'carol@whisperingshadows.dev',
+    following: 'alice@whisperingshadows.dev',
+  },
+];
+
 // Reading-list saves, so /me and the bookmark toggles have data. Targets are
 // approved stories (a member can only bookmark what they can see).
 const BOOKMARKS: {reader: string; story: string}[] = [
@@ -503,6 +524,7 @@ async function seed() {
     const storiesService = app.get(StoriesService);
     const commentsService = app.get(CommentsService);
     const bookmarksService = app.get(BookmarksService);
+    const followsService = app.get(FollowsService);
 
     const existingAdmin = await dataSource
       .getRepository(User)
@@ -622,6 +644,16 @@ async function seed() {
       if (storyId) await storyRepository.update(storyId, {viewCount: views});
     }
 
+    // Follows (through the real service — validates target + unique pair)
+    let follows = 0;
+    for (const {follower, following} of FOLLOWS) {
+      const followerId = usersByEmail.get(follower)?.id;
+      const followingId = usersByEmail.get(following)?.id;
+      if (!followerId || !followingId) continue;
+      await followsService.follow(followerId, followingId);
+      follows++;
+    }
+
     // Bookmarks (through the real service so the visibility check and the
     // per-member unique constraint behave as in production)
     let bookmarks = 0;
@@ -641,7 +673,7 @@ async function seed() {
       `Seeded ${usersByEmail.size} users, ${tagIdsByName.size} tags, ` +
         `${storyIdsByTitle.size} stories (${statusSummary}), ` +
         `${allComments.length} comments + ${REPLIES.length} replies ` +
-        `(${reportedComments} reported), ${bookmarks} bookmarks`
+        `(${reportedComments} reported), ${bookmarks} bookmarks, ${follows} follows`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`

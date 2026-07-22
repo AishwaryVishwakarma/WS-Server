@@ -25,6 +25,8 @@ import {NotificationsModule} from './notifications/notifications.module';
 import {MetricsModule} from './metrics/metrics.module';
 import {Bookmark} from './bookmarks/entities/bookmark.entity';
 import {BookmarksModule} from './bookmarks/bookmarks.module';
+import {Follow} from './follows/entities/follow.entity';
+import {FollowsModule} from './follows/follows.module';
 import {migrations} from './database/migrations';
 
 @Module({
@@ -130,6 +132,7 @@ import {migrations} from './database/migrations';
           CommentReport,
           Notification,
           Bookmark,
+          Follow,
         ],
         synchronize: false,
         migrations,
@@ -145,6 +148,7 @@ import {migrations} from './database/migrations';
     NotificationsModule,
     MetricsModule,
     BookmarksModule,
+    FollowsModule,
   ],
   controllers: [AppController],
   providers: [

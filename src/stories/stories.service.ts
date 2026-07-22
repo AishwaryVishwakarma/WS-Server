@@ -349,6 +349,26 @@ export class StoriesService {
     return getPaginatedResponse<Story>(stories, total, page, limit);
   }
 
+  // Approved stories by any of the given authors, newest first — the Following
+  // feed. Offset-paged (numbered), reusing the shared approved query. Callers
+  // must pass a non-empty id list (an empty `IN ()` is invalid SQL); the
+  // follows service short-circuits the empty case.
+  async findApprovedByAuthorIds(
+    authorIds: string[],
+    page: number = 1,
+    limit: number = 20
+  ) {
+    const {skip, take} = paginate(page, limit);
+
+    const [stories, total] = await this._buildApprovedQuery({})
+      .andWhere('author.id IN (:...authorIds)', {authorIds})
+      .skip(skip)
+      .take(take)
+      .getManyAndCount();
+
+    return getPaginatedResponse<Story>(stories, total, page, limit);
+  }
+
   // Keyset (cursor) paging for the infinite feed. Instead of OFFSET (which
   // scans and discards every earlier row), it seeks straight past the cursor
   // via `(sortKey, id)`, so page N costs the same as page 1. `total` is

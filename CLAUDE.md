@@ -55,8 +55,18 @@ npm run dev:infra:down
 ## Architecture
 
 - **Per-domain modules**: `auth`, `users`, `stories`, `tags`, `comments`,
-  `notifications`, `bookmarks`. Each domain splits controllers by audience:
-  `public-*`, `private-*` (`/me`), `admin-*`.
+  `notifications`, `bookmarks`, `follows`. Each domain splits controllers by
+  audience: `public-*`, `private-*` (`/me`), `admin-*`.
+- **Follows**: a `Follow` (unique `(follower, following)`, both cascade-delete)
+  is one member following another. `FollowsController` mixes gated and public
+  routes via method-level guards: `PUT`/`DELETE /users/:id/follow` (idempotent;
+  follow rejects self-follows and validates the target exists),
+  `GET /users/me/following/ids` (button state), `GET /users/me/feed` (the
+  Following feed — approved stories by followed authors, via
+  `StoriesService.findApprovedByAuthorIds`), and public
+  `GET /users/:id/follow-stats` (`{followers, following}` counts). Follow
+  *notifications* are intentionally deferred (the notification row denormalizes
+  story fields NOT NULL, so a follow type needs its own schema change).
 - **Bookmarks (reading list)**: a `Bookmark` (unique `(user, story)`, both
   cascade-delete) is a member saving a story. All routes are gated
   (`BookmarksController`, SessionAuthGuard): `PUT`/`DELETE /stories/:id/bookmark`
