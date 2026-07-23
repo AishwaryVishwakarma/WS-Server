@@ -865,6 +865,55 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('trending sort', () => {
+    it('ranks recent stories by the engagement blend', async () => {
+      const {story: quiet} = await createStory(STORY_PAYLOAD, 'tq@test.com');
+      const admin = await approveStory(quiet.id);
+      const {
+        client,
+        token,
+        story: hot,
+      } = await createStory({...STORY_PAYLOAD, title: 'The Hot One'}, 'th@test.com');
+      await approveStory(hot.id, admin);
+
+      // Engagement on the hot story: a comment (weighted highest) + two reads.
+      await client
+        .post('/comments')
+        .set('x-csrf-token', token)
+        .send({content: 'Buzz', storyId: hot.id})
+        .expect(201);
+      await agent().post(`/stories/${hot.id}/view`).expect(200);
+      await agent().post(`/stories/${hot.id}/view`).expect(200);
+
+      const res = await agent().get('/stories?sort=trending').expect(200);
+      expect(res.body.data[0].id).toBe(hot.id);
+    });
+
+    it('excludes stories older than the trending window', async () => {
+      const {story: recent} = await createStory(STORY_PAYLOAD, 'tr@test.com');
+      const admin = await approveStory(recent.id);
+      const {story: stale} = await createStory(
+        {...STORY_PAYLOAD, title: 'Faded Glory'},
+        'ts@test.com'
+      );
+      await approveStory(stale.id, admin);
+
+      // Backdate the stale story beyond the window and give it heavy engagement
+      // that would otherwise dominate — the window must still exclude it.
+      const twentyDaysAgo = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+      await storyRepository().update(stale.id, {
+        createdAt: twentyDaysAgo,
+        viewCount: 999,
+        likeCount: 999,
+      });
+
+      const res = await agent().get('/stories?sort=trending').expect(200);
+      const ids = res.body.data.map((s: {id: string}) => s.id);
+      expect(ids).toContain(recent.id);
+      expect(ids).not.toContain(stale.id);
+    });
+  });
+
   describe('read counts (POST /stories/:id/view)', () => {
     // Approve a story and return it plus its author agent.
     const setup = async () => {

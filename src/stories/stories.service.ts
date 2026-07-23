@@ -60,6 +60,16 @@ const COUNT_SORT_COLUMN: Partial<
   'most-liked': 'likeCount',
 };
 
+// "Trending" = the most-engaged approved stories from a recent window. Recency
+// is a fixed window (not a decaying score), so the ordering key stays a stable
+// integer — keyset-pageable exactly like the count sorts (a decaying score
+// would drift between page fetches and duplicate the boundary row). The window
+// also keeps the (status, createdAt) index in play to bound the sort. Comments
+// weigh most (the most effortful engagement), then likes, then views.
+export const TRENDING_WINDOW_DAYS = 14;
+const TRENDING_SCORE_SQL =
+  '(story.likeCount * 3 + story.commentCount * 4 + story.viewCount)';
+
 // Free accounts can have up to this many stories in the publication pipeline
 // (submitted, live, or flagged) at once. Drafts and rejected stories don't
 // count, so authors can keep working — the cap is on how much they push to the
@@ -332,7 +342,20 @@ export class StoriesService {
       .withDeleted();
 
     const countColumn = sort ? COUNT_SORT_COLUMN[sort] : undefined;
-    if (countColumn) {
+    if (sort === 'trending') {
+      // Recent window (bounds the filesort via the status+createdAt index),
+      // then the engagement blend, id-tiebroken like the count sorts. Order by
+      // the *aliased* score, not the raw expression: TypeORM splits a raw
+      // `orderBy` on the first dot to find the join alias, so a leading
+      // `(story.likeCount …)` is mis-read as an alias — an aliased select is the
+      // supported path for ordering (and keyset-paging) on a computed column.
+      qb.andWhere(
+        `story.createdAt >= (NOW() - INTERVAL ${TRENDING_WINDOW_DAYS} DAY)`
+      )
+        .addSelect(TRENDING_SCORE_SQL, 'trendingScore')
+        .orderBy('trendingScore', 'DESC')
+        .addOrderBy('story.id', 'DESC');
+    } else if (countColumn) {
       qb.orderBy(`story.${countColumn}`, 'DESC').addOrderBy('story.id', 'DESC');
     } else {
       const direction = sort === 'oldest' ? 'ASC' : 'DESC';
@@ -428,6 +451,9 @@ export class StoriesService {
       'story_created_raw'
     );
 
+    // The trending score rides the projection as `trendingScore` (added in
+    // _buildApprovedQuery); that raw value is what the cursor carries.
+
     const decoded = cursor ? decodeStoryCursor(cursor) : null;
     if (decoded) {
       this._applyKeyset(qb, sort, decoded);
@@ -487,13 +513,20 @@ export class StoriesService {
     last: Story,
     raw: Record<string, unknown>[]
   ): string {
+    // Joins fan the raw rows out per tag, so match on the root id rather than
+    // trusting positional alignment with `entities`.
+    const row = raw.find((r) => r.story_id === last.id);
+
+    // Trending orders by the computed blend, carried in the raw projection
+    // under the `trendingScore` select alias.
+    if (sort === 'trending') {
+      return String(row?.trendingScore ?? 0);
+    }
+
     const countColumn = COUNT_SORT_COLUMN[sort];
     if (countColumn) {
       return String(last[countColumn]);
     }
-    // Joins fan the raw rows out per tag, so match on the root id rather than
-    // trusting positional alignment with `entities`.
-    const row = raw.find((r) => r.story_id === last.id);
     return String(row?.story_created_raw ?? last.createdAt.toISOString());
   }
 
@@ -508,10 +541,21 @@ export class StoriesService {
     const ascending = sort === 'oldest';
     const cmp = ascending ? '>' : '<';
     const countColumn = COUNT_SORT_COLUMN[sort];
-    const column = countColumn ? `story.${countColumn}` : 'story.createdAt';
-    // A counter compares as a number; createdAt as the datetime(6) string
-    // MySQL parses back to full precision.
-    const key = countColumn ? Number(cursor.k) : cursor.k;
+    // Trending compares on the same blend expression it orders by; count sorts
+    // on their column (both numeric); createdAt on the datetime(6) string MySQL
+    // parses back to full precision.
+    let column: string;
+    let key: string | number;
+    if (sort === 'trending') {
+      column = TRENDING_SCORE_SQL;
+      key = Number(cursor.k);
+    } else if (countColumn) {
+      column = `story.${countColumn}`;
+      key = Number(cursor.k);
+    } else {
+      column = 'story.createdAt';
+      key = cursor.k;
+    }
 
     qb.andWhere(
       `(${column} ${cmp} :ck OR (${column} = :ck AND story.id ${cmp} :cid))`,

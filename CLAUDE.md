@@ -16,13 +16,21 @@ identifies the viewer, and stale/revoked sessions degrade to anonymous), while
 every mutation sits behind `SessionAuthGuard`. Public reads carry a 60/min
 `@Throttle` override on top of the global 10/min ThrottlerGuard. Tags carry a
 URL `slug` generated in the entity hook, and `GET /stories` accepts
-`?tag=<slug>&search=&scareLevel=&sort=newest|oldest|most-commented`. It is
-**dual-mode paging**: an explicit `?page=` returns the numbered offset envelope
-(`{data,total,page,totalPages}`) for the tag/author shelves, while *omitting*
-`page` returns a keyset page (`{data,nextCursor,total?}`) for the infinite feed
-— an opaque `?cursor=` seeks past the last row via `(sortKey, id)` instead of a
-growing OFFSET, and `total` rides only the first page. See
+`?tag=<slug>&search=&scareLevel=&sort=newest|oldest|most-commented|most-read|most-liked|trending`.
+It is **dual-mode paging**: an explicit `?page=` returns the numbered offset
+envelope (`{data,total,page,totalPages}`) for the tag/author shelves, while
+*omitting* `page` returns a keyset page (`{data,nextCursor,total?}`) for the
+infinite feed — an opaque `?cursor=` seeks past the last row via `(sortKey, id)`
+instead of a growing OFFSET, and `total` rides only the first page. See
 `src/stories/story-cursor.ts` and `StoriesService.findApprovedFeed`.
+**Trending** (`sort=trending`) ranks approved stories from the last
+`TRENDING_WINDOW_DAYS` (14) by an engagement blend
+(`likeCount*3 + commentCount*4 + viewCount`). Recency is the fixed window, not a
+decaying score, so the ordering key stays a stable integer — keyset-pageable
+like the count sorts (a decaying score would drift between fetches and duplicate
+the boundary row). Ordered by the score under a SELECT alias (`trendingScore`),
+never the raw `(story.…)` expression, which TypeORM mis-parses as a join alias.
+The home "Trending" strip reuses this via `sort=trending&page=1`.
 
 ## Commands
 
