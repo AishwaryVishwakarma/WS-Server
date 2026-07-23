@@ -16,6 +16,7 @@ import {
 import {StoryStatus} from '../enums/story-status.enum';
 import {Tag} from 'src/tags/entities/tag.entity';
 import {Comment} from 'src/comments/entities/comment.entity';
+import {StoryReport} from './story-report.entity';
 
 @Entity()
 // The public feed filters status='approved' and sorts by createdAt (newest/
@@ -25,6 +26,10 @@ import {Comment} from 'src/comments/entities/comment.entity';
 @Index('IDX_story_status_commentCount', ['status', 'commentCount'])
 @Index('IDX_story_status_viewCount', ['status', 'viewCount'])
 @Index('IDX_story_status_likeCount', ['status', 'likeCount'])
+// The admin reported-stories queue filters reportCount > 0 and sorts by it,
+// independent of status — index it so the queue is a range scan, not a table
+// scan.
+@Index('IDX_story_reportCount', ['reportCount'])
 export class Story {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -64,6 +69,14 @@ export class Story {
   @Column({type: 'int', default: 0})
   likeCount: number;
 
+  // Recomputed from the story_report rows on every report/resolve (see
+  // StoriesService) — an orderable, drift-free mirror of the report count so
+  // the admin queue can sort most-reported-first. Distinct from `isFlagged`
+  // (which mirrors status === flagged, an admin decision): a member report
+  // surfaces a story for review without changing its public status.
+  @Column({type: 'int', default: 0})
+  reportCount: number;
+
   @Column({
     type: 'enum',
     enum: StoryStatus,
@@ -84,6 +97,9 @@ export class Story {
 
   @OneToMany(() => Comment, (comment) => comment.story)
   comments: Comment[];
+
+  @OneToMany(() => StoryReport, (report) => report.story)
+  reports: StoryReport[];
 
   @CreateDateColumn()
   createdAt: Date;

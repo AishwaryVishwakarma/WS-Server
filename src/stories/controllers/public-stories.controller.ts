@@ -117,6 +117,16 @@ export class PublicStoriesController {
     return {viewCount};
   }
 
+  // Flag a story for moderation. Gated (signed-in members); one report per
+  // member — a duplicate is rejected with 409 by the unique constraint — and
+  // you can't report your own (400) or a story you can't see (404).
+  @Post(':id/report')
+  @UseGuards(SessionAuthGuard)
+  @HttpCode(204)
+  async report(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    await this.storiesService.report(id, req.session.userId!, req.session.role);
+  }
+
   @Get(':id')
   @Throttle(PUBLIC_READ_THROTTLE)
   @UseGuards(OptionalSessionAuthGuard)

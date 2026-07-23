@@ -5,6 +5,7 @@ import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {Story} from './entities/story.entity';
+import {StoryReport} from './entities/story-report.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {StoriesService} from './stories.service';
 
@@ -18,6 +19,12 @@ describe('StoriesService', () => {
     findOne: jest.Mock;
     findOneOrFail: jest.Mock;
     increment: jest.Mock;
+    delete: jest.Mock;
+  };
+  let reportsRepository: {
+    create: jest.Mock;
+    save: jest.Mock;
+    countBy: jest.Mock;
     delete: jest.Mock;
   };
   let usersService: {findOne: jest.Mock};
@@ -37,6 +44,12 @@ describe('StoriesService', () => {
       increment: jest.fn().mockResolvedValue({affected: 1}),
       delete: jest.fn(),
     };
+    reportsRepository = {
+      create: jest.fn((data) => data),
+      save: jest.fn((report) => Promise.resolve(report)),
+      countBy: jest.fn().mockResolvedValue(0),
+      delete: jest.fn(),
+    };
     usersService = {findOne: jest.fn().mockResolvedValue(author)};
     tagsService = {findManyByIds: jest.fn()};
 
@@ -44,6 +57,7 @@ describe('StoriesService', () => {
       providers: [
         StoriesService,
         {provide: getRepositoryToken(Story), useValue: repository},
+        {provide: getRepositoryToken(StoryReport), useValue: reportsRepository},
         {provide: UsersService, useValue: usersService},
         {provide: TagsService, useValue: tagsService},
       ],

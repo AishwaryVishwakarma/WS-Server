@@ -140,6 +140,16 @@ npm run dev:infra:down
   `PATCH /admin/stories/:id/status`. `StoriesService.findOneVisible()` gates
   non-approved reads to author/admin. A non-admin editing a moderated story
   resets it to `pending`. `isFlagged` mirrors `status === flagged`.
+- **Story reports** (mirrors comment reports): members flag a story via
+  `POST /stories/:id/report` (gated; one per member via a unique
+  `(user, story)` on `story_report`; can't report your own, and only a story
+  you can see — non-approved 404s). A report recomputes the denormalized
+  `Story.reportCount` from the rows (orderable, drift-free) but — unlike an
+  admin status change — **does not touch the public `status`**; it only
+  surfaces the story for review. The admin queue is a separate axis from the
+  status filter: `GET /admin/stories?reported=true` (reportCount > 0,
+  most-reported first, any status), and `PATCH /admin/stories/:id/resolve`
+  drops the reports and zeroes the count without changing status.
 - **Free publish limit**: an author may have at most `FREE_PUBLISH_LIMIT` (10)
   stories in the publication pipeline (`pending`/`approved`/`flagged`) at once
   — enforced in `StoriesService` on create-non-draft and `submitDraft` (403

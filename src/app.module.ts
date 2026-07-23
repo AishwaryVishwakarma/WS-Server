@@ -15,6 +15,7 @@ import {SessionService} from './session/session.service';
 import {SessionModule} from './session/session.module';
 import {StoriesModule} from './stories/stories.module';
 import {Story} from './stories/entities/story.entity';
+import {StoryReport} from './stories/entities/story-report.entity';
 import {TagsModule} from './tags/tags.module';
 import {Tag} from './tags/entities/tag.entity';
 import {CommentsModule} from './comments/comments.module';
@@ -129,6 +130,7 @@ import {migrations} from './database/migrations';
         entities: [
           User,
           Story,
+          StoryReport,
           Tag,
           Comment,
           CommentReport,

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import {DataSource} from 'typeorm';
 import {User} from 'src/users/entities/user.entity';
 import {Story} from 'src/stories/entities/story.entity';
+import {StoryReport} from 'src/stories/entities/story-report.entity';
 import {Tag} from 'src/tags/entities/tag.entity';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {CommentReport} from 'src/comments/entities/comment-report.entity';
@@ -24,6 +25,7 @@ export default new DataSource({
   entities: [
     User,
     Story,
+    StoryReport,
     Tag,
     Comment,
     CommentReport,

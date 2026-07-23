@@ -219,6 +219,149 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('moderation via member reports', () => {
+    // An approved story plus a second member ready to report it.
+    const reportFixture = async () => {
+      const {story} = await createStory(STORY_PAYLOAD, 'story-author@test.com');
+      const admin = await approveStory(story.id);
+
+      const reporter = agent();
+      await registerUser(reporter, {email: 'reporter@test.com'});
+      const reporterToken = await getCsrfToken(reporter);
+
+      return {storyId: story.id as string, admin, reporter, reporterToken};
+    };
+
+    it('reports an approved story into the queue and resolves it', async () => {
+      const {storyId, admin, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/stories/${storyId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      // The queue surfaces only reported stories, annotated with the count —
+      // and a report does not change the story's public status.
+      const queue = await admin.get('/admin/stories?reported=true').expect(200);
+      expect(queue.body.total).toBe(1);
+      expect(queue.body.data[0].id).toBe(storyId);
+      expect(queue.body.data[0].reportCount).toBe(1);
+      expect(queue.body.data[0].status).toBe(StoryStatus.Approved);
+
+      // Resolving drops the reports, emptying the queue but keeping the story.
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/admin/stories/${storyId}/resolve`)
+        .set('x-csrf-token', adminToken)
+        .expect(200);
+
+      const afterQueue = await admin
+        .get('/admin/stories?reported=true')
+        .expect(200);
+      expect(afterQueue.body.total).toBe(0);
+
+      // The story itself is untouched — still in the full moderation list.
+      const full = await admin.get('/admin/stories').expect(200);
+      expect(full.body.data.some((s: {id: string}) => s.id === storyId)).toBe(
+        true
+      );
+    });
+
+    it('does not mark a reported story as edited (updatedAt preserved)', async () => {
+      const {storyId, admin, reporter, reporterToken} = await reportFixture();
+
+      // The story is approved, so the reporter can read it (and its updatedAt).
+      const before = await reporter.get(`/stories/${storyId}`).expect(200);
+
+      await reporter
+        .post(`/stories/${storyId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      const queue = await admin.get('/admin/stories?reported=true').expect(200);
+      // A report is not an edit, so updatedAt must be untouched.
+      expect(queue.body.data[0].updatedAt).toBe(before.body.updatedAt);
+    });
+
+    it('rejects a duplicate report from the same member with 409', async () => {
+      const {storyId, admin, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/stories/${storyId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      await reporter
+        .post(`/stories/${storyId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(409);
+
+      const queue = await admin.get('/admin/stories?reported=true').expect(200);
+      expect(queue.body.data[0].reportCount).toBe(1);
+    });
+
+    it('forbids reporting your own story with 400', async () => {
+      const {client, token, story} = await createStory(
+        STORY_PAYLOAD,
+        'self-reporter@test.com'
+      );
+      await approveStory(story.id);
+
+      await client
+        .post(`/stories/${story.id}/report`)
+        .set('x-csrf-token', token)
+        .expect(400);
+    });
+
+    it('hides a non-visible (pending) story from reporters with 404', async () => {
+      // Never approved, so it isn't publicly visible.
+      const {story} = await createStory(STORY_PAYLOAD, 'pending-author@test.com');
+
+      const reporter = agent();
+      await registerUser(reporter, {email: 'nosy@test.com'});
+      const reporterToken = await getCsrfToken(reporter);
+
+      await reporter
+        .post(`/stories/${story.id}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(404);
+    });
+
+    it('orders the reported queue by report count, most-reported first', async () => {
+      const {story: storyA} = await createStory(
+        {...STORY_PAYLOAD, title: 'Story A'},
+        'a-author@test.com'
+      );
+      const {story: storyB} = await createStory(
+        {...STORY_PAYLOAD, title: 'Story B'},
+        'b-author@test.com'
+      );
+      const admin = await approveStory(storyA.id);
+      await approveStory(storyB.id, admin);
+
+      // A gets two reports, B gets one, so A must sort ahead of B.
+      const report = async (storyId: string, email: string) => {
+        const reporter = agent();
+        await registerUser(reporter, {email});
+        const token = await getCsrfToken(reporter);
+        await reporter
+          .post(`/stories/${storyId}/report`)
+          .set('x-csrf-token', token)
+          .expect(204);
+      };
+      await report(storyA.id, 'r1@test.com');
+      await report(storyA.id, 'r2@test.com');
+      await report(storyB.id, 'r3@test.com');
+
+      const queue = await admin.get('/admin/stories?reported=true').expect(200);
+      expect(queue.body.data.map((s: {id: string}) => s.id)).toEqual([
+        storyA.id,
+        storyB.id,
+      ]);
+      expect(queue.body.data[0].reportCount).toBe(2);
+    });
+  });
+
   describe('visibility (GET /stories/:id)', () => {
     it('hides a pending story from other users with 404', async () => {
       const {story} = await createStory();

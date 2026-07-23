@@ -1,4 +1,5 @@
-import {IsIn, IsOptional, IsString, MaxLength} from 'class-validator';
+import {Transform} from 'class-transformer';
+import {IsBoolean, IsIn, IsOptional, IsString, MaxLength} from 'class-validator';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {MODERATION_STATUSES, StoryStatus} from '../enums/story-status.enum';
 
@@ -16,4 +17,15 @@ export class AdminStoryQueryDto extends PaginationDto {
   @IsString()
   @MaxLength(100)
   search?: string;
+
+  /**
+   * When true, switch to the reported queue: member-reported stories only
+   * (reportCount > 0), ordered most-reported first, regardless of status.
+   * Query strings arrive as text, so map the literal 'true' rather than
+   * trusting Boolean() (which is truthy for any non-empty string).
+   */
+  @IsOptional()
+  @Transform(({value}) => value === 'true' || value === true)
+  @IsBoolean()
+  reported?: boolean;
 }

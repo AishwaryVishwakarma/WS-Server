@@ -448,6 +448,22 @@ const REPORTS: {commentContent: string; reporters: string[]}[] = [
   },
 ];
 
+// A few member-reported (approved) stories so the admin reported-stories queue
+// (GET /admin/stories?reported=true) has content. Reporters must differ from
+// the story's author (self-reports are rejected) and can only report stories
+// they can see (approved). The differing report counts exercise the
+// most-reported-first ordering. Matched to the seeded stories by title.
+const STORY_REPORTS: {story: string; reporters: string[]}[] = [
+  {
+    story: 'The House on Hollow Lane',
+    reporters: ['bob@whisperingshadows.dev', 'carol@whisperingshadows.dev'],
+  },
+  {
+    story: 'Cold Spots',
+    reporters: ['alice@whisperingshadows.dev'],
+  },
+];
+
 // Seed read counts on a few popular (approved) stories so the feed shows some
 // life. viewCount is a pure denormalized counter, so it's set directly rather
 // than through recordView (which needs a viewer session).
@@ -649,6 +665,18 @@ async function seed() {
       reportedComments++;
     }
 
+    // Story reports (through the real service so reportCount and the per-member
+    // unique constraint behave exactly as in production)
+    let reportedStories = 0;
+    for (const {story, reporters} of STORY_REPORTS) {
+      const storyId = storyIdsByTitle.get(story);
+      if (!storyId) continue;
+      for (const email of reporters) {
+        await storiesService.report(storyId, usersByEmail.get(email)!.id);
+      }
+      reportedStories++;
+    }
+
     // Read counts (set the denormalized counter directly)
     const storyRepository = dataSource.getRepository(Story);
     for (const {story, views} of VIEW_COUNTS) {
@@ -695,8 +723,8 @@ async function seed() {
       `Seeded ${usersByEmail.size} users, ${tagIdsByName.size} tags, ` +
         `${storyIdsByTitle.size} stories (${statusSummary}), ` +
         `${allComments.length} comments + ${REPLIES.length} replies ` +
-        `(${reportedComments} reported), ${bookmarks} bookmarks, ` +
-        `${follows} follows, ${likes} likes`
+        `(${reportedComments} reported), ${reportedStories} reported stories, ` +
+        `${bookmarks} bookmarks, ${follows} follows, ${likes} likes`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`

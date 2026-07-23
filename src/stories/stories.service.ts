@@ -8,9 +8,11 @@ import {CreateStoryDto} from './dto/create-story.dto';
 import {UpdateStoryDto} from './dto/update-story.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Story} from './entities/story.entity';
+import {StoryReport} from './entities/story-report.entity';
 import {
   In,
   Like,
+  MoreThan,
   Not,
   Repository,
   type FindOptionsWhere,
@@ -21,6 +23,7 @@ import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {StoryStatus} from './enums/story-status.enum';
+import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import type {StorySortOption} from './dto/story-query.dto';
 import {
   decodeStoryCursor,
@@ -81,6 +84,7 @@ const SELECTED_FIELDS = {
   commentCount: true,
   viewCount: true,
   likeCount: true,
+  reportCount: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -90,6 +94,8 @@ export class StoriesService {
   constructor(
     @InjectRepository(Story)
     private readonly storiesRepository: Repository<Story>,
+    @InjectRepository(StoryReport)
+    private readonly reportsRepository: Repository<StoryReport>,
     private readonly usersService: UsersService,
     private readonly tagsService: TagsService
   ) {}
@@ -174,14 +180,20 @@ export class StoriesService {
     page: number = 1,
     limit: number = 20,
     status?: StoryStatus,
-    search?: string
+    search?: string,
+    reported?: boolean
   ) {
     const {skip, take} = paginate(page, limit);
 
-    // Drafts are the author's private business — never listed for admins
-    const base: FindOptionsWhere<Story> = status
-      ? {status}
-      : {status: Not(StoryStatus.Draft)};
+    // The reported queue is a separate axis from status: member-reported
+    // stories (reportCount > 0), most-reported first, whatever their status.
+    // Otherwise the status-filtered list newest-first (drafts are the author's
+    // private business — never listed for admins).
+    const base: FindOptionsWhere<Story> = reported
+      ? {reportCount: MoreThan(0)}
+      : status
+        ? {status}
+        : {status: Not(StoryStatus.Draft)};
     let where: FindOptionsWhere<Story> | FindOptionsWhere<Story>[] = base;
 
     if (search) {
@@ -198,7 +210,10 @@ export class StoriesService {
       where,
       relations: ['author', 'tags'],
       select: SELECTED_FIELDS,
-      order: {createdAt: 'DESC'},
+      // Reported queue: worst offenders first, then newest. Otherwise newest.
+      order: reported
+        ? {reportCount: 'DESC', createdAt: 'DESC'}
+        : {createdAt: 'DESC'},
       // Admins should see stories whose authors were soft-deleted
       withDeleted: true,
     });
@@ -567,6 +582,62 @@ export class StoriesService {
     story.isFlagged = status === StoryStatus.Flagged;
 
     return await this.storiesRepository.save(story);
+  }
+
+  // A member flags a story for moderation. Gated to stories the reporter can
+  // see (findOneVisible 404s non-approved ones for non-owners), and you can't
+  // report your own. The unique (user, story) constraint blocks double-
+  // reporting (mapped to 409); reportCount is recomputed from the rows so it
+  // never drifts. Mirrors CommentsService.report — but a report only surfaces
+  // the story for review, it does not change the public status.
+  async report(storyId: string, userId: string, role?: Role) {
+    const story = await this.findOneVisible(storyId, userId, role);
+
+    if (story.author?.id === userId) {
+      throw new BadRequestException(`You cannot report your own story`);
+    }
+
+    const user = await this.usersService.findOne(userId);
+
+    try {
+      await this.reportsRepository.save(
+        this.reportsRepository.create({story, user})
+      );
+    } catch (error) {
+      handleQueryFailedError(error, 'report story');
+    }
+
+    const reportCount = await this.reportsRepository.countBy({
+      story: {id: storyId},
+    });
+
+    // A report is moderation metadata, not a content edit — carry the existing
+    // updatedAt through the targeted update so it stays untouched (TypeORM only
+    // auto-bumps the update-date column when it isn't among the set columns).
+    await this.storiesRepository.update(storyId, {
+      reportCount,
+      updatedAt: story.updatedAt,
+    });
+
+    story.reportCount = reportCount;
+    return story;
+  }
+
+  // Admin dismisses the reports on a story (without changing its status): drop
+  // the report rows and zero the count so it leaves the reported queue.
+  async resolveReports(storyId: string) {
+    const story = await this.findOne(storyId);
+
+    await this.reportsRepository.delete({story: {id: storyId}});
+
+    // Same as report(): clearing reports is not an edit, so preserve updatedAt.
+    await this.storiesRepository.update(storyId, {
+      reportCount: 0,
+      updatedAt: story.updatedAt,
+    });
+
+    story.reportCount = 0;
+    return story;
   }
 
   async remove(id: string, userId: string, role: Role) {

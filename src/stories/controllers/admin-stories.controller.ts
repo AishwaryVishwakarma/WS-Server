@@ -28,7 +28,8 @@ export class AdminStoriesController {
       query.page,
       query.limit,
       query.status,
-      query.search
+      query.search,
+      query.reported
     );
   }
 
@@ -38,5 +39,12 @@ export class AdminStoriesController {
     @Body() updateStoryStatusDto: UpdateStoryStatusDto
   ) {
     return this.storiesService.updateStatus(id, updateStoryStatusDto.status);
+  }
+
+  // Dismiss the member reports on a story (drop the rows, zero the count) so it
+  // leaves the reported queue — without touching its publication status.
+  @Patch(':id/resolve')
+  resolveReports(@Param('id', ParseUUIDPipe) id: string) {
+    return this.storiesService.resolveReports(id);
   }
 }
