@@ -9,6 +9,7 @@ import type {Request} from 'express';
 import {SessionService} from 'src/session/session.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
+import {GoogleAuthService} from './google-auth.service';
 
 @Injectable()
 export class AuthService {
@@ -16,7 +17,8 @@ export class AuthService {
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
     private readonly usersService: UsersService,
-    private readonly sessionService: SessionService
+    private readonly sessionService: SessionService,
+    private readonly googleAuthService: GoogleAuthService
   ) {}
 
   async validateUser(loginInfoDto: LoginInfoDto) {
@@ -28,7 +30,14 @@ export class AuthService {
       })
       .getOne();
 
-    if (user && (await bcrypt.compare(loginInfoDto.password, user.password))) {
+    // `user.password` is null for OAuth-only accounts — they can't sign in with
+    // a password, so treat a missing hash as invalid rather than feeding null
+    // to bcrypt (which throws).
+    if (
+      user &&
+      user.password &&
+      (await bcrypt.compare(loginInfoDto.password, user.password))
+    ) {
       if (user.isBlocked) {
         throw new UnauthorizedException('User is blocked');
       }
@@ -52,6 +61,31 @@ export class AuthService {
 
   async login(loginInfoDto: LoginInfoDto, req: Request) {
     const user = await this.validateUser(loginInfoDto);
+
+    await this.sessionService.regenerate(req);
+
+    req.session.userId = user.id;
+    req.session.role = user.role || Role.User;
+
+    return user;
+  }
+
+  // Sign in (or up) with a Google ID token from the GIS button. Verify it,
+  // require a Google-verified email (so email-based account linking is safe),
+  // resolve/create the account, then establish the session exactly like a
+  // password login.
+  async googleSignIn(credential: string, req: Request) {
+    const profile = await this.googleAuthService.verify(credential);
+
+    if (!profile.emailVerified) {
+      throw new UnauthorizedException('Your Google email is not verified');
+    }
+
+    const user = await this.usersService.findOrCreateGoogleUser(profile);
+
+    if (user.isBlocked) {
+      throw new UnauthorizedException('User is blocked');
+    }
 
     await this.sessionService.regenerate(req);
 

@@ -62,6 +62,53 @@ export class UsersService {
     }
   }
 
+  // Resolve the account for a verified Google profile: by googleId if already
+  // linked, else link the Google identity onto an existing same-email (password)
+  // account, else create a fresh OAuth-only account (no password). The caller
+  // (AuthService) enforces email_verified before this runs.
+  async findOrCreateGoogleUser(profile: {
+    googleId: string;
+    email: string;
+    name: string;
+    picture?: string;
+  }): Promise<User> {
+    const byGoogleId = await this.usersRepository.findOne({
+      where: {googleId: profile.googleId},
+    });
+    if (byGoogleId) return byGoogleId;
+
+    const byEmail = await this.usersRepository.findOne({
+      where: {email: profile.email},
+    });
+    if (byEmail) {
+      byEmail.googleId = profile.googleId;
+      // Backfill an avatar for an account that never set one.
+      if (!byEmail.profileImageUrl && profile.picture) {
+        byEmail.profileImageUrl = profile.picture;
+      }
+      return await this.usersRepository.save(byEmail);
+    }
+
+    const user = this.usersRepository.create({
+      name: profile.name,
+      email: profile.email,
+      googleId: profile.googleId,
+      password: null,
+      // Google already verified the address.
+      isVerified: true,
+      ...(profile.picture ? {profileImageUrl: profile.picture} : {}),
+    });
+
+    try {
+      return await this.usersRepository.save(user);
+    } catch (error) {
+      // Maps a duplicate (e.g. a googleId race) to 409 and re-throws; the
+      // trailing throw is unreachable but satisfies the Promise<User> return.
+      handleQueryFailedError(error, 'google sign-in');
+      throw error;
+    }
+  }
+
   async findAll(page: number = 1, limit: number = 20, search?: string) {
     const {skip, take} = paginate(page, limit);
 

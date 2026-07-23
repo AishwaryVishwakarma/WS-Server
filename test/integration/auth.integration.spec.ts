@@ -46,7 +46,7 @@ describe('Auth (integration)', () => {
       expect(dbUser).not.toBeNull();
       expect(dbUser!.password).not.toBe(DEFAULT_USER.password);
       expect(
-        await bcrypt.compare(DEFAULT_USER.password, dbUser!.password)
+        await bcrypt.compare(DEFAULT_USER.password, dbUser!.password!)
       ).toBe(true);
 
       // The session cookie from registration authenticates follow-up requests
@@ -171,6 +171,25 @@ describe('Auth (integration)', () => {
 
     it('rejects logout without a session', async () => {
       await agent().post('/auth/logout').expect(401);
+    });
+  });
+
+  describe('POST /auth/google', () => {
+    it('rejects a missing credential with 400 (and is CSRF-exempt)', async () => {
+      // No CSRF token is sent; getting 400 (validation) rather than 403 (CSRF)
+      // confirms the route is exempt like login/register.
+      await agent().post('/auth/google').send({}).expect(400);
+    });
+
+    it('returns 503 when Google sign-in is not configured', async () => {
+      // .env.test sets no GOOGLE_CLIENT_ID, so token verification is disabled;
+      // a real credential can't be minted in tests, so this documents the
+      // graceful-disable path. The find/link/create + verify logic is covered
+      // by the AuthService/UsersService unit tests.
+      await agent()
+        .post('/auth/google')
+        .send({credential: 'any-token'})
+        .expect(503);
     });
   });
 });

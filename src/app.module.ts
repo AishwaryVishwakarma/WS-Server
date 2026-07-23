@@ -174,6 +174,7 @@ export class AppModule {
         '/auth/login',
         '/auth/logout',
         '/auth/register',
+        '/auth/google',
         // Anonymous read-counter ping — anonymous browsers can't hold a CSRF
         // token, and it's a harmless denormalized counter, not a real mutation.
         {path: 'stories/:id/view', method: RequestMethod.POST}

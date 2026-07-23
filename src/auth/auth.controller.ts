@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {AuthService} from './auth.service';
 import {LoginInfoDto} from './dto/login-info.dto';
+import {GoogleSignInDto} from './dto/google-sign-in.dto';
 import type {Request, Response} from 'express';
 import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {User} from 'src/users/entities/user.entity';
@@ -69,6 +70,20 @@ export class AuthController {
     if (req.session.userId) throw new BadRequestException('Already logged in');
 
     const user = await this.authService.login(loginInfoDto, req);
+    return this._serialize(user, req.session.role);
+  }
+
+  // Sign in / up with Google. CSRF-exempt like login/register (a first sign-in
+  // has no session yet to bind a token to); the ID token is the credential.
+  @Post('google')
+  @Throttle(AUTH_THROTTLE)
+  async google(@Body() googleSignInDto: GoogleSignInDto, @Req() req: Request) {
+    if (req.session.userId) throw new BadRequestException('Already logged in');
+
+    const user = await this.authService.googleSignIn(
+      googleSignInDto.credential,
+      req
+    );
     return this._serialize(user, req.session.role);
   }
 

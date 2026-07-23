@@ -8,6 +8,7 @@ import {User} from 'src/users/entities/user.entity';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {AuthService} from './auth.service';
+import {GoogleAuthService} from './google-auth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -16,8 +17,9 @@ describe('AuthService', () => {
     where: jest.Mock;
     getOne: jest.Mock;
   };
-  let usersService: {create: jest.Mock};
+  let usersService: {create: jest.Mock; findOrCreateGoogleUser: jest.Mock};
   let sessionService: {regenerate: jest.Mock; destroy: jest.Mock};
+  let googleAuthService: {verify: jest.Mock};
 
   const password = 'S3cret!Password';
   let hashedPassword: string;
@@ -34,11 +36,12 @@ describe('AuthService', () => {
       where: jest.fn().mockReturnThis(),
       getOne: jest.fn(),
     };
-    usersService = {create: jest.fn()};
+    usersService = {create: jest.fn(), findOrCreateGoogleUser: jest.fn()};
     sessionService = {
       regenerate: jest.fn().mockResolvedValue(undefined),
       destroy: jest.fn().mockResolvedValue(undefined),
     };
+    googleAuthService = {verify: jest.fn()};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -49,6 +52,7 @@ describe('AuthService', () => {
         },
         {provide: UsersService, useValue: usersService},
         {provide: SessionService, useValue: sessionService},
+        {provide: GoogleAuthService, useValue: googleAuthService},
       ],
     }).compile();
 
@@ -141,6 +145,59 @@ describe('AuthService', () => {
       expect(sessionService.regenerate).toHaveBeenCalledWith(req);
       expect(req.session.userId).toBe('user-1');
       expect(req.session.role).toBe(Role.Admin);
+    });
+  });
+
+  describe('googleSignIn', () => {
+    const profile = {
+      googleId: 'g-1',
+      email: 'a@b.com',
+      emailVerified: true,
+      name: 'Aria',
+    };
+
+    it('verifies the token, resolves the account, and opens the session', async () => {
+      googleAuthService.verify.mockResolvedValue(profile);
+      usersService.findOrCreateGoogleUser.mockResolvedValue({
+        id: 'user-1',
+        role: Role.User,
+        isBlocked: false,
+      });
+      const req = createRequest();
+
+      const user = await service.googleSignIn('id-token', req);
+
+      expect(googleAuthService.verify).toHaveBeenCalledWith('id-token');
+      expect(usersService.findOrCreateGoogleUser).toHaveBeenCalledWith(profile);
+      expect(sessionService.regenerate).toHaveBeenCalledWith(req);
+      expect(req.session.userId).toBe('user-1');
+      expect(req.session.role).toBe(Role.User);
+      expect(user.id).toBe('user-1');
+    });
+
+    it('rejects an unverified Google email', async () => {
+      googleAuthService.verify.mockResolvedValue({
+        ...profile,
+        emailVerified: false,
+      });
+
+      await expect(
+        service.googleSignIn('id-token', createRequest())
+      ).rejects.toThrow(UnauthorizedException);
+      expect(usersService.findOrCreateGoogleUser).not.toHaveBeenCalled();
+    });
+
+    it('rejects a blocked account', async () => {
+      googleAuthService.verify.mockResolvedValue(profile);
+      usersService.findOrCreateGoogleUser.mockResolvedValue({
+        id: 'user-1',
+        role: Role.User,
+        isBlocked: true,
+      });
+
+      await expect(
+        service.googleSignIn('id-token', createRequest())
+      ).rejects.toThrow('User is blocked');
     });
   });
 

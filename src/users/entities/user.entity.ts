@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
+  Index,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -13,6 +14,10 @@ import {Role} from '../enums/role';
 import {Comment} from 'src/comments/entities/comment.entity';
 
 @Entity()
+// One Google identity maps to at most one account. Named + nullable-unique so
+// password-only accounts (googleId NULL) coexist — MySQL permits many NULLs
+// under a unique index.
+@Index('IDX_user_googleId', ['googleId'], {unique: true})
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -23,9 +28,17 @@ export class User {
   @Column({unique: true})
   email: string;
 
-  @Column({length: 255, select: false})
+  // Nullable: OAuth-only accounts (Google sign-in) have no local password.
+  // Explicit `type` because TypeORM can't infer `string | null` from reflection.
+  @Column({type: 'varchar', length: 255, select: false, nullable: true})
   @Exclude()
-  password: string;
+  password: string | null;
+
+  // The Google account subject (`sub`) once linked, else null. Uniqueness is
+  // enforced by the named index on the class (IDX_user_googleId).
+  @Column({type: 'varchar', length: 255, nullable: true})
+  @Exclude()
+  googleId: string | null;
 
   @Column({type: 'enum', enum: Role, default: Role.User})
   role: Role;

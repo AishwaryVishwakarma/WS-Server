@@ -18,6 +18,7 @@ describe('UsersService', () => {
   let repository: {
     create: jest.Mock;
     save: jest.Mock;
+    findOne: jest.Mock;
     findAndCount: jest.Mock;
     findOneByOrFail: jest.Mock;
     softDelete: jest.Mock;
@@ -28,6 +29,7 @@ describe('UsersService', () => {
     repository = {
       create: jest.fn((data) => data),
       save: jest.fn((user) => Promise.resolve({id: 'user-1', ...user})),
+      findOne: jest.fn(),
       findAndCount: jest.fn(),
       findOneByOrFail: jest.fn(),
       softDelete: jest.fn(),
@@ -49,6 +51,55 @@ describe('UsersService', () => {
     service = module.get(UsersService);
   });
 
+  describe('findOrCreateGoogleUser', () => {
+    const profile = {
+      googleId: 'g-1',
+      email: 'a@b.com',
+      name: 'Aria',
+      picture: 'https://pic',
+    };
+
+    it('returns the existing account already linked by googleId', async () => {
+      const existing = {id: 'user-1', googleId: 'g-1'};
+      repository.findOne.mockResolvedValueOnce(existing);
+
+      const user = await service.findOrCreateGoogleUser(profile);
+
+      expect(user).toBe(existing);
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it('links the Google identity onto a same-email password account', async () => {
+      const byEmail = {id: 'user-2', email: 'a@b.com', googleId: null, profileImageUrl: null};
+      // First lookup (by googleId) misses; second (by email) hits.
+      repository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(byEmail);
+
+      const user = await service.findOrCreateGoogleUser(profile);
+
+      expect(user.googleId).toBe('g-1');
+      // Backfilled the avatar since the account had none.
+      expect(user.profileImageUrl).toBe('https://pic');
+      expect(repository.save).toHaveBeenCalledWith(byEmail);
+    });
+
+    it('creates a new password-less account when nothing matches', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      const user = await service.findOrCreateGoogleUser(profile);
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          googleId: 'g-1',
+          email: 'a@b.com',
+          password: null,
+          isVerified: true,
+          profileImageUrl: 'https://pic',
+        }),
+      );
+      expect(user.id).toBe('user-1');
+    });
+  });
+
   describe('create', () => {
     it('hashes the password before saving', async () => {
       const user = (await service.create({
@@ -58,7 +109,7 @@ describe('UsersService', () => {
       })) as User;
 
       expect(user.password).not.toBe('S3cret!Password');
-      expect(await bcrypt.compare('S3cret!Password', user.password)).toBe(true);
+      expect(await bcrypt.compare('S3cret!Password', user.password!)).toBe(true);
     });
 
     it('throws ConflictException on duplicate email', async () => {
@@ -105,7 +156,7 @@ describe('UsersService', () => {
 
       expect(user.name).toBe('New');
       expect(user.password).not.toBe('old-hash');
-      expect(await bcrypt.compare('N3w!Password', user.password)).toBe(true);
+      expect(await bcrypt.compare('N3w!Password', user.password!)).toBe(true);
     });
 
     it('keeps the existing password when none is provided', async () => {

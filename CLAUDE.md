@@ -146,6 +146,17 @@ npm run dev:infra:down
   `SessionAuthGuard` reloads the user from the DB on every request (so blocking
   or deleting a user invalidates live sessions and refreshes their role).
   `RolesGuard` + `@Roles(Role.Admin)` for admin routes.
+- **Google sign-in** (`POST /auth/google`, CSRF-exempt like login): the web
+  sends the Google Identity Services **ID token**; `GoogleAuthService.verify`
+  (google-auth-library, audience = `GOOGLE_CLIENT_ID`) checks it, then
+  `UsersService.findOrCreateGoogleUser` resolves the account — by `googleId`,
+  else **links** it onto a same-email password account (safe: Google-verified
+  email required), else creates a password-less account (`password` is nullable;
+  `validateUser` treats a null hash as "no password login"). Then the same
+  session dance as login. `GOOGLE_CLIENT_ID` is **optional** — unset → the
+  endpoint 503s (feature disabled), so dev/CI boot without it. It needs no
+  client *secret* (no code exchange). Unit tests cover verify + link/create;
+  integration covers the 400/503 wiring (a real token can't be minted in tests).
 - **CSRF**: `csrf-csrf` double-submit (`src/middlewares/csrf.ts`), token in the
   `x-csrf-token` header + a first-party cookie, bound to the session id via
   `getSessionIdentifier`. Needs `cookie-parser` (wired in `app.setup.ts`).
