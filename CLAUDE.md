@@ -31,6 +31,15 @@ like the count sorts (a decaying score would drift between fetches and duplicate
 the boundary row). Ordered by the score under a SELECT alias (`trendingScore`),
 never the raw `(story.…)` expression, which TypeORM mis-parses as a join alias.
 The home "Trending" strip reuses this via `sort=trending&page=1`.
+**Feed search** (`?search=`) is a MySQL FULLTEXT match over `story(title,
+excerpt)` (index `IDX_story_fulltext`): `StoriesService` runs `MATCH … AGAINST
+(… IN BOOLEAN MODE)` as a *filter only* (the active sort/keyset ordering is
+untouched). `story-search.ts::toBooleanFulltextQuery` turns the query into
+`+word*` prefix terms (AND), dropping stopwords and sub-3-char tokens; when
+nothing indexable remains (too short / all stopwords) it returns null and the
+service falls back to the escaped substring `LIKE`. This is word/prefix-based,
+so "host" no longer matches "ghost" — searches match whole words or their
+prefixes. (Admin/`/me` list search still uses `LIKE` — low volume.)
 
 ## Commands
 

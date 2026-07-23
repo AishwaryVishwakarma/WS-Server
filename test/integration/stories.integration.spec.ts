@@ -623,6 +623,44 @@ describe('Stories (integration)', () => {
       expect(response.body.total).toBe(0);
     });
 
+    it('matches a word prefix via FULLTEXT, not just whole words', async () => {
+      const {browser, lighthouse} = await setupCatalog();
+
+      // "haunt" is a prefix of "Haunted" in the lighthouse title.
+      const response = await browser.get('/stories?search=haunt').expect(200);
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].id).toBe(lighthouse.id);
+    });
+
+    it('requires every search word to match (AND semantics)', async () => {
+      const {browser, lighthouse} = await setupCatalog();
+
+      // Both words live in the lighthouse title.
+      const both = await browser
+        .get('/stories?search=haunted%20lighthouse')
+        .expect(200);
+      expect(both.body.total).toBe(1);
+      expect(both.body.data[0].id).toBe(lighthouse.id);
+
+      // No single story has both "haunted" and "demon".
+      const neither = await browser
+        .get('/stories?search=haunted%20demon')
+        .expect(200);
+      expect(neither.body.total).toBe(0);
+    });
+
+    it('falls back to substring LIKE for queries under the FULLTEXT minimum', async () => {
+      const {browser, walls} = await setupCatalog();
+
+      // "de" is 2 chars — too short for FULLTEXT — so it substring-matches
+      // "Demon", which the word-based index alone could not.
+      const response = await browser.get('/stories?search=de').expect(200);
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].id).toBe(walls.id);
+    });
+
     it('filters by scareLevel', async () => {
       const {browser, walls} = await setupCatalog();
 

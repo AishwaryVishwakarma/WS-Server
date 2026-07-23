@@ -18,6 +18,7 @@ import {AddStoryViewCountIndex1784800000000} from './1784800000000-AddStoryViewC
 import {AddFollowNotifications1784900000000} from './1784900000000-AddFollowNotifications';
 import {AddStoryLikes1785000000000} from './1785000000000-AddStoryLikes';
 import {AddStoryReports1785100000000} from './1785100000000-AddStoryReports';
+import {AddStoryFulltextIndex1785200000000} from './1785200000000-AddStoryFulltextIndex';
 
 export const migrations = [
   Baseline1783883957794,
@@ -33,4 +34,5 @@ export const migrations = [
   AddFollowNotifications1784900000000,
   AddStoryLikes1785000000000,
   AddStoryReports1785100000000,
+  AddStoryFulltextIndex1785200000000,
 ];

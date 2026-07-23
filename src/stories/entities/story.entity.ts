@@ -30,6 +30,10 @@ import {StoryReport} from './story-report.entity';
 // independent of status — index it so the queue is a range scan, not a table
 // scan.
 @Index('IDX_story_reportCount', ['reportCount'])
+// Backs the public feed's word/prefix search (MATCH … AGAINST) over the title
+// and excerpt; see StoriesService and story-search.ts. Column order here must
+// match the MATCH() column list.
+@Index('IDX_story_fulltext', ['title', 'excerpt'], {fulltext: true})
 export class Story {
   @PrimaryGeneratedColumn('uuid')
   id: string;

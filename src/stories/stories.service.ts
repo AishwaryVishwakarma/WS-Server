@@ -30,6 +30,7 @@ import {
   encodeStoryCursor,
   type DecodedCursor,
 } from './story-cursor';
+import {toBooleanFulltextQuery} from './story-search';
 
 interface StoryFilters {
   tag?: string;
@@ -359,7 +360,10 @@ export class StoriesService {
       qb.orderBy(`story.${countColumn}`, 'DESC').addOrderBy('story.id', 'DESC');
     } else {
       const direction = sort === 'oldest' ? 'ASC' : 'DESC';
-      qb.orderBy('story.createdAt', direction).addOrderBy('story.id', direction);
+      qb.orderBy('story.createdAt', direction).addOrderBy(
+        'story.id',
+        direction
+      );
     }
 
     if (tag) {
@@ -371,10 +375,24 @@ export class StoriesService {
     }
 
     if (search) {
-      const escaped = search.replace(/[\\%_]/g, '\\$&');
-      qb.andWhere('(story.title LIKE :search OR story.excerpt LIKE :search)', {
-        search: `%${escaped}%`,
-      });
+      const booleanQuery = toBooleanFulltextQuery(search);
+      if (booleanQuery) {
+        // Indexed word/prefix match over (title, excerpt). Used purely as a
+        // filter — the sort/keyset ordering above is untouched.
+        qb.andWhere(
+          'MATCH(story.title, story.excerpt) AGAINST (:ftQuery IN BOOLEAN MODE)',
+          {ftQuery: booleanQuery}
+        );
+      } else {
+        // Too short or all stopwords for FULLTEXT — fall back to a substring
+        // LIKE (unindexed, but such queries are rare and cheap to scan). Escape
+        // LIKE wildcards so a literal % / _ can't act as a match-all.
+        const escaped = search.replace(/[\\%_]/g, '\\$&');
+        qb.andWhere(
+          '(story.title LIKE :search OR story.excerpt LIKE :search)',
+          {search: `%${escaped}%`}
+        );
+      }
     }
 
     if (scareLevel) {
@@ -498,10 +516,9 @@ export class StoriesService {
     }
 
     await this.storiesRepository.increment({id: storyId}, 'viewCount', 1);
-    session.viewedStoryIds = [
-      ...(session.viewedStoryIds ?? []),
-      storyId,
-    ].slice(-MAX_TRACKED_VIEWS);
+    session.viewedStoryIds = [...(session.viewedStoryIds ?? []), storyId].slice(
+      -MAX_TRACKED_VIEWS
+    );
 
     return {counted: true, viewCount: story.viewCount + 1};
   }
@@ -518,16 +535,18 @@ export class StoriesService {
     const row = raw.find((r) => r.story_id === last.id);
 
     // Trending orders by the computed blend, carried in the raw projection
-    // under the `trendingScore` select alias.
+    // under the `trendingScore` select alias. Raw values are string|number.
     if (sort === 'trending') {
-      return String(row?.trendingScore ?? 0);
+      return String((row?.trendingScore as string | number | null) ?? 0);
     }
 
     const countColumn = COUNT_SORT_COLUMN[sort];
     if (countColumn) {
       return String(last[countColumn]);
     }
-    return String(row?.story_created_raw ?? last.createdAt.toISOString());
+    return String(
+      (row?.story_created_raw as string | null) ?? last.createdAt.toISOString()
+    );
   }
 
   // Row-value keyset predicate matching _buildApprovedQuery's ORDER BY. For a
