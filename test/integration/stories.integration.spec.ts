@@ -1143,6 +1143,29 @@ describe('Stories (integration)', () => {
       expect(combined.body.total).toBe(1);
       expect(combined.body.data[0].id).toBe(story.id);
     });
+
+    // Regression: the admin listing used to return raw Story entities with no
+    // DTO serialization, so the eagerly-loaded `author` relation's full User
+    // entity rode along verbatim — including fields no response tier ever
+    // exposes (googleId has an @Exclude() that's inert without a serializer
+    // actually running; password is select:false so it never leaked, but
+    // nothing else was actually stripping the rest).
+    it("does not leak the author's internal fields (reportCount included, googleId excluded)", async () => {
+      const {story} = await createStory();
+      const admin = await seedAdmin(testApp);
+
+      const list = await admin.get('/admin/stories').expect(200);
+      const row = list.body.data.find((s: {id: string}) => s.id === story.id);
+
+      expect(row.reportCount).toBe(0);
+      expect(row.author).toMatchObject({
+        id: expect.any(String),
+        name: expect.any(String),
+      });
+      expect(row.author.googleId).toBeUndefined();
+      expect(row.author.password).toBeUndefined();
+      expect(row.author.email).toBeUndefined();
+    });
   });
 
   describe('re-moderation on edit', () => {

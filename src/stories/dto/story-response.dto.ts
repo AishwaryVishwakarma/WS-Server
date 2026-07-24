@@ -73,6 +73,8 @@ export class StoryResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
   @Expose() isFlagged: boolean;
   @Expose() status: StoryStatus;
+  /** Member reports; drives the admin ?reported=true queue ordering. */
+  @Expose() reportCount: number;
 
   constructor(partial: Partial<StoryResponseDto>) {
     super(partial);

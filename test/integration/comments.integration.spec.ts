@@ -379,6 +379,34 @@ describe('Comments (integration)', () => {
     expect(response.body.total).toBe(1);
   });
 
+  // Regression: the admin listing used to return raw Comment entities with no
+  // DTO serialization, so the eagerly-loaded `user` relation's full User
+  // entity rode along verbatim — including fields no response tier ever
+  // exposes (googleId has an @Exclude() that's inert without a serializer
+  // actually running; password is select:false so it never leaked, but
+  // nothing else was actually stripping the rest).
+  it("does not leak the commenter's internal fields (story context included, googleId excluded)", async () => {
+    const {client, token, story} = await createStoryFixture();
+    const created = await client
+      .post('/comments')
+      .set('x-csrf-token', token)
+      .send({content: 'Checking the response shape', storyId: story.id})
+      .expect(201);
+
+    const admin = await seedAdmin(testApp);
+    const list = await admin.get('/admin/comments').expect(200);
+    const row = list.body.data.find(
+      (c: {id: string}) => c.id === created.body.id
+    );
+
+    expect(row.isFlagged).toBe(false);
+    expect(row.story).toMatchObject({id: story.id, title: story.title});
+    expect(row.user).toMatchObject({id: expect.any(String)});
+    expect(row.user.googleId).toBeUndefined();
+    expect(row.user.password).toBeUndefined();
+    expect(row.user.email).toBeUndefined();
+  });
+
   describe('moderation via member reports', () => {
     // An authored comment plus a second member ready to report it.
     const reportFixture = async () => {

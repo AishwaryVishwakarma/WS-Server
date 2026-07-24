@@ -33,6 +33,26 @@ export class CommentStoryPreviewDto {
 }
 
 /**
+ * [admin] — the moderation queue's shape: adds the flag/report state and the
+ * story context (which story this comment lives under) that
+ * CommentPreviewResponseDto omits, mirroring StoryResponseDto's admin tier.
+ */
+export class AdminCommentResponseDto extends CommentPreviewResponseDto {
+  @Expose() isFlagged: boolean;
+  /** Member reports; drives the ?flagged=true queue ordering. */
+  @Expose() reportCount: number;
+
+  @Expose()
+  @Type(() => CommentStoryPreviewDto)
+  story: CommentStoryPreviewDto;
+
+  constructor(partial: Partial<AdminCommentResponseDto>) {
+    super(partial);
+    Object.assign(this, partial);
+  }
+}
+
+/**
  * [self] GET /users/me/comments — the member's comment activity. Deliberately
  * omits `user` (it is always the caller) and the moderation fields
  * (reportCount/isFlagged) that live on the raw entity.
