@@ -33,6 +33,10 @@ import {StoryLike} from './likes/entities/story-like.entity';
 import {LikesModule} from './likes/likes.module';
 import {migrations} from './database/migrations';
 
+// mysql2's own default when no pool size is configured — used as our fallback
+// too, so leaving DB_POOL_SIZE unset changes nothing.
+const DEFAULT_DB_POOL_SIZE = 10;
+
 @Module({
   imports: [
     // Per-user (or per-IP) rate limiting — see SessionThrottlerGuard and
@@ -91,6 +95,17 @@ import {migrations} from './database/migrations';
           );
         }
 
+        // Optional MySQL pool size (defaults to DEFAULT_DB_POOL_SIZE below when
+        // unset — the mysql2 driver default). ws_db_pool_connections{state}
+        // in /metrics tracks live usage; raise this if that gauge sits near
+        // the configured max under load.
+        if (config.DB_POOL_SIZE !== undefined) {
+          const poolSize = Number(config.DB_POOL_SIZE);
+          if (!Number.isInteger(poolSize) || poolSize < 1) {
+            throw new Error('DB_POOL_SIZE must be a positive integer');
+          }
+        }
+
         // /metrics is bearer-token protected; in production the token is
         // mandatory (fail-closed guard denies scrapes without it). Optional
         // locally/in tests so the endpoint simply stays closed there.
@@ -128,6 +143,15 @@ import {migrations} from './database/migrations';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
+        // Maps to the mysql2 pool's connectionLimit (verified in TypeORM's
+        // MysqlDriver — poolSize is passed straight through as
+        // connectionLimit). Watch ws_db_pool_connections{state="free"} in
+        // /metrics: sitting near zero under load means this is the ceiling
+        // to raise.
+        poolSize: parseInt(
+          configService.get('DB_POOL_SIZE') || String(DEFAULT_DB_POOL_SIZE),
+          10
+        ),
         entities: [
           User,
           UserReport,

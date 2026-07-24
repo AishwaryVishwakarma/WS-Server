@@ -253,7 +253,10 @@ npm run dev:infra:down
 - **Config is fail-closed.** `ConfigModule.validate` in `app.module.ts` requires
   `DB_*`, `SESSION_SECRET` (≥16 chars, known example values rejected when
   `NODE_ENV=production`), and `REDIS_URL`; validates `NODE_ENV`. No silent
-  fallbacks — add new required env vars here.
+  fallbacks — add new required env vars here. `DB_POOL_SIZE` (optional, mysql2
+  `connectionLimit`, default 10) is validated the same way but stays optional —
+  raise it only once `ws_db_pool_connections{state="free"}` in `/metrics` shows
+  the pool actually running dry under load, not preemptively.
 - **Migrations own the schema** (`synchronize` is off everywhere). They live in
   `src/database/migrations/` and run automatically on boot (`migrationsRun`).
   After changing an entity: `npm run migration:generate -- src/database/migrations/<Name>`

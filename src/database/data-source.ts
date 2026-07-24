@@ -23,6 +23,7 @@ export default new DataSource({
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  poolSize: parseInt(process.env.DB_POOL_SIZE || '10', 10),
   entities: [
     User,
     UserReport,
