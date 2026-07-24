@@ -6,6 +6,7 @@ import {
   Notification,
   type NotificationType,
 } from './entities/notification.entity';
+import {groupNotifications} from './group-notifications';
 import {NotificationsStream} from './notifications-stream.service';
 
 interface NotificationInput {
@@ -48,6 +49,11 @@ export class NotificationsService {
     return saved;
   }
 
+  // Bundles same-story/-thread notifications ("Alice, Bob and 3 others
+  // replied") within the fetched page — see groupNotifications for the
+  // grouping rule and its page-boundary trade-off. total/totalPages still
+  // reflect the raw (ungrouped) row count: the bell has no pagination UI, so
+  // nothing depends on them exactly matching the grouped item count.
   async findAllForUser(userId: string, page: number = 1, limit: number = 20) {
     const {skip, take} = paginate(page, limit);
     const [items, total] = await this.notificationsRepository.findAndCount({
@@ -56,13 +62,25 @@ export class NotificationsService {
       skip,
       take,
     });
-    return getPaginatedResponse<Notification>(items, total, page, limit);
+    return getPaginatedResponse(groupNotifications(items), total, page, limit);
   }
 
+  // Counts distinct (type, storyId, parentId) groups among unread
+  // notifications, not raw rows — so the badge matches how many items the
+  // bell will actually show, not how many individual events fired.
   async unreadCount(userId: string) {
-    return this.notificationsRepository.count({
-      where: {recipient: {id: userId}, isRead: false},
-    });
+    const rows = await this.notificationsRepository
+      .createQueryBuilder('notification')
+      .select([
+        'notification.type',
+        'notification.storyId',
+        'notification.parentId',
+      ])
+      .distinct(true)
+      .where('notification.recipientId = :userId', {userId})
+      .andWhere('notification.isRead = :isRead', {isRead: false})
+      .getRawMany();
+    return rows.length;
   }
 
   async markRead(id: string, userId: string) {

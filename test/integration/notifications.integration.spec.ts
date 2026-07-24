@@ -61,9 +61,14 @@ describe('Notifications (integration)', () => {
     return {author, authorToken, story, parentComment};
   };
 
-  const replyAs = async (email: string, storyId: string, parentId: string) => {
+  const replyAs = async (
+    email: string,
+    storyId: string,
+    parentId: string,
+    name?: string
+  ) => {
     const replier = agent();
-    await registerUser(replier, {email});
+    await registerUser(replier, name ? {email, name} : {email});
     const token = await getCsrfToken(replier);
     await replier
       .post('/comments')
@@ -286,9 +291,12 @@ describe('Notifications (integration)', () => {
   });
 
   it('clears read notifications and keeps unread ones', async () => {
+    // A reply and a top-level comment — deliberately different threads/types
+    // so they land as two independent rows rather than one bundle (see the
+    // grouping tests below for the same-thread case).
     const {author, authorToken, story, parentComment} = await setup();
     await replyAs('one@test.com', story.id, parentComment.id);
-    await replyAs('two@test.com', story.id, parentComment.id);
+    await commentAs('two@test.com', story.id);
 
     // Mark the first of the two read, then clear read.
     const list = await author.get('/users/me/notifications').expect(200);
@@ -306,6 +314,93 @@ describe('Notifications (integration)', () => {
     const after = await author.get('/users/me/notifications').expect(200);
     expect(after.body.total).toBe(1);
     expect(after.body.data[0].isRead).toBe(false);
+  });
+
+  describe('grouping', () => {
+    it('bundles several replies to the same thread into one item', async () => {
+      const {author, story, parentComment} = await setup();
+      await replyAs('one@test.com', story.id, parentComment.id, 'Alice');
+      await replyAs('two@test.com', story.id, parentComment.id, 'Bob');
+      await replyAs('three@test.com', story.id, parentComment.id, 'Cara');
+
+      const list = await author.get('/users/me/notifications').expect(200);
+      // Three raw events, but one bundle.
+      expect(list.body.total).toBe(3);
+      expect(list.body.data).toHaveLength(1);
+
+      const [bundle] = list.body.data;
+      expect(bundle.count).toBe(3);
+      expect(bundle.ids).toHaveLength(3);
+      expect(bundle.actorNames).toHaveLength(3);
+      expect(bundle.type).toBe('reply');
+      expect(bundle.parentId).toBe(parentComment.id);
+      expect(bundle.isRead).toBe(false);
+    });
+
+    it('keeps a bundle unread until every member is marked read', async () => {
+      const {author, authorToken, story, parentComment} = await setup();
+      await replyAs('one@test.com', story.id, parentComment.id);
+      await replyAs('two@test.com', story.id, parentComment.id);
+
+      const list = await author.get('/users/me/notifications').expect(200);
+      const [firstId, secondId] = list.body.data[0].ids;
+
+      await author
+        .patch(`/users/me/notifications/${firstId}/read`)
+        .set('x-csrf-token', authorToken)
+        .expect(204);
+
+      // Still counts as one unread group — the second member isn't read yet.
+      let count = await author
+        .get('/users/me/notifications/unread-count')
+        .expect(200);
+      expect(count.body.count).toBe(1);
+
+      await author
+        .patch(`/users/me/notifications/${secondId}/read`)
+        .set('x-csrf-token', authorToken)
+        .expect(204);
+
+      count = await author
+        .get('/users/me/notifications/unread-count')
+        .expect(200);
+      expect(count.body.count).toBe(0);
+    });
+
+    it('does not bundle replies to different threads on the same story', async () => {
+      const {author, story, parentComment} = await setup();
+      const {comment: otherParent} = await commentAs(
+        'other-thread@test.com',
+        story.id
+      );
+      await replyAs('one@test.com', story.id, parentComment.id);
+      await replyAs('two@test.com', story.id, otherParent.id);
+
+      const list = await author.get('/users/me/notifications').expect(200);
+      // The reply to otherParent's own thread notifies otherParent's author
+      // (not this story's author), so only the reply to parentComment (plus
+      // the two top-level comments from setup()/commentAs) show here — none
+      // of which share a thread, so nothing bundles.
+      const replyItems = list.body.data.filter(
+        (item: {type: string}) => item.type === 'reply'
+      );
+      expect(replyItems).toHaveLength(1);
+      expect(replyItems[0].count).toBe(1);
+    });
+
+    it('unread-count reflects bundles, not raw rows', async () => {
+      const {author, story, parentComment} = await setup();
+      await replyAs('one@test.com', story.id, parentComment.id);
+      await replyAs('two@test.com', story.id, parentComment.id);
+      await commentAs('three@test.com', story.id);
+
+      const count = await author
+        .get('/users/me/notifications/unread-count')
+        .expect(200);
+      // Two replies to the same thread bundle into one; the top-level
+      // comment is a different type, so it's a second, separate item.
+      expect(count.body.count).toBe(2);
+    });
   });
 
   it('streams a live event to the recipient over Redis pub/sub', async () => {
