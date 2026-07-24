@@ -1,4 +1,8 @@
-import {ConflictException, NotFoundException} from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {ConfigService} from '@nestjs/config';
 import {Test} from '@nestjs/testing';
 import {getRepositoryToken} from '@nestjs/typeorm';
@@ -70,9 +74,16 @@ describe('UsersService', () => {
     });
 
     it('links the Google identity onto a same-email password account', async () => {
-      const byEmail = {id: 'user-2', email: 'a@b.com', googleId: null, profileImageUrl: null};
+      const byEmail = {
+        id: 'user-2',
+        email: 'a@b.com',
+        googleId: null,
+        profileImageUrl: null,
+      };
       // First lookup (by googleId) misses; second (by email) hits.
-      repository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(byEmail);
+      repository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(byEmail);
 
       const user = await service.findOrCreateGoogleUser(profile);
 
@@ -94,9 +105,55 @@ describe('UsersService', () => {
           password: null,
           isVerified: true,
           profileImageUrl: 'https://pic',
-        }),
+        })
       );
       expect(user.id).toBe('user-1');
+    });
+
+    it('refuses re-registration when an admin-removed account still holds the identity', async () => {
+      // Neither an active googleId nor email match, but a soft-deleted row
+      // (found only via withDeleted) does — an admin removal, since
+      // deactivateSelf would have released it.
+      repository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({id: 'old-user', deletedAt: new Date()});
+
+      await expect(service.findOrCreateGoogleUser(profile)).rejects.toThrow(
+        ForbiddenException
+      );
+      expect(repository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deactivateSelf', () => {
+    it('releases googleId and anonymizes the email before soft-deleting', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        email: 'aria@gmail.com',
+        googleId: 'g-1',
+      });
+      repository.softDelete.mockResolvedValue({affected: 1});
+
+      await service.deactivateSelf('user-1');
+
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'user-1',
+          googleId: null,
+          email: 'deleted-user-1@deleted.invalid',
+        })
+      );
+      expect(repository.softDelete).toHaveBeenCalledWith('user-1');
+    });
+
+    it('throws NotFoundException for a missing user', async () => {
+      repository.findOneByOrFail.mockRejectedValue(new Error('not found'));
+
+      await expect(service.deactivateSelf('missing')).rejects.toThrow(
+        NotFoundException
+      );
+      expect(repository.save).not.toHaveBeenCalled();
     });
   });
 
@@ -109,7 +166,9 @@ describe('UsersService', () => {
       })) as User;
 
       expect(user.password).not.toBe('S3cret!Password');
-      expect(await bcrypt.compare('S3cret!Password', user.password!)).toBe(true);
+      expect(await bcrypt.compare('S3cret!Password', user.password!)).toBe(
+        true
+      );
     });
 
     it('throws ConflictException on duplicate email', async () => {

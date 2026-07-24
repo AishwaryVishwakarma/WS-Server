@@ -109,6 +109,48 @@ describe('Users (integration)', () => {
         .send({email: DEFAULT_USER.email, password: DEFAULT_USER.password})
         .expect(401);
     });
+
+    it('releases the email so the same person can register again', async () => {
+      const client = agent();
+      const {body: first} = await registerUser(client);
+      const token = await getCsrfToken(client);
+
+      await client.delete('/users/me').set('x-csrf-token', token).expect(204);
+
+      // Same email, fresh account — regression test for the bug where
+      // self-deletion left the email locked to the old (soft-deleted) row,
+      // making re-registration fail with a raw 409 duplicate-entry error.
+      const {body: second} = await registerUser(agent(), {
+        email: DEFAULT_USER.email,
+      });
+
+      expect(second.id).not.toBe(first.id);
+
+      const oldRow = await userRepository().findOne({
+        where: {id: first.id},
+        withDeleted: true,
+      });
+      expect(oldRow!.deletedAt).not.toBeNull();
+      expect(oldRow!.email).not.toBe(DEFAULT_USER.email);
+    });
+  });
+
+  describe('admin removal locks the account against re-registration', () => {
+    it('rejects re-registration with the same email after an admin removes the account', async () => {
+      const client = agent();
+      const {body} = await registerUser(client);
+
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .delete(`/admin/users/${body.id}`)
+        .set('x-csrf-token', adminToken)
+        .expect(204);
+
+      // Unlike self-deletion, admin removal keeps the email locked — a
+      // moderated user can't dodge it by simply registering again.
+      await agent().post('/auth/register').send(DEFAULT_USER).expect(409);
+    });
   });
 
   describe('admin endpoints', () => {
@@ -129,23 +171,32 @@ describe('Users (integration)', () => {
       const response = await adminAgent.get('/admin/users').expect(200);
 
       const emails = response.body.data.map((user: User) => user.email);
-      expect(emails).toContain(DEFAULT_USER.email);
       expect(emails).toContain(ADMIN_USER.email);
+      // Self-deletion anonymizes the email (frees it for re-registration), so
+      // the departed member's row no longer carries the original address.
+      expect(emails).not.toContain(DEFAULT_USER.email);
 
       const deleted = response.body.data.find(
         (user: User) => user.id === body.id
       );
       expect(deleted.deletedAt).not.toBeNull();
+      expect(deleted.email).toBe(`deleted-${body.id}@deleted.invalid`);
     });
 
-    it('restores a soft-deleted user who can then log in again', async () => {
+    // `restore` undoes an *admin* removal (identifiers stay locked, so restore
+    // simply un-hides the row) — not a self-deletion, which deliberately
+    // anonymizes on the way out. See users.service.ts (deactivateSelf vs remove).
+    it('restores an admin-removed user who can then log in again', async () => {
       const client = agent();
       const {body} = await registerUser(client);
-      const token = await getCsrfToken(client);
-      await client.delete('/users/me').set('x-csrf-token', token).expect(204);
 
       const adminAgent = await seedAdmin(testApp);
       const adminToken = await getCsrfToken(adminAgent);
+
+      await adminAgent
+        .delete(`/admin/users/${body.id}`)
+        .set('x-csrf-token', adminToken)
+        .expect(204);
 
       await adminAgent
         .patch(`/admin/users/${body.id}/restore`)

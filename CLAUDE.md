@@ -157,6 +157,22 @@ npm run dev:infra:down
   endpoint 503s (feature disabled), so dev/CI boot without it. It needs no
   client *secret* (no code exchange). Unit tests cover verify + link/create;
   integration covers the 400/503 wiring (a real token can't be minted in tests).
+- **Two account-deletion paths, deliberately different** — both soft-delete
+  (`deletedAt`), but only self-deletion releases the unique identifiers:
+  - `DELETE /users/me` → `UsersService.deactivateSelf`: nulls `googleId` and
+    rewrites `email` to `deleted-<id>@deleted.invalid` (`.invalid` is a
+    reserved TLD; the id makes it collision-proof) *before* soft-deleting —
+    "fresh start", so the same person can register/sign in again (password or
+    Google) without hitting the old row's unique constraints. `findOrCreateGoogleUser`
+    checks a `withDeleted` lookup before creating; a hit there means an *admin*
+    removal (see below), and it 403s rather than letting the unique index
+    reject the insert as an opaque 409.
+  - `DELETE /admin/users/:id` → `UsersService.remove`: soft-deletes only —
+    identifiers stay locked, so a moderated user can't dodge removal by
+    re-registering under the same email/Google identity. `PATCH
+    /admin/users/:id/restore` is for **this** path (undoing an admin mistake);
+    restoring a self-deleted row does not (and cannot, since the original
+    email is deliberately discarded) recover the original identity.
 - **CSRF**: `csrf-csrf` double-submit (`src/middlewares/csrf.ts`), token in the
   `x-csrf-token` header + a first-party cookie, bound to the session id via
   `getSessionIdentifier`. Needs `cookie-parser` (wired in `app.setup.ts`).

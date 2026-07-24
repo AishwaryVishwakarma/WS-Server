@@ -98,7 +98,10 @@ export class PrivateUsersController {
   @Delete()
   @HttpCode(204)
   async removeMe(@Req() req: Request, @Res({passthrough: true}) res: Response) {
-    await this.usersService.remove(req.session.userId!);
+    // Self-deletion releases the account's identifiers (email/googleId) so the
+    // same person can register/sign in fresh afterwards — unlike admin
+    // removal (`remove`), which keeps them locked to block re-registration.
+    await this.usersService.deactivateSelf(req.session.userId!);
     await this.sessionService.destroy(req);
     res.clearCookie('connect.sid');
   }

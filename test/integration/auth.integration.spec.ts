@@ -2,6 +2,7 @@ import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import {Role} from 'src/users/enums/role';
 import {User} from 'src/users/entities/user.entity';
+import {UsersService} from 'src/users/users.service';
 import {
   cleanDatabase,
   closeTestApp,
@@ -190,6 +191,53 @@ describe('Auth (integration)', () => {
         .post('/auth/google')
         .send({credential: 'any-token'})
         .expect(503);
+    });
+  });
+
+  // A real Google ID token can't be minted in tests (GoogleAuthService.verify
+  // is unit-tested), so these exercise UsersService directly — against the
+  // real database, so the unique constraints and soft-delete filtering are
+  // real, not mocked — the same way seedAdmin bypasses the HTTP layer.
+  describe('account deletion and Google re-registration', () => {
+    const profile = {
+      googleId: 'g-integration-1',
+      email: 'aria@gmail.com',
+      name: 'Aria',
+    };
+
+    it('lets the same Google identity register fresh after self-deletion', async () => {
+      const usersService = testApp.app.get(UsersService);
+
+      const first = await usersService.findOrCreateGoogleUser(profile);
+      await usersService.deactivateSelf(first.id);
+
+      // Same googleId AND email as before — must not collide with the
+      // now-anonymized row.
+      const second = await usersService.findOrCreateGoogleUser(profile);
+
+      expect(second.id).not.toBe(first.id);
+      expect(second.email).toBe(profile.email);
+      expect(second.googleId).toBe(profile.googleId);
+
+      const oldRow = await userRepository().findOne({
+        where: {id: first.id},
+        withDeleted: true,
+      });
+      expect(oldRow!.deletedAt).not.toBeNull();
+      expect(oldRow!.email).not.toBe(profile.email);
+      expect(oldRow!.googleId).toBeNull();
+    });
+
+    it('refuses re-registration under an admin-removed identity', async () => {
+      const usersService = testApp.app.get(UsersService);
+
+      const first = await usersService.findOrCreateGoogleUser(profile);
+      // Admin removal — unlike deactivateSelf, identifiers stay locked.
+      await usersService.remove(first.id);
+
+      await expect(
+        usersService.findOrCreateGoogleUser(profile)
+      ).rejects.toThrow('This account has been removed');
     });
   });
 });

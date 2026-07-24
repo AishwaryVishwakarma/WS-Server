@@ -1,4 +1,8 @@
-import {Injectable, NotFoundException} from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {RegisterUserDto} from './dto/register-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from '@nestjs/typeorm';
@@ -89,6 +93,20 @@ export class UsersService {
       return await this.usersRepository.save(byEmail);
     }
 
+    // Neither an active account holds this identity. Self-deletion
+    // (deactivateSelf) releases googleId/email before soft-deleting, so if a
+    // *soft-deleted* row still holds either, it's an admin-removed account —
+    // refuse re-registration under the same identity (a moderated user
+    // shouldn't be able to dodge a ban by re-registering) with a clear message,
+    // rather than letting the unique index reject the insert as a raw 409.
+    const removed = await this.usersRepository.findOne({
+      where: [{googleId: profile.googleId}, {email: profile.email}],
+      withDeleted: true,
+    });
+    if (removed) {
+      throw new ForbiddenException('This account has been removed');
+    }
+
     const user = this.usersRepository.create({
       name: profile.name,
       email: profile.email,
@@ -145,6 +163,23 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto) {
     const user = await this.findOne(id);
     return this._applyUserUpdates(user, updateUserDto);
+  }
+
+  // A member deleting their own account (as opposed to admin removal, see
+  // `remove`). Releases the unique identifiers (email, googleId) *before*
+  // soft-deleting, so the same person can register/sign-in fresh afterwards
+  // instead of colliding with their old, now-inert row. The placeholder email
+  // embeds the row's own id, so it can never collide with another user's;
+  // `.invalid` is a reserved TLD guaranteed never to be a real address.
+  // Content (stories/comments) stays attributed to the (now anonymous) row.
+  async deactivateSelf(id: string) {
+    const user = await this.findOne(id);
+
+    user.googleId = null;
+    user.email = `deleted-${id}@deleted.invalid`;
+    await this.usersRepository.save(user);
+
+    await this.remove(id);
   }
 
   async remove(id: string) {
