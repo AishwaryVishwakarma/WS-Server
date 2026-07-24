@@ -1,5 +1,6 @@
 import request from 'supertest';
 import {filter, firstValueFrom, timeout} from 'rxjs';
+import {Notification} from 'src/notifications/entities/notification.entity';
 import {NotificationsStream} from 'src/notifications/notifications-stream.service';
 import {
   cleanDatabase,
@@ -400,6 +401,53 @@ describe('Notifications (integration)', () => {
       // Two replies to the same thread bundle into one; the top-level
       // comment is a different type, so it's a second, separate item.
       expect(count.body.count).toBe(2);
+    });
+
+    // Regression: unread-count used to run an unbounded distinct query over
+    // the recipient's *entire* unread history, while the list only groups
+    // within the most recent DEFAULT_PAGE_SIZE raw rows. An old unread
+    // notification buried behind enough newer (read) activity would still
+    // count toward the badge without the list's page-1 fetch ever including
+    // it — the bell showed a count with nothing newly visible to match it.
+    it('does not count an old unread notification buried behind newer activity', async () => {
+      const {author, story} = await setup();
+      const {body: authorUser} = await author.get('/users/me').expect(200);
+
+      const followerAgent = agent();
+      await registerUser(followerAgent, {email: 'old-follower@test.com'});
+      const followerToken = await getCsrfToken(followerAgent);
+      await followerAgent
+        .put(`/users/${authorUser.id}/follow`)
+        .set('x-csrf-token', followerToken)
+        .expect(204);
+
+      // Backdate it to look like it's been sitting unread for a while.
+      const notificationsRepo = testApp.dataSource.getRepository(Notification);
+      await notificationsRepo.update(
+        {type: 'follow'},
+        {createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000)}
+      );
+
+      // Bury it behind DEFAULT_PAGE_SIZE (20) newer, unrelated notifications.
+      for (let i = 0; i < 20; i++) {
+        await commentAs(`filler-${i}@test.com`, story.id);
+      }
+
+      const count = await author
+        .get('/users/me/notifications/unread-count')
+        .expect(200);
+      const list = await author.get('/users/me/notifications').expect(200);
+
+      const visibleTypes = list.body.data.map(
+        (item: {type: string}) => item.type
+      );
+      expect(visibleTypes).not.toContain('follow');
+      // The badge only ever counts what the list's own window could show —
+      // never inflated by something buried behind it.
+      const unreadVisible = list.body.data.filter(
+        (item: {isRead: boolean}) => !item.isRead
+      );
+      expect(count.body.count).toBe(unreadVisible.length);
     });
   });
 
