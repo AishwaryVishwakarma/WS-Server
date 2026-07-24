@@ -15,6 +15,7 @@ import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
+import {syncReportCount} from 'src/utils/report-count';
 
 @Injectable()
 export class UsersService {
@@ -212,17 +213,7 @@ export class UsersService {
     const reportCount = await this.reportsRepository.countBy({
       reportedUser: {id: reportedUserId},
     });
-
-    // A report is moderation metadata, not a profile edit — carry the existing
-    // updatedAt through the targeted update so it stays untouched (TypeORM
-    // only auto-bumps the update-date column when it isn't among the set
-    // columns).
-    await this.usersRepository.update(reportedUserId, {
-      reportCount,
-      updatedAt: reportedUser.updatedAt,
-    });
-
-    reportedUser.reportCount = reportCount;
+    await syncReportCount(this.usersRepository, reportedUser, reportCount);
     return reportedUser;
   }
 
@@ -232,14 +223,7 @@ export class UsersService {
     const user = await this.findOne(userId);
 
     await this.reportsRepository.delete({reportedUser: {id: userId}});
-
-    // Same as report(): clearing reports is not an edit, so preserve updatedAt.
-    await this.usersRepository.update(userId, {
-      reportCount: 0,
-      updatedAt: user.updatedAt,
-    });
-
-    user.reportCount = 0;
+    await syncReportCount(this.usersRepository, user, 0);
     return user;
   }
 

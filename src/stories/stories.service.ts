@@ -19,6 +19,7 @@ import {
   type SelectQueryBuilder,
 } from 'typeorm';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
+import {syncReportCount} from 'src/utils/report-count';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
@@ -675,16 +676,7 @@ export class StoriesService {
     const reportCount = await this.reportsRepository.countBy({
       story: {id: storyId},
     });
-
-    // A report is moderation metadata, not a content edit — carry the existing
-    // updatedAt through the targeted update so it stays untouched (TypeORM only
-    // auto-bumps the update-date column when it isn't among the set columns).
-    await this.storiesRepository.update(storyId, {
-      reportCount,
-      updatedAt: story.updatedAt,
-    });
-
-    story.reportCount = reportCount;
+    await syncReportCount(this.storiesRepository, story, reportCount);
     return story;
   }
 
@@ -694,14 +686,7 @@ export class StoriesService {
     const story = await this.findOne(storyId);
 
     await this.reportsRepository.delete({story: {id: storyId}});
-
-    // Same as report(): clearing reports is not an edit, so preserve updatedAt.
-    await this.storiesRepository.update(storyId, {
-      reportCount: 0,
-      updatedAt: story.updatedAt,
-    });
-
-    story.reportCount = 0;
+    await syncReportCount(this.storiesRepository, story, 0);
     return story;
   }
 

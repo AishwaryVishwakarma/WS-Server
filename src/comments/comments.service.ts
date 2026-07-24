@@ -15,6 +15,7 @@ import {Story} from 'src/stories/entities/story.entity';
 import {Comment} from './entities/comment.entity';
 import {CommentReport} from './entities/comment-report.entity';
 import {getPaginatedResponse, paginate} from 'src/utils/pagination';
+import {syncReportCount} from 'src/utils/report-count';
 import {UsersService} from 'src/users/users.service';
 import {Role} from 'src/users/enums/role';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
@@ -228,19 +229,9 @@ export class CommentsService {
     const reportCount = await this.reportsRepository.countBy({
       comment: {id: commentId},
     });
-
-    // A report is moderation metadata, not a content edit — persist it with a
-    // targeted update that carries the existing updatedAt, so it never trips
-    // the client's "edited" indicator. (TypeORM only auto-bumps the update-date
-    // column when it isn't among the columns being set.)
-    await this.commentsRepository.update(commentId, {
+    await syncReportCount(this.commentsRepository, comment, reportCount, {
       isFlagged: true,
-      reportCount,
-      updatedAt: comment.updatedAt,
     });
-
-    comment.isFlagged = true;
-    comment.reportCount = reportCount;
     return comment;
   }
 
@@ -250,16 +241,9 @@ export class CommentsService {
     const comment = await this._findOrThrow(commentId);
 
     await this.reportsRepository.delete({comment: {id: commentId}});
-
-    // Same as report(): clearing the flag is not an edit, so preserve updatedAt.
-    await this.commentsRepository.update(commentId, {
+    await syncReportCount(this.commentsRepository, comment, 0, {
       isFlagged: false,
-      reportCount: 0,
-      updatedAt: comment.updatedAt,
     });
-
-    comment.isFlagged = false;
-    comment.reportCount = 0;
     return comment;
   }
 

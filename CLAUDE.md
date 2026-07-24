@@ -239,8 +239,12 @@ npm run dev:infra:down
   `UsersService.findOneWithReports`) — the paginated register list stays lean.
   A pattern reusable for story/comment reports later.
 - **Shared utils**: `src/utils/pagination.ts` (`paginate`, `getPaginatedResponse`
-  — the `{message,data,total,page,limit,totalPages}` envelope) and
-  `handle-query-error.ts` (maps MySQL duplicate → 409).
+  — the `{message,data,total,page,limit,totalPages}` envelope),
+  `handle-query-error.ts` (maps MySQL duplicate → 409), and `report-count.ts`
+  (`syncReportCount` — persists a recomputed `reportCount` via a targeted
+  update that preserves the entity's existing `updatedAt`; used by all three
+  report/resolve pairs — stories, comments, users — so none of them can
+  forget the updatedAt-preservation trick).
 
 ## Conventions & gotchas
 
