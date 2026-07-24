@@ -7,7 +7,6 @@ import {
   getCsrfToken,
   registerUser,
   seedAdmin,
-  type Agent,
   type TestApp,
 } from './test-utils';
 
@@ -42,7 +41,7 @@ describe('Follows (integration)', () => {
       name: email.split('@')[0],
     });
     const token = await getCsrfToken(client);
-    return {client, token, id: body.id as string};
+    return {client, token, id: body.id};
   };
 
   // An author with one approved story.

@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {ConfigService} from '@nestjs/config';
-import {OAuth2Client} from 'google-auth-library';
+import {OAuth2Client, type TokenPayload} from 'google-auth-library';
 
 // The identity we trust out of a verified Google ID token.
 export interface GoogleProfile {
@@ -38,7 +38,12 @@ export class GoogleAuthService {
       throw new ServiceUnavailableException('Google sign-in is not configured');
     }
 
-    let payload;
+    // Annotated explicitly: ticket.getPayload() is properly typed
+    // (TokenPayload | undefined) per google-auth-library's own .d.ts, and tsc
+    // agrees, but typescript-eslint's type-aware linting infers `any` for it
+    // regardless (a known quirk with this library's heavily-overloaded async
+    // methods) — this annotation is what keeps the no-unsafe-* rules quiet.
+    let payload: TokenPayload | undefined;
     try {
       const ticket = await this.client.verifyIdToken({
         idToken: credential,

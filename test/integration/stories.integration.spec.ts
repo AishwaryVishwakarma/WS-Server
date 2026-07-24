@@ -2,12 +2,14 @@ import request from 'supertest';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {User} from 'src/users/entities/user.entity';
+import {StoryResponseDto} from 'src/stories/dto/story-response.dto';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import {
   cleanDatabase,
   closeTestApp,
   createTestApp,
   getCsrfToken,
+  type IdBody,
   registerUser,
   seedAdmin,
   type Agent,
@@ -53,7 +55,7 @@ describe('Stories (integration)', () => {
       .send(payload)
       .expect(201);
 
-    return {client, token, author, story: response.body};
+    return {client, token, author, story: response.body as StoryResponseDto};
   };
 
   const approveStory = async (storyId: string, adminAgent?: Agent) => {
@@ -114,7 +116,7 @@ describe('Stories (integration)', () => {
 
       const ids: string[] = [];
       for (let i = 0; i < 10; i++) {
-        const {body} = await post(`Tale ${i}`).expect(201);
+        const {body}: {body: IdBody} = await post(`Tale ${i}`).expect(201);
         ids.push(body.id);
       }
       await post('Blocked').expect(403);
@@ -229,7 +231,7 @@ describe('Stories (integration)', () => {
       await registerUser(reporter, {email: 'reporter@test.com'});
       const reporterToken = await getCsrfToken(reporter);
 
-      return {storyId: story.id as string, admin, reporter, reporterToken};
+      return {storyId: story.id, admin, reporter, reporterToken};
     };
 
     it('reports an approved story into the queue and resolves it', async () => {
@@ -442,6 +444,14 @@ describe('Stories (integration)', () => {
   });
 
   describe('GET /stories keyset (cursor) paging', () => {
+    // The keyset feed envelope (no `?page=`) — data items only need `.id` in
+    // these tests; total rides the first page only (see StoriesService).
+    interface FeedPage {
+      data: IdBody[];
+      nextCursor: string | null;
+      total?: number;
+    }
+
     // Create `count` approved stories under distinct authors, returning the
     // ids in creation order (oldest first). Created back-to-back, several may
     // share a createdAt second — which is exactly what exercises the id
@@ -465,11 +475,11 @@ describe('Stories (integration)', () => {
       const ids: string[] = [];
       let cursor: string | null = null;
       for (let guard = 0; guard < 50; guard++) {
-        const url =
+        const url: string =
           `/stories?limit=2${query}` +
           (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
-        const {body} = await browser.get(url).expect(200);
-        ids.push(...body.data.map((s: {id: string}) => s.id));
+        const {body}: {body: FeedPage} = await browser.get(url).expect(200);
+        ids.push(...body.data.map((s) => s.id));
         cursor = body.nextCursor;
         if (!cursor) break;
       }
@@ -491,13 +501,13 @@ describe('Stories (integration)', () => {
       const created = await seedApproved(5);
       const browser = agent();
 
-      const {body: oneShot} = await browser
+      const {body: oneShot}: {body: FeedPage} = await browser
         .get('/stories?sort=oldest&limit=50')
         .expect(200);
       const walked = await walkFeed(browser, '&sort=oldest');
 
       expect(walked).toEqual(created);
-      expect(oneShot.data.map((s: {id: string}) => s.id)).toEqual(created);
+      expect(oneShot.data.map((s) => s.id)).toEqual(created);
       // A page that isn't full ends the feed.
       expect(oneShot.nextCursor).toBeNull();
     });
@@ -506,13 +516,15 @@ describe('Stories (integration)', () => {
       await seedApproved(3);
       const browser = agent();
 
-      const {body: first} = await browser.get('/stories?limit=2').expect(200);
+      const {body: first}: {body: FeedPage} = await browser
+        .get('/stories?limit=2')
+        .expect(200);
       expect(first.total).toBe(3);
       expect(first.data).toHaveLength(2);
       expect(first.nextCursor).toBeTruthy();
 
-      const {body: second} = await browser
-        .get(`/stories?limit=2&cursor=${encodeURIComponent(first.nextCursor)}`)
+      const {body: second}: {body: FeedPage} = await browser
+        .get(`/stories?limit=2&cursor=${encodeURIComponent(first.nextCursor!)}`)
         .expect(200);
       // Subsequent pages skip the COUNT — no total.
       expect(second.total).toBeUndefined();

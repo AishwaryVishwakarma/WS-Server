@@ -477,7 +477,9 @@ export class StoriesService {
       this._applyKeyset(qb, sort, decoded);
     }
 
-    const {entities, raw} = await qb.take(limit).getRawAndEntities();
+    const {entities, raw} = await qb
+      .take(limit)
+      .getRawAndEntities<Record<string, unknown>>();
     const last = entities.at(-1);
     const nextCursor =
       last && entities.length === limit

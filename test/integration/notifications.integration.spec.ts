@@ -7,6 +7,7 @@ import {
   closeTestApp,
   createTestApp,
   getCsrfToken,
+  type IdBody,
   registerUser,
   seedAdmin,
   type TestApp,
@@ -39,7 +40,7 @@ describe('Notifications (integration)', () => {
     await registerUser(author, {email: 'author@test.com'});
     const authorToken = await getCsrfToken(author);
 
-    const {body: story} = await author
+    const {body: story}: {body: IdBody} = await author
       .post('/stories')
       .set('x-csrf-token', authorToken)
       .send({title: 'Discuss me', content: 'Something spooky'})
@@ -53,7 +54,7 @@ describe('Notifications (integration)', () => {
       .send({status: 'approved'})
       .expect(200);
 
-    const {body: parentComment} = await author
+    const {body: parentComment}: {body: IdBody} = await author
       .post('/comments')
       .set('x-csrf-token', authorToken)
       .send({content: 'My own comment', storyId: story.id})
@@ -84,7 +85,7 @@ describe('Notifications (integration)', () => {
     const commenter = agent();
     await registerUser(commenter, {email});
     const token = await getCsrfToken(commenter);
-    const {body: comment} = await commenter
+    const {body: comment}: {body: IdBody} = await commenter
       .post('/comments')
       .set('x-csrf-token', token)
       .send({content: 'A fresh whisper', storyId})

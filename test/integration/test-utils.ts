@@ -7,10 +7,20 @@ import {DataSource} from 'typeorm';
 import {AppModule} from 'src/app.module';
 import {setupApp} from 'src/app.setup';
 import {CreateUserDto} from 'src/users/dto/create-user.dto';
+import {UserPreviewResponseDto} from 'src/users/dto/user-response.dto';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 
 export type Agent = ReturnType<typeof request.agent>;
+
+// supertest's Response.body is typed `any` — a minimal shape for endpoints
+// whose response tests only ever need the id back (creation endpoints
+// serialized through a response DTO's `id` field). Annotating at these
+// boundaries keeps `any` from leaking into every downstream call site that
+// consumes it (e.g. passing an id on to another request as a typed param).
+export interface IdBody {
+  id: string;
+}
 
 export interface TestApp {
   app: INestApplication<App>;
@@ -87,7 +97,7 @@ export async function registerUser(
   const payload = {...DEFAULT_USER, ...overrides};
   const response = await agent.post('/auth/register').send(payload).expect(201);
 
-  return {payload, body: response.body};
+  return {payload, body: response.body as UserPreviewResponseDto};
 }
 
 // Admins cannot be created through the public API (by design), so seed one

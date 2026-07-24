@@ -358,7 +358,7 @@ describe('Users (integration)', () => {
       await registerUser(reporter, {email: 'reporter@test.com'});
       const reporterToken = await getCsrfToken(reporter);
 
-      return {targetId: targetUser.id as string, reporter, reporterToken};
+      return {targetId: targetUser.id, reporter, reporterToken};
     };
 
     it('reports a user into the queue (with reason + detail) and resolves it', async () => {

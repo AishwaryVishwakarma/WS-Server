@@ -7,7 +7,6 @@ import {
   getCsrfToken,
   registerUser,
   seedAdmin,
-  type Agent,
   type TestApp,
 } from './test-utils';
 
