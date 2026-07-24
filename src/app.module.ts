@@ -11,6 +11,7 @@ import {UsersModule} from './users/users.module';
 import {User} from './users/entities/user.entity';
 import {UserReport} from './users/entities/user-report.entity';
 import {AuthModule} from './auth/auth.module';
+import {PasswordResetToken} from './auth/entities/password-reset-token.entity';
 import {CsrfMiddleware} from './middlewares/csrf.middleware';
 import {SessionService} from './session/session.service';
 import {SessionModule} from './session/session.module';
@@ -164,6 +165,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           Bookmark,
           Follow,
           StoryLike,
+          PasswordResetToken,
         ],
         synchronize: false,
         migrations,
@@ -201,6 +203,11 @@ export class AppModule {
         '/auth/logout',
         '/auth/register',
         '/auth/google',
+        // No session exists yet at either step of a password reset (the
+        // requester may not even be signed in, and consuming the link
+        // replaces the only proof of identity a session would provide).
+        '/auth/forgot-password',
+        '/auth/reset-password',
         // Anonymous read-counter ping — anonymous browsers can't hold a CSRF
         // token, and it's a harmless denormalized counter, not a real mutation.
         {path: 'stories/:id/view', method: RequestMethod.POST}

@@ -233,6 +233,22 @@ export class UsersService {
     });
   }
 
+  // Unlike findOne, a miss is a valid outcome here — PasswordResetService
+  // uses it to decide whether to actually mail a link, but must respond to
+  // the caller identically either way (no account-enumeration signal).
+  async findOneByEmail(email: string): Promise<User | null> {
+    return this.usersRepository.findOneBy({email});
+  }
+
+  // Sets a new password directly — used by password-reset, where a valid
+  // single-use token (not the caller's current password) is the proof of
+  // ownership. updatedAt bumps normally; this is a real account change,
+  // unlike the report/resolve moderation-metadata updates elsewhere.
+  async updatePassword(userId: string, newPassword: string): Promise<void> {
+    const hashedPassword = await this._generateHash(newPassword);
+    await this.usersRepository.update(userId, {password: hashedPassword});
+  }
+
   // Admin single-user detail (GET /admin/users/:id, e.g. the edit page): the
   // user plus the individual reports against them (reason, optional detail,
   // and who filed it) — the aggregate `reportCount` alone doesn't tell an

@@ -157,6 +157,22 @@ npm run dev:infra:down
   endpoint 503s (feature disabled), so dev/CI boot without it. It needs no
   client *secret* (no code exchange). Unit tests cover verify + link/create;
   integration covers the 400/503 wiring (a real token can't be minted in tests).
+- **Password reset** (`POST /auth/forgot-password`, `POST /auth/reset-password`,
+  both CSRF-exempt like login — no session exists at either step): a reset
+  link's token is 256 bits of randomness (`crypto.randomBytes`), only ever
+  stored as its SHA-256 hash (`PasswordResetToken.tokenHash`) — mirrors why
+  `User.password` is bcrypt-hashed, never reversible even if the row leaks.
+  `PasswordResetService` keeps at most one live token per user: requesting a
+  fresh link or consuming one deletes the rest, so an old link can never be
+  replayed alongside a newer one, and it expires after an hour regardless.
+  `forgot-password` always resolves the same way (204, no body) whether or
+  not the email is registered — a differing response would let an attacker
+  enumerate accounts. Delivery goes through `MailService`
+  (`src/mail/mail.service.ts`), optional like Google sign-in: unset
+  `SMTP_HOST` doesn't fail anything, it just logs the message instead of
+  sending it, so the flow is fully exercisable in dev/CI (grab the link from
+  the console) without real mail credentials. `FRONTEND_URL` (optional,
+  defaults to `http://localhost:3000`) builds the link the email points at.
 - **Two account-deletion paths, deliberately different** — both soft-delete
   (`deletedAt`), but only self-deletion releases the unique identifiers:
   - `DELETE /users/me` → `UsersService.deactivateSelf`: nulls `googleId` and

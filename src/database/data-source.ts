@@ -2,6 +2,7 @@ import 'dotenv/config';
 import {DataSource} from 'typeorm';
 import {User} from 'src/users/entities/user.entity';
 import {UserReport} from 'src/users/entities/user-report.entity';
+import {PasswordResetToken} from 'src/auth/entities/password-reset-token.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {StoryReport} from 'src/stories/entities/story-report.entity';
 import {Tag} from 'src/tags/entities/tag.entity';
@@ -36,6 +37,7 @@ export default new DataSource({
     Bookmark,
     Follow,
     StoryLike,
+    PasswordResetToken,
   ],
   migrations,
 });
