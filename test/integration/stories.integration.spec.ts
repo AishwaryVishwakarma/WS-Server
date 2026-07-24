@@ -315,7 +315,10 @@ describe('Stories (integration)', () => {
 
     it('hides a non-visible (pending) story from reporters with 404', async () => {
       // Never approved, so it isn't publicly visible.
-      const {story} = await createStory(STORY_PAYLOAD, 'pending-author@test.com');
+      const {story} = await createStory(
+        STORY_PAYLOAD,
+        'pending-author@test.com'
+      );
 
       const reporter = agent();
       await registerUser(reporter, {email: 'nosy@test.com'});
@@ -911,7 +914,10 @@ describe('Stories (integration)', () => {
         client,
         token,
         story: hot,
-      } = await createStory({...STORY_PAYLOAD, title: 'The Hot One'}, 'th@test.com');
+      } = await createStory(
+        {...STORY_PAYLOAD, title: 'The Hot One'},
+        'th@test.com'
+      );
       await approveStory(hot.id, admin);
 
       // Engagement on the hot story: a comment (weighted highest) + two reads.

@@ -78,7 +78,12 @@ export class PublicStoriesController {
     if (page === undefined) {
       const {data, nextCursor, total} =
         await this.storiesService.findApprovedFeed({cursor, limit, filters});
-      return {message: 'Success', data: this._serializePreviews(data), nextCursor, total};
+      return {
+        message: 'Success',
+        data: this._serializePreviews(data),
+        nextCursor,
+        total,
+      };
     }
 
     const {data, ...rest} = await this.storiesService.findAllApproved(

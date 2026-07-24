@@ -24,7 +24,9 @@ describe('story cursor', () => {
 
   it('returns null for malformed or non-cursor input', () => {
     expect(decodeStoryCursor('not-base64!!')).toBeNull();
-    expect(decodeStoryCursor(Buffer.from('123').toString('base64url'))).toBeNull();
+    expect(
+      decodeStoryCursor(Buffer.from('123').toString('base64url'))
+    ).toBeNull();
     expect(
       decodeStoryCursor(Buffer.from('{"k":"x"}').toString('base64url'))
     ).toBeNull();

@@ -2,9 +2,7 @@ import {MigrationInterface, QueryRunner} from 'typeorm';
 
 // Backs the "most-read" feed sort — turns the approved + ORDER BY viewCount
 // listing into an index range scan, mirroring the status+commentCount index.
-export class AddStoryViewCountIndex1784800000000
-  implements MigrationInterface
-{
+export class AddStoryViewCountIndex1784800000000 implements MigrationInterface {
   name = 'AddStoryViewCountIndex1784800000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

@@ -1,5 +1,11 @@
 import {Transform} from 'class-transformer';
-import {IsBoolean, IsIn, IsOptional, IsString, MaxLength} from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {MODERATION_STATUSES, StoryStatus} from '../enums/story-status.enum';
 

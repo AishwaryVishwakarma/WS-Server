@@ -37,7 +37,10 @@ describe('Follows (integration)', () => {
   // A registered member with a CSRF token, plus their id.
   const member = async (email: string) => {
     const client = agent();
-    const {body} = await registerUser(client, {email, name: email.split('@')[0]});
+    const {body} = await registerUser(client, {
+      email,
+      name: email.split('@')[0],
+    });
     const token = await getCsrfToken(client);
     return {client, token, id: body.id as string};
   };
