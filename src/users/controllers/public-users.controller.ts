@@ -1,10 +1,22 @@
-import {Controller, Get, Param, ParseUUIDPipe, Query} from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {Throttle} from '@nestjs/throttler';
+import type {Request} from 'express';
 import {User} from '../entities/user.entity';
 import {PUBLIC_READ_THROTTLE} from 'src/common/constants/throttle';
 import {UserPreviewResponseDto} from '../dto/user-response.dto';
 import {plainToInstance} from 'class-transformer';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
+import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {StoriesService} from 'src/stories/stories.service';
 import {StoryPreviewResponseDto} from 'src/stories/dto/story-response.dto';
 import {UsersService} from '../users.service';
@@ -29,6 +41,16 @@ export class PublicUsersController {
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const user = await this.usersService.findOne(id);
     return this._serialize(user);
+  }
+
+  // Flag a member's profile (name/bio/avatar) for moderation. Gated (signed-in
+  // members); one report per reporter — a duplicate is rejected with 409 by
+  // the unique constraint — and you can't report yourself (400).
+  @Post(':id/report')
+  @UseGuards(SessionAuthGuard)
+  @HttpCode(204)
+  async report(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    await this.usersService.report(id, req.session.userId!);
   }
 
   @Get(':id/stories')

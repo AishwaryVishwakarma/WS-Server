@@ -345,4 +345,141 @@ describe('Users (integration)', () => {
       expect(response.body.email).toBeUndefined();
     });
   });
+
+  describe('moderation via member reports', () => {
+    // A target profile plus a second member ready to report it.
+    const reportFixture = async () => {
+      const target = agent();
+      const {body: targetUser} = await registerUser(target, {
+        email: 'target@test.com',
+      });
+
+      const reporter = agent();
+      await registerUser(reporter, {email: 'reporter@test.com'});
+      const reporterToken = await getCsrfToken(reporter);
+
+      return {targetId: targetUser.id as string, reporter, reporterToken};
+    };
+
+    it('reports a user into the queue and resolves it', async () => {
+      const {targetId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/users/${targetId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      // The queue surfaces only reported users, annotated with the count —
+      // and a report does not block/delete the user.
+      const admin = await seedAdmin(testApp);
+      const queue = await admin.get('/admin/users?reported=true').expect(200);
+      expect(queue.body.total).toBe(1);
+      expect(queue.body.data[0].id).toBe(targetId);
+      expect(queue.body.data[0].reportCount).toBe(1);
+
+      // Resolving drops the reports, emptying the queue but keeping the user.
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/admin/users/${targetId}/resolve`)
+        .set('x-csrf-token', adminToken)
+        .expect(200);
+
+      const afterQueue = await admin
+        .get('/admin/users?reported=true')
+        .expect(200);
+      expect(afterQueue.body.total).toBe(0);
+
+      // The user itself is untouched — still in the full register.
+      const full = await admin.get('/admin/users').expect(200);
+      expect(full.body.data.some((u: {id: string}) => u.id === targetId)).toBe(
+        true
+      );
+    });
+
+    it('does not mark a reported user as edited (updatedAt preserved)', async () => {
+      const {targetId, reporter, reporterToken} = await reportFixture();
+
+      const admin = await seedAdmin(testApp);
+      const before = await admin.get(`/admin/users/${targetId}`).expect(200);
+
+      await reporter
+        .post(`/users/${targetId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      const after = await admin.get(`/admin/users/${targetId}`).expect(200);
+      // A report is not an edit, so updatedAt must be untouched.
+      expect(after.body.updatedAt).toBe(before.body.updatedAt);
+    });
+
+    it('rejects a duplicate report from the same member with 409', async () => {
+      const {targetId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/users/${targetId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(204);
+
+      await reporter
+        .post(`/users/${targetId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .expect(409);
+
+      const admin = await seedAdmin(testApp);
+      const queue = await admin.get('/admin/users?reported=true').expect(200);
+      expect(queue.body.data[0].reportCount).toBe(1);
+    });
+
+    it('forbids reporting yourself with 400', async () => {
+      const client = agent();
+      const {body} = await registerUser(client);
+      const token = await getCsrfToken(client);
+
+      await client
+        .post(`/users/${body.id}/report`)
+        .set('x-csrf-token', token)
+        .expect(400);
+    });
+
+    it('rejects reporting without a session with 403', async () => {
+      const {targetId} = await reportFixture();
+
+      // An anonymous request can't hold a CSRF token, so it fails CSRF (403)
+      // before the auth guard even runs (documented in CLAUDE.md).
+      await agent().post(`/users/${targetId}/report`).expect(403);
+    });
+
+    it('orders the reported queue by report count, most-reported first', async () => {
+      const targetA = agent();
+      const {body: userA} = await registerUser(targetA, {
+        email: 'a-target@test.com',
+      });
+      const targetB = agent();
+      const {body: userB} = await registerUser(targetB, {
+        email: 'b-target@test.com',
+      });
+
+      // A gets two reports, B gets one, so A must sort ahead of B.
+      const report = async (userId: string, email: string) => {
+        const reporter = agent();
+        await registerUser(reporter, {email});
+        const token = await getCsrfToken(reporter);
+        await reporter
+          .post(`/users/${userId}/report`)
+          .set('x-csrf-token', token)
+          .expect(204);
+      };
+      await report(userA.id, 'r1@test.com');
+      await report(userA.id, 'r2@test.com');
+      await report(userB.id, 'r3@test.com');
+
+      const admin = await seedAdmin(testApp);
+      const queue = await admin.get('/admin/users?reported=true').expect(200);
+      expect(queue.body.data.map((u: {id: string}) => u.id)).toEqual([
+        userA.id,
+        userB.id,
+      ]);
+      expect(queue.body.data[0].reportCount).toBe(2);
+    });
+  });
 });

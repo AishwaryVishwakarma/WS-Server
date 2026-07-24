@@ -92,6 +92,13 @@ describe('Auth (integration)', () => {
         .expect(400);
     });
 
+    it('rejects a profane display name with 400', async () => {
+      await agent()
+        .post('/auth/register')
+        .send({...DEFAULT_USER, name: 'fuck face'})
+        .expect(400);
+    });
+
     it('rejects registration while already logged in', async () => {
       const client = agent();
       await registerUser(client);

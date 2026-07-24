@@ -12,12 +12,16 @@ import {
 } from 'typeorm';
 import {Role} from '../enums/role';
 import {Comment} from 'src/comments/entities/comment.entity';
+import {UserReport} from './user-report.entity';
 
 @Entity()
 // One Google identity maps to at most one account. Named + nullable-unique so
 // password-only accounts (googleId NULL) coexist — MySQL permits many NULLs
 // under a unique index.
 @Index('IDX_user_googleId', ['googleId'], {unique: true})
+// The admin reported-users queue filters reportCount > 0 and sorts by it —
+// index it so the queue is a range scan, not a table scan.
+@Index('IDX_user_reportCount', ['reportCount'])
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -55,11 +59,22 @@ export class User {
   @Column({length: 500, nullable: true})
   bio: string;
 
+  // Recomputed from the user_report rows on every report/resolve (see
+  // UsersService) — an orderable, drift-free mirror of the report count so the
+  // admin queue can sort most-reported-first. Covers an offensive name/bio/
+  // avatar — content the text filter (IsClean) can't fully catch (evasions)
+  // and can't see at all (images).
+  @Column({type: 'int', default: 0})
+  reportCount: number;
+
   @OneToMany(() => Story, (story) => story.author)
   stories: Story[];
 
   @OneToMany(() => Comment, (comment) => comment.user)
   comments: Comment[];
+
+  @OneToMany(() => UserReport, (report) => report.reportedUser)
+  reports: UserReport[];
 
   @CreateDateColumn()
   createdAt: Date;

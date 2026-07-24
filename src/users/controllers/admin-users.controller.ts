@@ -13,11 +13,11 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
-import {SearchPaginationDto} from 'src/common/dto/search-pagination.dto';
 import type {Request} from 'express';
 import {User} from '../entities/user.entity';
 import {CreateUserDto} from '../dto/create-user.dto';
 import {UpdateUserDto} from '../dto/update-user.dto';
+import {AdminUserQueryDto} from '../dto/admin-user-query.dto';
 import {plainToInstance} from 'class-transformer';
 import {UserResponseDto} from '../dto/user-response.dto';
 import {SessionService} from 'src/session/session.service';
@@ -48,12 +48,15 @@ export class AdminUsersController {
     return this._serialize(user as User);
   }
 
+  // ?reported=true is the moderation queue (reported users, most-reported
+  // first); without it, the full register for search/lookup.
   @Get()
-  async findAll(@Query() query: SearchPaginationDto) {
+  async findAll(@Query() query: AdminUserQueryDto) {
     const result = await this.usersService.findAll(
       query.page,
       query.limit,
-      query.search
+      query.search,
+      query.reported
     );
 
     return {
@@ -81,6 +84,14 @@ export class AdminUsersController {
   @HttpCode(204)
   async restore(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.restore(id);
+  }
+
+  // Dismiss the member reports on a user (without blocking/deleting them) so
+  // they leave the reported queue.
+  @Patch(':id/resolve')
+  async resolveReports(@Param('id', ParseUUIDPipe) id: string) {
+    const user = await this.usersService.resolveReports(id);
+    return this._serialize(user);
   }
 
   @Delete(':id')

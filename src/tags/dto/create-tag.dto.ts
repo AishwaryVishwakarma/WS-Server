@@ -1,4 +1,5 @@
 import {IsNotEmpty, IsString, Matches, MaxLength} from 'class-validator';
+import {IsClean} from 'src/common/moderation/is-clean.decorator';
 
 export class CreateTagDto {
   @IsString()
@@ -9,5 +10,6 @@ export class CreateTagDto {
   @Matches(/[a-zA-Z0-9]/, {
     message: 'name must contain at least one letter or number',
   })
+  @IsClean()
   name: string;
 }

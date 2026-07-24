@@ -52,6 +52,29 @@ describe('User DTO validation', () => {
         })
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('rejects a profane display name', async () => {
+      await expect(
+        transform(RegisterUserDto, {...validRegistration, name: 'fuck face'})
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a profane bio', async () => {
+      await expect(
+        transform(RegisterUserDto, {...validRegistration, bio: 'I am a fuck'})
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('allows dark/horror vocabulary in the bio (this is a horror site)', async () => {
+      const result = await transform(RegisterUserDto, {
+        ...validRegistration,
+        bio: 'I write about blood, ghosts, and things that haunt the dark.',
+      });
+
+      expect(result.bio).toBe(
+        'I write about blood, ghosts, and things that haunt the dark.'
+      );
+    });
   });
 
   describe('UpdateProfileDto (self-service PATCH /users/me)', () => {
@@ -64,6 +87,12 @@ describe('User DTO validation', () => {
       });
 
       expect(result).toEqual({bio: 'Hello'});
+    });
+
+    it('rejects a profane name (inherited from RegisterUserDto)', async () => {
+      await expect(
+        transform(UpdateProfileDto, {name: 'sh1thead'})
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

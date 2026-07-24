@@ -9,6 +9,7 @@ import {SessionThrottlerGuard} from './common/gaurds/session-throttler.gaurd';
 import {DEFAULT_THROTTLE} from './common/constants/throttle';
 import {UsersModule} from './users/users.module';
 import {User} from './users/entities/user.entity';
+import {UserReport} from './users/entities/user-report.entity';
 import {AuthModule} from './auth/auth.module';
 import {CsrfMiddleware} from './middlewares/csrf.middleware';
 import {SessionService} from './session/session.service';
@@ -129,6 +130,7 @@ import {migrations} from './database/migrations';
         database: configService.get('DB_NAME'),
         entities: [
           User,
+          UserReport,
           Story,
           StoryReport,
           Tag,

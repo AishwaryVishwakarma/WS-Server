@@ -62,6 +62,14 @@ describe('Tags (integration)', () => {
 
       expect(duplicate.status).toBe(409);
     });
+
+    it('rejects a profane tag name with 400', async () => {
+      const admin = await seedAdmin(testApp);
+
+      const response = await createTag(admin, 'sh1t-tag');
+
+      expect(response.status).toBe(400);
+    });
   });
 
   describe('slugs', () => {

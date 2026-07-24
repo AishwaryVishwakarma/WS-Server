@@ -41,6 +41,8 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
 export class UserResponseDto extends UserPrivateResponseDto {
   @Expose() isBlocked: boolean;
   @Expose() deletedAt?: Date;
+  /** Member reports; drives the ?reported=true queue ordering. */
+  @Expose() reportCount: number;
 
   constructor(partial: Partial<UserResponseDto>) {
     super(partial);

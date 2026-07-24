@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -9,6 +10,7 @@ import {getRepositoryToken} from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import {QueryFailedError} from 'typeorm';
 import {User} from './entities/user.entity';
+import {UserReport} from './entities/user-report.entity';
 import {UsersService} from './users.service';
 
 const duplicateEntryError = () => {
@@ -22,28 +24,43 @@ describe('UsersService', () => {
   let repository: {
     create: jest.Mock;
     save: jest.Mock;
+    update: jest.Mock;
     findOne: jest.Mock;
     findAndCount: jest.Mock;
     findOneByOrFail: jest.Mock;
     softDelete: jest.Mock;
     restore: jest.Mock;
   };
+  let reportsRepository: {
+    create: jest.Mock;
+    save: jest.Mock;
+    countBy: jest.Mock;
+    delete: jest.Mock;
+  };
 
   beforeEach(async () => {
     repository = {
       create: jest.fn((data) => data),
       save: jest.fn((user) => Promise.resolve({id: 'user-1', ...user})),
+      update: jest.fn(),
       findOne: jest.fn(),
       findAndCount: jest.fn(),
       findOneByOrFail: jest.fn(),
       softDelete: jest.fn(),
       restore: jest.fn(),
     };
+    reportsRepository = {
+      create: jest.fn((data) => data),
+      save: jest.fn((report) => Promise.resolve(report)),
+      countBy: jest.fn().mockResolvedValue(0),
+      delete: jest.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
         UsersService,
         {provide: getRepositoryToken(User), useValue: repository},
+        {provide: getRepositoryToken(UserReport), useValue: reportsRepository},
         {
           provide: ConfigService,
           // Low salt rounds to keep hashing fast in tests
@@ -154,6 +171,94 @@ describe('UsersService', () => {
         NotFoundException
       );
       expect(repository.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('report', () => {
+    it('rejects reporting yourself', async () => {
+      await expect(service.report('user-1', 'user-1')).rejects.toThrow(
+        BadRequestException
+      );
+      expect(reportsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('saves a report and recomputes reportCount from the rows', async () => {
+      repository.findOneByOrFail
+        .mockResolvedValueOnce({
+          id: 'user-2',
+          updatedAt: new Date('2020-01-01'),
+        })
+        .mockResolvedValueOnce({id: 'user-1'});
+      reportsRepository.countBy.mockResolvedValue(3);
+
+      const reportedUser = await service.report('user-2', 'user-1');
+
+      expect(reportsRepository.save).toHaveBeenCalled();
+      expect(repository.update).toHaveBeenCalledWith(
+        'user-2',
+        expect.objectContaining({reportCount: 3})
+      );
+      expect(reportedUser.reportCount).toBe(3);
+    });
+
+    it('maps a duplicate report to ConflictException', async () => {
+      repository.findOneByOrFail
+        .mockResolvedValueOnce({id: 'user-2', updatedAt: new Date()})
+        .mockResolvedValueOnce({id: 'user-1'});
+      reportsRepository.save.mockRejectedValue(duplicateEntryError());
+
+      await expect(service.report('user-2', 'user-1')).rejects.toThrow(
+        ConflictException
+      );
+    });
+  });
+
+  describe('resolveReports', () => {
+    it('drops the report rows and zeroes the count', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-2',
+        updatedAt: new Date(),
+        reportCount: 5,
+      });
+
+      const user = await service.resolveReports('user-2');
+
+      expect(reportsRepository.delete).toHaveBeenCalledWith({
+        reportedUser: {id: 'user-2'},
+      });
+      expect(repository.update).toHaveBeenCalledWith(
+        'user-2',
+        expect.objectContaining({reportCount: 0})
+      );
+      expect(user.reportCount).toBe(0);
+    });
+  });
+
+  describe('findAll reported queue', () => {
+    it('filters to reportCount > 0, ordered most-reported first', async () => {
+      repository.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(1, 20, undefined, true);
+
+      expect(repository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {reportCount: expect.anything()},
+          order: {reportCount: 'DESC', createdAt: 'DESC'},
+        })
+      );
+    });
+
+    it('orders by createdAt when not viewing the reported queue', async () => {
+      repository.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(1, 20);
+
+      expect(repository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: undefined,
+          order: {createdAt: 'DESC'},
+        })
+      );
     });
   });
 

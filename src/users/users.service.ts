@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -7,7 +8,8 @@ import {RegisterUserDto} from './dto/register-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {User} from './entities/user.entity';
-import {Like, Repository, type FindOptionsWhere} from 'typeorm';
+import {UserReport} from './entities/user-report.entity';
+import {Like, MoreThan, Repository, type FindOptionsWhere} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
@@ -19,6 +21,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    @InjectRepository(UserReport)
+    private readonly reportsRepository: Repository<UserReport>,
     private readonly configService: ConfigService
   ) {}
 
@@ -127,13 +131,29 @@ export class UsersService {
     }
   }
 
-  async findAll(page: number = 1, limit: number = 20, search?: string) {
+  async findAll(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    reported?: boolean
+  ) {
     const {skip, take} = paginate(page, limit);
 
-    let where: FindOptionsWhere<User>[] | undefined;
+    // The reported queue is a separate axis from the plain register: member-
+    // reported users (reportCount > 0), most-reported first, regardless of
+    // search. Otherwise the full register, newest first, optionally filtered.
+    const base: FindOptionsWhere<User> = reported
+      ? {reportCount: MoreThan(0)}
+      : {};
+    let where: FindOptionsWhere<User> | FindOptionsWhere<User>[] | undefined =
+      reported ? base : undefined;
+
     if (search) {
       const like = Like(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
-      where = [{name: like}, {email: like}];
+      where = [
+        {...base, name: like},
+        {...base, email: like},
+      ];
     }
 
     const [users, total] = await this.usersRepository.findAndCount({
@@ -141,7 +161,9 @@ export class UsersService {
       take,
       where,
       withDeleted: true,
-      order: {createdAt: 'DESC'},
+      order: reported
+        ? {reportCount: 'DESC', createdAt: 'DESC'}
+        : {createdAt: 'DESC'},
     });
 
     return {
@@ -152,6 +174,60 @@ export class UsersService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  // A member flags another member's profile (name/bio/avatar) for moderation.
+  // Can't report yourself; the unique (reporter, reportedUser) constraint
+  // blocks double-reporting (mapped to 409); reportCount is recomputed from
+  // the rows so it never drifts. Mirrors StoriesService.report/CommentsService.report.
+  async report(reportedUserId: string, reporterId: string) {
+    if (reportedUserId === reporterId) {
+      throw new BadRequestException('You cannot report yourself');
+    }
+
+    const reportedUser = await this.findOne(reportedUserId);
+    const reporter = await this.findOne(reporterId);
+
+    try {
+      await this.reportsRepository.save(
+        this.reportsRepository.create({reportedUser, reporter})
+      );
+    } catch (error) {
+      handleQueryFailedError(error, 'report user');
+    }
+
+    const reportCount = await this.reportsRepository.countBy({
+      reportedUser: {id: reportedUserId},
+    });
+
+    // A report is moderation metadata, not a profile edit — carry the existing
+    // updatedAt through the targeted update so it stays untouched (TypeORM
+    // only auto-bumps the update-date column when it isn't among the set
+    // columns).
+    await this.usersRepository.update(reportedUserId, {
+      reportCount,
+      updatedAt: reportedUser.updatedAt,
+    });
+
+    reportedUser.reportCount = reportCount;
+    return reportedUser;
+  }
+
+  // Admin dismisses the reports on a user (without blocking/deleting them):
+  // drop the report rows and zero the count so they leave the reported queue.
+  async resolveReports(userId: string) {
+    const user = await this.findOne(userId);
+
+    await this.reportsRepository.delete({reportedUser: {id: userId}});
+
+    // Same as report(): clearing reports is not an edit, so preserve updatedAt.
+    await this.usersRepository.update(userId, {
+      reportCount: 0,
+      updatedAt: user.updatedAt,
+    });
+
+    user.reportCount = 0;
+    return user;
   }
 
   async findOne(id: string) {

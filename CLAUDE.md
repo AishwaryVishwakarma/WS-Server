@@ -209,6 +209,28 @@ npm run dev:infra:down
   `GET /admin/comments?flagged=true` (reported only, most-reported first);
   `PATCH /admin/comments/:id/resolve` drops the reports and clears the flag,
   while `DELETE /comments/:id` removes an abusive comment outright.
+- **Text moderation** (`src/common/moderation/`): `isProfane` (`text-moderation.ts`)
+  wraps `obscenity`'s stock English profanity/slur matcher (normalizes
+  leetspeak/repeats/simple separators; a floor, not a ceiling — see below).
+  The `@IsClean()` class-validator decorator (400 on a hit) is applied **only**
+  to public, ungated identity fields: `RegisterUserDto.name`/`.bio` (inherited
+  by `UpdateProfileDto`/`CreateUserDto`/`UpdateUserDto` via `PartialType`/
+  extension) and `CreateTagDto.name` (inherited by `UpdateTagDto`).
+  **Deliberately NOT applied to story or comment text** — this is a horror
+  site, so "blood"/"kill"/"corpse"/"ghost" etc. must stay allowed, and that
+  content already sits behind the admin approval queue or the report flow
+  below.
+- **User reports** (mirrors story/comment reports): members flag another
+  member's profile (name/bio/avatar — content the text filter can't fully
+  catch, and can't see at all for images) via `POST /users/:id/report` (gated;
+  one per reporter via a unique `(reporter, reportedUser)` on `user_report`;
+  can't report yourself). Recomputes the denormalized `User.reportCount` from
+  the rows (orderable, drift-free); does not block/delete the account. Admin
+  queue: `GET /admin/users?reported=true` (reportCount > 0, most-reported
+  first, a separate axis from the plain register/search), and
+  `PATCH /admin/users/:id/resolve` drops the reports and zeroes the count.
+  Admins action a genuinely bad profile with the existing block/delete/edit
+  endpoints.
 - **Shared utils**: `src/utils/pagination.ts` (`paginate`, `getPaginatedResponse`
   — the `{message,data,total,page,limit,totalPages}` envelope) and
   `handle-query-error.ts` (maps MySQL duplicate → 409).
