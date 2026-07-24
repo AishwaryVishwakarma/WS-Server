@@ -65,9 +65,12 @@ export class AdminUsersController {
     };
   }
 
+  // Includes the individual reports against this user (reason + optional
+  // detail + reporter) — the aggregate reportCount alone doesn't tell an
+  // admin *why* someone was reported.
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    const user = await this.usersService.findOne(id);
+    const user = await this.usersService.findOneWithReports(id);
     return this._serialize(user);
   }
 

@@ -230,7 +230,14 @@ npm run dev:infra:down
   first, a separate axis from the plain register/search), and
   `PATCH /admin/users/:id/resolve` drops the reports and zeroes the count.
   Admins action a genuinely bad profile with the existing block/delete/edit
-  endpoints.
+  endpoints. Each report carries a required predefined `reason`
+  (`ReportReason`: spam/harassment/inappropriate_image/impersonation/other,
+  `src/users/enums/report-reason.enum.ts`) plus an optional free-text
+  `details` (≤100 chars) — `reportCount` alone doesn't say *why* someone was
+  flagged. The individual reports (not just the aggregate count) are exposed
+  only on the admin single-user fetch (`GET /admin/users/:id`,
+  `UsersService.findOneWithReports`) — the paginated register list stays lean.
+  A pattern reusable for story/comment reports later.
 - **Shared utils**: `src/utils/pagination.ts` (`paginate`, `getPaginatedResponse`
   — the `{message,data,total,page,limit,totalPages}` envelope) and
   `handle-query-error.ts` (maps MySQL duplicate → 409).

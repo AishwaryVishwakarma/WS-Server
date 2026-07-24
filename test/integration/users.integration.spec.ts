@@ -361,12 +361,13 @@ describe('Users (integration)', () => {
       return {targetId: targetUser.id as string, reporter, reporterToken};
     };
 
-    it('reports a user into the queue and resolves it', async () => {
+    it('reports a user into the queue (with reason + detail) and resolves it', async () => {
       const {targetId, reporter, reporterToken} = await reportFixture();
 
       await reporter
         .post(`/users/${targetId}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'harassment', details: 'Sent threatening messages.'})
         .expect(204);
 
       // The queue surfaces only reported users, annotated with the count —
@@ -376,6 +377,18 @@ describe('Users (integration)', () => {
       expect(queue.body.total).toBe(1);
       expect(queue.body.data[0].id).toBe(targetId);
       expect(queue.body.data[0].reportCount).toBe(1);
+
+      // The individual report (reason, detail, reporter) shows on the admin
+      // single-user fetch — the aggregate count alone doesn't say why.
+      const detail = await admin.get(`/admin/users/${targetId}`).expect(200);
+      expect(detail.body.reports).toHaveLength(1);
+      expect(detail.body.reports[0].reason).toBe('harassment');
+      expect(detail.body.reports[0].details).toBe('Sent threatening messages.');
+      expect(detail.body.reports[0].reporter.id).toBeDefined();
+
+      // The paginated register list stays lean — no per-row reports array.
+      const list = await admin.get('/admin/users?reported=true').expect(200);
+      expect(list.body.data[0].reports).toBeUndefined();
 
       // Resolving drops the reports, emptying the queue but keeping the user.
       const adminToken = await getCsrfToken(admin);
@@ -396,6 +409,47 @@ describe('Users (integration)', () => {
       );
     });
 
+    it('rejects a report with no reason (400) and an unknown reason (400)', async () => {
+      const {targetId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/users/${targetId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .send({})
+        .expect(400);
+
+      await reporter
+        .post(`/users/${targetId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .send({reason: 'not-a-real-reason'})
+        .expect(400);
+    });
+
+    it('rejects a detail over 100 characters with 400', async () => {
+      const {targetId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/users/${targetId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam', details: 'x'.repeat(101)})
+        .expect(400);
+    });
+
+    it('accepts a reason with no detail (details is optional)', async () => {
+      const {targetId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/users/${targetId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam'})
+        .expect(204);
+
+      const admin = await seedAdmin(testApp);
+      const detail = await admin.get(`/admin/users/${targetId}`).expect(200);
+      expect(detail.body.reports[0].reason).toBe('spam');
+      expect(detail.body.reports[0].details).toBeNull();
+    });
+
     it('does not mark a reported user as edited (updatedAt preserved)', async () => {
       const {targetId, reporter, reporterToken} = await reportFixture();
 
@@ -405,6 +459,7 @@ describe('Users (integration)', () => {
       await reporter
         .post(`/users/${targetId}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam'})
         .expect(204);
 
       const after = await admin.get(`/admin/users/${targetId}`).expect(200);
@@ -418,11 +473,13 @@ describe('Users (integration)', () => {
       await reporter
         .post(`/users/${targetId}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam'})
         .expect(204);
 
       await reporter
         .post(`/users/${targetId}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'other'})
         .expect(409);
 
       const admin = await seedAdmin(testApp);
@@ -438,6 +495,7 @@ describe('Users (integration)', () => {
       await client
         .post(`/users/${body.id}/report`)
         .set('x-csrf-token', token)
+        .send({reason: 'spam'})
         .expect(400);
     });
 
@@ -446,7 +504,10 @@ describe('Users (integration)', () => {
 
       // An anonymous request can't hold a CSRF token, so it fails CSRF (403)
       // before the auth guard even runs (documented in CLAUDE.md).
-      await agent().post(`/users/${targetId}/report`).expect(403);
+      await agent()
+        .post(`/users/${targetId}/report`)
+        .send({reason: 'spam'})
+        .expect(403);
     });
 
     it('orders the reported queue by report count, most-reported first', async () => {
@@ -467,6 +528,7 @@ describe('Users (integration)', () => {
         await reporter
           .post(`/users/${userId}/report`)
           .set('x-csrf-token', token)
+          .send({reason: 'spam'})
           .expect(204);
       };
       await report(userA.id, 'r1@test.com');

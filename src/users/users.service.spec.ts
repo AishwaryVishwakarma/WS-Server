@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import {QueryFailedError} from 'typeorm';
 import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
+import {ReportReason} from './enums/report-reason.enum';
 import {UsersService} from './users.service';
 
 const duplicateEntryError = () => {
@@ -36,6 +37,7 @@ describe('UsersService', () => {
     save: jest.Mock;
     countBy: jest.Mock;
     delete: jest.Mock;
+    find: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -54,6 +56,7 @@ describe('UsersService', () => {
       save: jest.fn((report) => Promise.resolve(report)),
       countBy: jest.fn().mockResolvedValue(0),
       delete: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
     };
 
     const module = await Test.createTestingModule({
@@ -176,13 +179,13 @@ describe('UsersService', () => {
 
   describe('report', () => {
     it('rejects reporting yourself', async () => {
-      await expect(service.report('user-1', 'user-1')).rejects.toThrow(
-        BadRequestException
-      );
+      await expect(
+        service.report('user-1', 'user-1', ReportReason.Spam)
+      ).rejects.toThrow(BadRequestException);
       expect(reportsRepository.save).not.toHaveBeenCalled();
     });
 
-    it('saves a report and recomputes reportCount from the rows', async () => {
+    it('saves a report (with reason and detail) and recomputes reportCount from the rows', async () => {
       repository.findOneByOrFail
         .mockResolvedValueOnce({
           id: 'user-2',
@@ -191,8 +194,19 @@ describe('UsersService', () => {
         .mockResolvedValueOnce({id: 'user-1'});
       reportsRepository.countBy.mockResolvedValue(3);
 
-      const reportedUser = await service.report('user-2', 'user-1');
+      const reportedUser = await service.report(
+        'user-2',
+        'user-1',
+        ReportReason.Harassment,
+        'Kept sending threats in the comments.'
+      );
 
+      expect(reportsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: ReportReason.Harassment,
+          details: 'Kept sending threats in the comments.',
+        })
+      );
       expect(reportsRepository.save).toHaveBeenCalled();
       expect(repository.update).toHaveBeenCalledWith(
         'user-2',
@@ -201,15 +215,27 @@ describe('UsersService', () => {
       expect(reportedUser.reportCount).toBe(3);
     });
 
+    it('stores null details when none are given', async () => {
+      repository.findOneByOrFail
+        .mockResolvedValueOnce({id: 'user-2', updatedAt: new Date()})
+        .mockResolvedValueOnce({id: 'user-1'});
+
+      await service.report('user-2', 'user-1', ReportReason.Spam);
+
+      expect(reportsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({details: null})
+      );
+    });
+
     it('maps a duplicate report to ConflictException', async () => {
       repository.findOneByOrFail
         .mockResolvedValueOnce({id: 'user-2', updatedAt: new Date()})
         .mockResolvedValueOnce({id: 'user-1'});
       reportsRepository.save.mockRejectedValue(duplicateEntryError());
 
-      await expect(service.report('user-2', 'user-1')).rejects.toThrow(
-        ConflictException
-      );
+      await expect(
+        service.report('user-2', 'user-1', ReportReason.Spam)
+      ).rejects.toThrow(ConflictException);
     });
   });
 
@@ -231,6 +257,27 @@ describe('UsersService', () => {
         expect.objectContaining({reportCount: 0})
       );
       expect(user.reportCount).toBe(0);
+    });
+  });
+
+  describe('findOneWithReports', () => {
+    it('attaches the individual reports, most recent first', async () => {
+      repository.findOneByOrFail.mockResolvedValue({id: 'user-2'});
+      const reports = [
+        {id: 'r1', reason: ReportReason.Spam, reporter: {id: 'a'}},
+        {id: 'r2', reason: ReportReason.Harassment, reporter: {id: 'b'}},
+      ];
+      reportsRepository.find.mockResolvedValue(reports);
+
+      const user = await service.findOneWithReports('user-2');
+
+      expect(reportsRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {reportedUser: {id: 'user-2'}},
+          relations: ['reporter'],
+        })
+      );
+      expect(user.reports).toBe(reports);
     });
   });
 

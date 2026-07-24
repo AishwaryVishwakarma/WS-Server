@@ -21,6 +21,7 @@ import {AddStoryReports1785100000000} from './1785100000000-AddStoryReports';
 import {AddStoryFulltextIndex1785200000000} from './1785200000000-AddStoryFulltextIndex';
 import {AddGoogleAuth1785300000000} from './1785300000000-AddGoogleAuth';
 import {AddUserReports1785400000000} from './1785400000000-AddUserReports';
+import {AddUserReportReason1785500000000} from './1785500000000-AddUserReportReason';
 
 export const migrations = [
   Baseline1783883957794,
@@ -39,4 +40,5 @@ export const migrations = [
   AddStoryFulltextIndex1785200000000,
   AddGoogleAuth1785300000000,
   AddUserReports1785400000000,
+  AddUserReportReason1785500000000,
 ];

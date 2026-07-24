@@ -9,6 +9,7 @@ import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
+import type {ReportReason} from './enums/report-reason.enum';
 import {Like, MoreThan, Repository, type FindOptionsWhere} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -180,7 +181,14 @@ export class UsersService {
   // Can't report yourself; the unique (reporter, reportedUser) constraint
   // blocks double-reporting (mapped to 409); reportCount is recomputed from
   // the rows so it never drifts. Mirrors StoriesService.report/CommentsService.report.
-  async report(reportedUserId: string, reporterId: string) {
+  // `reason` + optional `details` give the admin queue something to go on
+  // beyond a bare count (see findOneWithReports).
+  async report(
+    reportedUserId: string,
+    reporterId: string,
+    reason: ReportReason,
+    details?: string
+  ) {
     if (reportedUserId === reporterId) {
       throw new BadRequestException('You cannot report yourself');
     }
@@ -190,7 +198,12 @@ export class UsersService {
 
     try {
       await this.reportsRepository.save(
-        this.reportsRepository.create({reportedUser, reporter})
+        this.reportsRepository.create({
+          reportedUser,
+          reporter,
+          reason,
+          details: details ?? null,
+        })
       );
     } catch (error) {
       handleQueryFailedError(error, 'report user');
@@ -234,6 +247,23 @@ export class UsersService {
     return this.usersRepository.findOneByOrFail({id}).catch(() => {
       throw new NotFoundException(`User with ID ${id} not found`);
     });
+  }
+
+  // Admin single-user detail (GET /admin/users/:id, e.g. the edit page): the
+  // user plus the individual reports against them (reason, optional detail,
+  // and who filed it) — the aggregate `reportCount` alone doesn't tell an
+  // admin *why* someone was reported. Not used by the paginated register list,
+  // so that response stays lean.
+  async findOneWithReports(id: string) {
+    const user = await this.findOne(id);
+
+    user.reports = await this.reportsRepository.find({
+      where: {reportedUser: {id}},
+      relations: ['reporter'],
+      order: {createdAt: 'DESC'},
+    });
+
+    return user;
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {

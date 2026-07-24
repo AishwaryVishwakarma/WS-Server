@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -14,6 +15,7 @@ import type {Request} from 'express';
 import {User} from '../entities/user.entity';
 import {PUBLIC_READ_THROTTLE} from 'src/common/constants/throttle';
 import {UserPreviewResponseDto} from '../dto/user-response.dto';
+import {ReportUserDto} from '../dto/report-user.dto';
 import {plainToInstance} from 'class-transformer';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
@@ -49,8 +51,17 @@ export class PublicUsersController {
   @Post(':id/report')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
-  async report(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
-    await this.usersService.report(id, req.session.userId!);
+  async report(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() reportUserDto: ReportUserDto,
+    @Req() req: Request
+  ) {
+    await this.usersService.report(
+      id,
+      req.session.userId!,
+      reportUserDto.reason,
+      reportUserDto.details
+    );
   }
 
   @Get(':id/stories')
