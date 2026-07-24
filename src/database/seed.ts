@@ -5,6 +5,8 @@ import {BookmarksService} from 'src/bookmarks/bookmarks.service';
 import {FollowsService} from 'src/follows/follows.service';
 import {LikesService} from 'src/likes/likes.service';
 import {CommentsService} from 'src/comments/comments.service';
+import {Notification} from 'src/notifications/entities/notification.entity';
+import {NotificationsService} from 'src/notifications/notifications.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {Story} from 'src/stories/entities/story.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
@@ -12,6 +14,7 @@ import {TagsService} from 'src/tags/tags.service';
 import {CreateUserDto} from 'src/users/dto/create-user.dto';
 import {User} from 'src/users/entities/user.entity';
 import {Role} from 'src/users/enums/role';
+import {ReportReason} from 'src/users/enums/report-reason.enum';
 import {UsersService} from 'src/users/users.service';
 
 // The Nest Logger is muted below ({logger: ['error', 'warn']}) to hide
@@ -464,6 +467,42 @@ const STORY_REPORTS: {story: string; reporters: string[]}[] = [
   },
 ];
 
+// A few member-reported profiles so the admin reported-users queue
+// (GET /admin/users?reported=true) has content. Reporters must differ from
+// the reported member (self-reports are rejected). Carol picks up two
+// differing reasons (exercising the admin single-user reports screen showing
+// more than one row); Dave (already blocked) shows a report can still land
+// against a moderated account.
+const USER_REPORTS: {
+  reportedUser: string;
+  reports: {reporter: string; reason: ReportReason; details?: string}[];
+}[] = [
+  {
+    reportedUser: 'carol@whisperingshadows.dev',
+    reports: [
+      {
+        reporter: 'alice@whisperingshadows.dev',
+        reason: ReportReason.Spam,
+        details: 'Posted the same comment across several threads.',
+      },
+      {
+        reporter: 'bob@whisperingshadows.dev',
+        reason: ReportReason.Impersonation,
+      },
+    ],
+  },
+  {
+    reportedUser: 'dave@whisperingshadows.dev',
+    reports: [
+      {
+        reporter: 'alice@whisperingshadows.dev',
+        reason: ReportReason.Harassment,
+        details: 'Kept messaging after being asked to stop.',
+      },
+    ],
+  },
+];
+
 // Seed read counts on a few popular (approved) stories so the feed shows some
 // life. viewCount is a pure denormalized counter, so it's set directly rather
 // than through recordView (which needs a viewer session).
@@ -553,6 +592,7 @@ async function seed() {
     const bookmarksService = app.get(BookmarksService);
     const followsService = app.get(FollowsService);
     const likesService = app.get(LikesService);
+    const notificationsService = app.get(NotificationsService);
 
     const existingAdmin = await dataSource
       .getRepository(User)
@@ -677,6 +717,20 @@ async function seed() {
       reportedStories++;
     }
 
+    // User reports (through the real service so reportCount and the
+    // per-reporter unique constraint behave exactly as in production)
+    let reportedUsers = 0;
+    for (const {reportedUser, reports} of USER_REPORTS) {
+      const reportedUserId = usersByEmail.get(reportedUser)?.id;
+      if (!reportedUserId) continue;
+      for (const {reporter, reason, details} of reports) {
+        const reporterId = usersByEmail.get(reporter)?.id;
+        if (!reporterId) continue;
+        await usersService.report(reportedUserId, reporterId, reason, details);
+      }
+      reportedUsers++;
+    }
+
     // Read counts (set the denormalized counter directly)
     const storyRepository = dataSource.getRepository(Story);
     for (const {story, views} of VIEW_COUNTS) {
@@ -715,6 +769,22 @@ async function seed() {
       bookmarks++;
     }
 
+    // Comments/replies/follows/likes above already generate notifications as
+    // a side effect of the real services (see e.g. CommentsService.create) —
+    // but every one of them starts unread, so the bell never shows a "read"
+    // row or the "Clear read" action. Mark Alice's oldest couple read so both
+    // states have seed data.
+    const notificationRepository = dataSource.getRepository(Notification);
+    const aliceId = usersByEmail.get('alice@whisperingshadows.dev')!.id;
+    const aliceNotifications = await notificationRepository.find({
+      where: {recipient: {id: aliceId}},
+      order: {createdAt: 'ASC'},
+      take: 2,
+    });
+    for (const notification of aliceNotifications) {
+      await notificationsService.markRead(notification.id, aliceId);
+    }
+
     const statusSummary = [...statusCounts.entries()]
       .map(([status, count]) => `${count} ${status}`)
       .join(', ');
@@ -724,7 +794,8 @@ async function seed() {
         `${storyIdsByTitle.size} stories (${statusSummary}), ` +
         `${allComments.length} comments + ${REPLIES.length} replies ` +
         `(${reportedComments} reported), ${reportedStories} reported stories, ` +
-        `${bookmarks} bookmarks, ${follows} follows, ${likes} likes`
+        `${reportedUsers} reported users, ${bookmarks} bookmarks, ` +
+        `${follows} follows, ${likes} likes`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`
