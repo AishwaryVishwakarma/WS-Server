@@ -12,6 +12,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import {IsClean} from 'src/common/moderation/is-clean.decorator';
 
 export class CreateStoryDto {
   @IsString()
@@ -51,4 +52,17 @@ export class CreateStoryDto {
   @IsOptional()
   @IsBoolean()
   draft?: boolean;
+
+  /**
+   * The series this story belongs to, by title — find-or-create scoped to
+   * this author (a free-text field doubles as "pick existing or create
+   * new"). `null` detaches the story from any series; omitting the key
+   * leaves an existing assignment untouched (see UpdateStoryDto).
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  @IsClean()
+  seriesTitle?: string | null;
 }

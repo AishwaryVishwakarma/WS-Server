@@ -132,6 +132,16 @@ export class PublicStoriesController {
     await this.storiesService.report(id, req.session.userId!, req.session.role);
   }
 
+  // Must be registered before `:id` below, or Nest would match the literal
+  // path "random" as that route's :id param instead.
+  @Get('random')
+  @Throttle(PUBLIC_READ_THROTTLE)
+  @UseGuards(OptionalSessionAuthGuard)
+  async findRandom() {
+    const id = await this.storiesService.findRandomApprovedId();
+    return {id};
+  }
+
   @Get(':id')
   @Throttle(PUBLIC_READ_THROTTLE)
   @UseGuards(OptionalSessionAuthGuard)

@@ -87,6 +87,8 @@ const STORIES: {
   scareLevel: number;
   tags: string[];
   status: StoryStatus;
+  /** A demo series, exercising StoriesService's find-or-create-by-title. */
+  seriesTitle?: string;
 }[] = [
   {
     author: 'alice@whisperingshadows.dev',
@@ -101,6 +103,22 @@ const STORIES: {
     scareLevel: 4,
     tags: ['horror', 'haunted-places'],
     status: StoryStatus.Approved,
+    seriesTitle: 'Hollow Lane',
+  },
+  {
+    author: 'alice@whisperingshadows.dev',
+    title: 'What Woke on Hollow Lane',
+    content:
+      'The street slept for three nights after the stretching sound, and everyone agreed not to mention it. Then the new owners found the attic hatch ' +
+      'unsealed — no nails, no chalk, just an empty room and a window painted shut from the outside. They called a glazier, who took one look at the ' +
+      'paint (old, flaking, applied — he was certain — from the outside of a third-floor window with no ladder marks below) and left without his tools. ' +
+      'The light still comes at 3:11. It just doesn’t go out anymore.',
+    excerpt:
+      'The attic hatch is unsealed now. The light doesn’t go out anymore.',
+    scareLevel: 4,
+    tags: ['horror', 'haunted-places'],
+    status: StoryStatus.Approved,
+    seriesTitle: 'Hollow Lane',
   },
   {
     author: 'alice@whisperingshadows.dev',

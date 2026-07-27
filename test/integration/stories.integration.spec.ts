@@ -1103,6 +1103,36 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('GET /stories/random', () => {
+    it('404s when there are no approved stories', async () => {
+      await createStory(); // pending, not approved
+
+      await agent().get('/stories/random').expect(404);
+    });
+
+    it('returns the id of an approved story, reachable anonymously', async () => {
+      const {story} = await createStory();
+      await approveStory(story.id);
+
+      const response = await agent().get('/stories/random').expect(200);
+      expect(response.body.id).toBe(story.id);
+    });
+
+    it('never returns a non-approved story even when others exist', async () => {
+      const {story: approved} = await createStory(
+        {...STORY_PAYLOAD, title: 'Approved One'},
+        'approved@test.com'
+      );
+      await approveStory(approved.id);
+      await createStory({...STORY_PAYLOAD, title: 'Still Pending'});
+
+      for (let i = 0; i < 5; i++) {
+        const response = await agent().get('/stories/random').expect(200);
+        expect(response.body.id).toBe(approved.id);
+      }
+    });
+  });
+
   describe('GET /admin/stories', () => {
     it('filters by status for the moderation queue', async () => {
       const {story: approved} = await createStory(STORY_PAYLOAD, 'a@test.com');

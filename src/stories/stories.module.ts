@@ -8,6 +8,7 @@ import {PublicStoriesController} from './controllers/public-stories.controller';
 import {AdminStoriesController} from './controllers/admin-stories.controller';
 import {TagsModule} from 'src/tags/tags.module';
 import {CommentsModule} from 'src/comments/comments.module';
+import {SeriesModule} from 'src/series/series.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import {CommentsModule} from 'src/comments/comments.module';
     forwardRef(() => UsersModule),
     TagsModule,
     forwardRef(() => CommentsModule),
+    forwardRef(() => SeriesModule),
   ],
   controllers: [PublicStoriesController, AdminStoriesController],
   providers: [StoriesService],

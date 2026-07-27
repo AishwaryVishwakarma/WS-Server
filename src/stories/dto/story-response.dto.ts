@@ -1,5 +1,6 @@
-import {Expose, Type} from 'class-transformer';
+import {Expose, Transform, Type} from 'class-transformer';
 import type {StoryStatus} from '../enums/story-status.enum';
+import type {Story} from '../entities/story.entity';
 import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
 
 /**
@@ -13,6 +14,22 @@ export class StoryAuthorResponseDto {
   @Expose() profileImageUrl?: string;
 
   constructor(partial: Partial<StoryAuthorResponseDto>) {
+    Object.assign(this, partial);
+  }
+}
+
+/**
+ * [public] — a story's own series membership: which series, and where in
+ * it. Combines the `series` relation (id/title) with the sibling
+ * `seriesPosition` column via the `@Transform` below, since they don't live
+ * on the same entity.
+ */
+export class StorySeriesResponseDto {
+  @Expose() id: string;
+  @Expose() title: string;
+  @Expose() position: number | null;
+
+  constructor(partial: Partial<StorySeriesResponseDto>) {
     Object.assign(this, partial);
   }
 }
@@ -43,6 +60,21 @@ export class StoryPreviewResponseDto {
   @Expose()
   @Type(() => StoryAuthorResponseDto)
   author?: StoryAuthorResponseDto;
+
+  // Populated only when the query loads the `series` relation (the reader's
+  // single-story fetch and the series page's own listing) — omitted on bulk
+  // feed listings, which don't join it.
+  @Expose()
+  @Transform(({obj}: {obj: Story}) =>
+    obj.series
+      ? new StorySeriesResponseDto({
+          id: obj.series.id,
+          title: obj.series.title,
+          position: obj.seriesPosition,
+        })
+      : undefined
+  )
+  series?: StorySeriesResponseDto;
 
   constructor(partial: Partial<StoryPreviewResponseDto>) {
     Object.assign(this, partial);

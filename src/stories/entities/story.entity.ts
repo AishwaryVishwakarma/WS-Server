@@ -17,6 +17,7 @@ import {StoryStatus} from '../enums/story-status.enum';
 import {Tag} from 'src/tags/entities/tag.entity';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {StoryReport} from './story-report.entity';
+import {Series} from 'src/series/entities/series.entity';
 
 @Entity()
 // The public feed filters status='approved' and sorts by createdAt (newest/
@@ -104,6 +105,23 @@ export class Story {
 
   @OneToMany(() => StoryReport, (report) => report.story)
   reports: StoryReport[];
+
+  // At most one series per story. Nullable — most stories are standalone;
+  // SET NULL rather than CASCADE so a story never disappears just because
+  // its series does (there's no delete-series endpoint in v1, but the FK
+  // stays defensive).
+  @ManyToOne(() => Series, (series) => series.stories, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  series: Series | null;
+
+  // This story's 1-based order within `series`. Assigned once, when the
+  // story is first attached to a series (see StoriesService); gaps from
+  // later removals are fine since display only ever needs relative order,
+  // never a contiguous count.
+  @Column({type: 'int', nullable: true})
+  seriesPosition: number | null;
 
   @CreateDateColumn()
   createdAt: Date;

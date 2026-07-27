@@ -2,6 +2,7 @@ import {ForbiddenException, NotFoundException} from '@nestjs/common';
 import {Test} from '@nestjs/testing';
 import {getRepositoryToken} from '@nestjs/typeorm';
 import {TagsService} from 'src/tags/tags.service';
+import {SeriesService} from 'src/series/series.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {Story} from './entities/story.entity';
@@ -15,11 +16,13 @@ describe('StoriesService', () => {
     create: jest.Mock;
     save: jest.Mock;
     count: jest.Mock;
+    find: jest.Mock;
     findAndCount: jest.Mock;
     findOne: jest.Mock;
     findOneOrFail: jest.Mock;
     increment: jest.Mock;
     delete: jest.Mock;
+    createQueryBuilder: jest.Mock;
   };
   let reportsRepository: {
     create: jest.Mock;
@@ -29,20 +32,39 @@ describe('StoriesService', () => {
   };
   let usersService: {findOne: jest.Mock};
   let tagsService: {findManyByIds: jest.Mock};
+  let seriesService: {findOrCreateForAuthor: jest.Mock};
+  // Shared by findRandomApprovedId (select/where/orderBy/getOne) and
+  // _assignSeries's MAX(seriesPosition) aggregate (select/where/getRawOne).
+  let randomQueryBuilder: {
+    select: jest.Mock;
+    where: jest.Mock;
+    orderBy: jest.Mock;
+    getOne: jest.Mock;
+    getRawOne: jest.Mock;
+  };
 
   const author = {id: 'author-1'};
 
   beforeEach(async () => {
+    randomQueryBuilder = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getOne: jest.fn(),
+      getRawOne: jest.fn().mockResolvedValue({max: null}),
+    };
     repository = {
       create: jest.fn((data) => data),
       save: jest.fn((story) => Promise.resolve(story)),
       // Publish-limit probe (_assertWithinPublishLimit) — under the free cap.
       count: jest.fn().mockResolvedValue(0),
+      find: jest.fn().mockResolvedValue([]),
       findAndCount: jest.fn().mockResolvedValue([[], 0]),
       findOne: jest.fn(),
       findOneOrFail: jest.fn(),
       increment: jest.fn().mockResolvedValue({affected: 1}),
       delete: jest.fn(),
+      createQueryBuilder: jest.fn(() => randomQueryBuilder),
     };
     reportsRepository = {
       create: jest.fn((data) => data),
@@ -52,6 +74,7 @@ describe('StoriesService', () => {
     };
     usersService = {findOne: jest.fn().mockResolvedValue(author)};
     tagsService = {findManyByIds: jest.fn()};
+    seriesService = {findOrCreateForAuthor: jest.fn()};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -60,6 +83,7 @@ describe('StoriesService', () => {
         {provide: getRepositoryToken(StoryReport), useValue: reportsRepository},
         {provide: UsersService, useValue: usersService},
         {provide: TagsService, useValue: tagsService},
+        {provide: SeriesService, useValue: seriesService},
       ],
     }).compile();
 
@@ -104,6 +128,46 @@ describe('StoriesService', () => {
         service.create({...baseDto, tags: ['tag-1', 'missing']}, 'author-1')
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('attaches a series and assigns the next position', async () => {
+      const series = {id: 'series-1', title: 'Hollow Lane'};
+      seriesService.findOrCreateForAuthor.mockResolvedValue(series);
+      randomQueryBuilder.getRawOne.mockResolvedValue({max: '2'});
+
+      const story = await service.create(
+        {...baseDto, seriesTitle: 'Hollow Lane'},
+        'author-1'
+      );
+
+      expect(seriesService.findOrCreateForAuthor).toHaveBeenCalledWith(
+        author,
+        'Hollow Lane'
+      );
+      expect(story.series).toBe(series);
+      expect(story.seriesPosition).toBe(3);
+    });
+
+    it('starts a brand new series at position 1', async () => {
+      seriesService.findOrCreateForAuthor.mockResolvedValue({
+        id: 'series-1',
+        title: 'Hollow Lane',
+      });
+      randomQueryBuilder.getRawOne.mockResolvedValue({max: null});
+
+      const story = await service.create(
+        {...baseDto, seriesTitle: 'Hollow Lane'},
+        'author-1'
+      );
+
+      expect(story.seriesPosition).toBe(1);
+    });
+
+    it('leaves the story out of any series when seriesTitle is omitted', async () => {
+      const story = await service.create(baseDto, 'author-1');
+
+      expect(seriesService.findOrCreateForAuthor).not.toHaveBeenCalled();
+      expect(story.series).toBeUndefined();
+    });
   });
 
   describe('update', () => {
@@ -141,6 +205,95 @@ describe('StoriesService', () => {
       await expect(
         service.update('story-1', {title: 'Nope'}, 'someone-else', Role.User)
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('update — series membership', () => {
+    it('attaches a new series when none was set', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        series: null,
+      });
+      const series = {id: 'series-1', title: 'Hollow Lane'};
+      seriesService.findOrCreateForAuthor.mockResolvedValue(series);
+      randomQueryBuilder.getRawOne.mockResolvedValue({max: null});
+
+      const story = await service.update(
+        'story-1',
+        {seriesTitle: 'Hollow Lane'},
+        'author-1',
+        Role.User
+      );
+
+      expect(seriesService.findOrCreateForAuthor).toHaveBeenCalledWith(
+        author,
+        'Hollow Lane'
+      );
+      expect(story.series).toBe(series);
+      expect(story.seriesPosition).toBe(1);
+    });
+
+    it('detaches from its series when seriesTitle is explicitly null', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        series: {id: 'series-1', title: 'Hollow Lane'},
+        seriesPosition: 2,
+      });
+
+      const story = await service.update(
+        'story-1',
+        {seriesTitle: null},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.series).toBeNull();
+      expect(story.seriesPosition).toBeNull();
+      expect(seriesService.findOrCreateForAuthor).not.toHaveBeenCalled();
+    });
+
+    it('leaves the position alone when re-saved under the same series title', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        series: {id: 'series-1', title: 'Hollow Lane'},
+        seriesPosition: 2,
+      });
+
+      const story = await service.update(
+        'story-1',
+        {seriesTitle: 'Hollow Lane'},
+        'author-1',
+        Role.User
+      );
+
+      expect(seriesService.findOrCreateForAuthor).not.toHaveBeenCalled();
+      expect(story.seriesPosition).toBe(2);
+    });
+
+    it('leaves an existing series untouched when seriesTitle is omitted', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        series: {id: 'series-1', title: 'Hollow Lane'},
+        seriesPosition: 2,
+      });
+
+      const story = await service.update(
+        'story-1',
+        {title: 'New title'},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.series).toEqual({id: 'series-1', title: 'Hollow Lane'});
+      expect(story.seriesPosition).toBe(2);
     });
   });
 
@@ -212,6 +365,19 @@ describe('StoriesService', () => {
     });
   });
 
+  describe('findApprovedBySeriesId', () => {
+    it('queries approved stories in that series, ordered by position', async () => {
+      await service.findApprovedBySeriesId('series-1');
+
+      expect(repository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {series: {id: 'series-1'}, status: StoryStatus.Approved},
+          order: {seriesPosition: 'ASC'},
+        })
+      );
+    });
+  });
+
   describe('recordView', () => {
     const approved = {
       id: 'story-1',
@@ -278,6 +444,29 @@ describe('StoriesService', () => {
       repository.findOne.mockResolvedValue(null);
 
       await expect(service.recordView('missing', {})).rejects.toThrow(
+        NotFoundException
+      );
+    });
+  });
+
+  describe('findRandomApprovedId', () => {
+    it('returns the id of the story RAND() picked', async () => {
+      randomQueryBuilder.getOne.mockResolvedValue({id: 'story-7'});
+
+      const id = await service.findRandomApprovedId();
+
+      expect(id).toBe('story-7');
+      expect(randomQueryBuilder.where).toHaveBeenCalledWith(
+        'story.status = :status',
+        {status: StoryStatus.Approved}
+      );
+      expect(randomQueryBuilder.orderBy).toHaveBeenCalledWith('RAND()');
+    });
+
+    it('throws NotFoundException when there are no approved stories', async () => {
+      randomQueryBuilder.getOne.mockResolvedValue(null);
+
+      await expect(service.findRandomApprovedId()).rejects.toThrow(
         NotFoundException
       );
     });

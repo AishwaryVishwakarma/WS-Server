@@ -13,6 +13,7 @@ import {
 import {Role} from '../enums/role';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {UserReport} from './user-report.entity';
+import {Series} from 'src/series/entities/series.entity';
 
 @Entity()
 // One Google identity maps to at most one account. Named + nullable-unique so
@@ -69,6 +70,9 @@ export class User {
 
   @OneToMany(() => Story, (story) => story.author)
   stories: Story[];
+
+  @OneToMany(() => Series, (series) => series.author)
+  seriesList: Series[];
 
   @OneToMany(() => Comment, (comment) => comment.user)
   comments: Comment[];

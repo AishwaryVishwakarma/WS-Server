@@ -72,8 +72,11 @@ npm run dev:infra:down
 ## Architecture
 
 - **Per-domain modules**: `auth`, `users`, `stories`, `tags`, `comments`,
-  `notifications`, `bookmarks`, `follows`, `likes`. Each domain splits
-  controllers by audience: `public-*`, `private-*` (`/me`), `admin-*`.
+  `notifications`, `bookmarks`, `follows`, `likes`, `series`. Most domains
+  split controllers by audience (`public-*`, `private-*` (`/me`), `admin-*`);
+  a few (bookmarks, follows, likes, series) instead use one `@Controller()`
+  with no shared prefix and fully-qualified paths per method, mixing public
+  and gated `/users/me/*` routes on the same controller.
 - **Likes**: a `StoryLike` (table `story_like` — `like` is a MySQL reserved
   word; unique `(user, story)`, both cascade-delete) is a member liking a
   story. Gated `LikesController`: `PUT`/`DELETE /stories/:id/like` (idempotent;
@@ -233,6 +236,40 @@ npm run dev:infra:down
   — enforced in `StoriesService` on create-non-draft and `submitDraft` (403
   when exceeded). Drafts and rejected stories don't count, so authors can keep
   writing; it's a fair-use cap and basic spam protection.
+- **Random story** (`GET /stories/random`, public, throttled like every other
+  read): `StoriesService.findRandomApprovedId` does a plain `ORDER BY RAND()`
+  over approved stories and returns just `{id}` — the client redirects to
+  `/stories/:id` rather than this endpoint returning the full story, so the
+  normal reader route still does the real fetch/render. Registered *before*
+  `GET /stories/:id` in `PublicStoriesController` (route order matters — Nest
+  would otherwise match the literal path `random` as that route's `:id`).
+  `ORDER BY RAND()` scans the whole approved set to shuffle; fine at today's
+  scale, would want an offset/gap-sampling scheme on a much bigger table.
+- **Series** (`src/series/`): an author's own ordered grouping of their
+  stories (e.g. serialized fiction posted as "Part 1", "Part 2"). Unmoderated
+  and author-owned — no admin gate, unlike tags — because it's just a label,
+  the same trust level as a story's own title (`Series.title` still runs
+  through `@IsClean()`). One series per story at most: `Story.series` (nullable
+  FK, `SET NULL` on delete — there's no delete-series endpoint in v1, but the
+  FK stays defensive) + `Story.seriesPosition` (nullable int, assigned once on
+  attach, never renumbered on removal — gaps are fine since display only needs
+  relative order). No separate "create a series" call: `CreateStoryDto`/
+  `UpdateStoryDto`'s `seriesTitle: string | null` field is find-or-create by
+  (author, title) — `null` explicitly detaches, an **omitted key** on update
+  leaves an existing assignment untouched (the one case `@IsOptional()` doesn't
+  already give you for free, since it treats `null` as pass-through too).
+  Reassigning to a *different* title picks a fresh position (current max + 1
+  for that series); resaving under the *same* title is a no-op, so editing
+  unrelated fields never reshuffles an existing story's spot. Endpoints:
+  `GET /series/:id` (public — the series' own metadata plus its **approved**
+  stories in position order, composed at the controller layer from
+  `SeriesService.findOne` + `StoriesService.findApprovedBySeriesId`, mirroring
+  how the story controller composes in `CommentsService`) and
+  `GET /users/me/series` (gated — the editor's own "you already have" hints).
+  `StoryPreviewResponseDto.series` (id/title/position) is populated only when
+  the query eager-loads the `series` relation — the single-story detail fetch
+  and the series listing do; the bulk feed/tag/author listings deliberately
+  don't, to keep that hot path join-free.
 - **Honeypot**: `LoginInfoDto` and `RegisterUserDto` carry an `@IsEmpty()`
   `website` field. Real forms leave the hidden input blank; a bot that fills
   every field trips `ValidationPipe` (400) before any credential/DB work.

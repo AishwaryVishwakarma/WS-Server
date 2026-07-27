@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  forwardRef,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -23,6 +25,8 @@ import {syncReportCount} from 'src/utils/report-count';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
+import {SeriesService} from 'src/series/series.service';
+import type {User} from 'src/users/entities/user.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import type {StorySortOption} from './dto/story-query.dto';
@@ -109,7 +113,9 @@ export class StoriesService {
     @InjectRepository(StoryReport)
     private readonly reportsRepository: Repository<StoryReport>,
     private readonly usersService: UsersService,
-    private readonly tagsService: TagsService
+    private readonly tagsService: TagsService,
+    @Inject(forwardRef(() => SeriesService))
+    private readonly seriesService: SeriesService
   ) {}
 
   private async _getStoryIfAuthorized(
@@ -164,7 +170,7 @@ export class StoriesService {
     // demo/pagination data can exceed it.
     {enforcePublishLimit = true}: {enforcePublishLimit?: boolean} = {}
   ) {
-    const {tags: tagIds, excerpt, draft, ...rest} = createStoryDto;
+    const {tags: tagIds, excerpt, draft, seriesTitle, ...rest} = createStoryDto;
 
     // Submitting straight to review counts against the publish limit; saving a
     // private draft does not.
@@ -185,7 +191,35 @@ export class StoriesService {
       story.tags = await this._getTagsIfExists(tagIds);
     }
 
+    if (seriesTitle) {
+      await this._assignSeries(story, author, seriesTitle);
+    }
+
     return this.storiesRepository.save(story);
+  }
+
+  // Attaches `story` to (creating if needed) `author`'s series named
+  // `title`, assigning it the next position in that series. Shared by
+  // create and update — update only calls this when the target series is
+  // actually changing (see update()), so editing unrelated fields never
+  // reshuffles an existing position.
+  private async _assignSeries(story: Story, author: User, title: string) {
+    const series = await this.seriesService.findOrCreateForAuthor(
+      author,
+      title
+    );
+    story.series = series;
+
+    // TypeORM's typed `.maximum()` helper requires a strictly `number` column
+    // (seriesPosition is `number | null`), so this aggregate goes through the
+    // query builder instead.
+    const raw = await this.storiesRepository
+      .createQueryBuilder('story')
+      .select('MAX(story.seriesPosition)', 'max')
+      .where('story.series = :seriesId', {seriesId: series.id})
+      .getRawOne<{max: string | null}>();
+
+    story.seriesPosition = (Number(raw?.max) || 0) + 1;
   }
 
   async findAll(
@@ -290,11 +324,29 @@ export class StoriesService {
     return getPaginatedResponse<Story>(stories, total, page, limit);
   }
 
+  // Picks one random approved story's id. ORDER BY RAND() shuffles the whole
+  // filtered set to pick — fine at the story counts this app runs at today;
+  // a much larger table would want an offset/gap-sampling scheme instead.
+  async findRandomApprovedId(): Promise<string> {
+    const story = await this.storiesRepository
+      .createQueryBuilder('story')
+      .select('story.id')
+      .where('story.status = :status', {status: StoryStatus.Approved})
+      .orderBy('RAND()')
+      .getOne();
+
+    if (!story) {
+      throw new NotFoundException('No approved stories yet');
+    }
+
+    return story.id;
+  }
+
   async findOne(id: string) {
     return await this.storiesRepository
       .findOneOrFail({
         where: {id},
-        relations: ['author', 'tags'],
+        relations: ['author', 'tags', 'series'],
         // Include soft-deleted authors so a story by a removed user stays
         // readable instead of null-ing out author and throwing.
         withDeleted: true,
@@ -438,6 +490,18 @@ export class StoriesService {
       .getManyAndCount();
 
     return getPaginatedResponse<Story>(stories, total, page, limit);
+  }
+
+  // A series' approved stories in narrative order (the series page, and the
+  // reader's "More in this series" strip). Series are small by nature, so
+  // this returns the whole ordered list rather than paging it.
+  async findApprovedBySeriesId(seriesId: string): Promise<Story[]> {
+    return this.storiesRepository.find({
+      where: {series: {id: seriesId}, status: StoryStatus.Approved},
+      relations: ['tags', 'series'],
+      select: {...SELECTED_FIELDS, seriesPosition: true},
+      order: {seriesPosition: 'ASC'},
+    });
   }
 
   // Keyset (cursor) paging for the infinite feed. Instead of OFFSET (which
@@ -593,12 +657,21 @@ export class StoriesService {
   ) {
     const story = await this._getStoryIfAuthorized(id, userId, role);
 
-    const {tags: tagIds, ...rest} = updateStoryDto;
+    const {tags: tagIds, seriesTitle, ...rest} = updateStoryDto;
     // `draft` only applies at creation; submission goes through submitDraft
     delete rest.draft;
 
     if (tagIds?.length) {
       story.tags = await this._getTagsIfExists(tagIds);
+    }
+
+    if (seriesTitle !== undefined) {
+      if (seriesTitle === null) {
+        story.series = null;
+        story.seriesPosition = null;
+      } else if (story.series?.title !== seriesTitle) {
+        await this._assignSeries(story, story.author, seriesTitle);
+      }
     }
 
     Object.assign(story, rest);
