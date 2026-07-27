@@ -4,6 +4,7 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
@@ -14,17 +15,24 @@ import {
 // serves the `/users/me/bookmarks` listing, which filters by user and orders by
 // createdAt. Both sides cascade-delete so removing a story or a member cleans up
 // its bookmarks.
+//
+// The unique constraint and both FKs are explicitly named to match the names
+// baked into the original migration (1784500000000-AddBookmarks) — without
+// this, TypeORM's diff engine computes its own hash-based names and proposes
+// renaming them on every `migration:generate`, even though nothing changed.
 @Entity()
-@Unique(['user', 'story'])
+@Unique('IDX_bookmark_user_story', ['user', 'story'])
 @Index('IDX_bookmark_user_createdAt', ['user', 'createdAt'])
 export class Bookmark {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @ManyToOne(() => User, {onDelete: 'CASCADE'})
+  @JoinColumn({name: 'userId', foreignKeyConstraintName: 'FK_bookmark_user'})
   user: User;
 
   @ManyToOne(() => Story, {onDelete: 'CASCADE'})
+  @JoinColumn({name: 'storyId', foreignKeyConstraintName: 'FK_bookmark_story'})
   story: Story;
 
   @CreateDateColumn()

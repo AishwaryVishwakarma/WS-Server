@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
@@ -13,8 +14,13 @@ import {
 // "who do I follow" (follower) drives the Following feed and id-set, "who
 // follows this author" (following) drives the follower count. Both sides
 // cascade-delete so removing a member cleans up their follows and followers.
+//
+// The unique constraint and both FKs are explicitly named to match the names
+// baked into the original migration (1784700000000-AddFollows) — without
+// this, TypeORM's diff engine computes its own hash-based names and proposes
+// renaming them on every `migration:generate`, even though nothing changed.
 @Entity()
-@Unique(['follower', 'following'])
+@Unique('IDX_follow_follower_following', ['follower', 'following'])
 @Index('IDX_follow_follower', ['follower'])
 @Index('IDX_follow_following', ['following'])
 export class Follow {
@@ -23,10 +29,18 @@ export class Follow {
 
   // The member doing the following.
   @ManyToOne(() => User, {onDelete: 'CASCADE'})
+  @JoinColumn({
+    name: 'followerId',
+    foreignKeyConstraintName: 'FK_follow_follower',
+  })
   follower: User;
 
   // The author being followed.
   @ManyToOne(() => User, {onDelete: 'CASCADE'})
+  @JoinColumn({
+    name: 'followingId',
+    foreignKeyConstraintName: 'FK_follow_following',
+  })
   following: User;
 
   @CreateDateColumn()

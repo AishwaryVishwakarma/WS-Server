@@ -4,6 +4,7 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
@@ -14,17 +15,27 @@ import {
 // idempotent (one per member per story); the index serves the "which stories
 // have I liked" id-set. Both sides cascade-delete. The story's likeCount is a
 // denormalized counter maintained by LikesService (like commentCount).
+//
+// The unique constraint and both FKs are explicitly named to match the names
+// baked into the original migration (1785000000000-AddStoryLikes) — without
+// this, TypeORM's diff engine computes its own hash-based names and proposes
+// renaming them on every `migration:generate`, even though nothing changed.
 @Entity()
-@Unique(['user', 'story'])
+@Unique('IDX_story_like_user_story', ['user', 'story'])
 @Index('IDX_story_like_user', ['user'])
 export class StoryLike {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @ManyToOne(() => User, {onDelete: 'CASCADE'})
+  @JoinColumn({name: 'userId', foreignKeyConstraintName: 'FK_story_like_user'})
   user: User;
 
   @ManyToOne(() => Story, {onDelete: 'CASCADE'})
+  @JoinColumn({
+    name: 'storyId',
+    foreignKeyConstraintName: 'FK_story_like_story',
+  })
   story: Story;
 
   @CreateDateColumn()

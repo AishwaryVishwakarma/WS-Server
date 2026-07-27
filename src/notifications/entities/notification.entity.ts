@@ -39,24 +39,29 @@ export class Notification {
 
   // The actor's id, so the client can link to their profile. Nullable only for
   // legacy rows created before it was added; new notifications always set it.
-  @Column('uuid', {nullable: true})
+  // `type: 'varchar', length: 36` (not the 'uuid' type shorthand) matches every
+  // UUID column in the schema — MySQL has no native uuid type, so TypeORM
+  // normalizes 'uuid' to varchar anyway, but the shorthand's overload doesn't
+  // accept a `length` and would default to 255, drifting from the varchar(36)
+  // the migrations actually use.
+  @Column({type: 'varchar', length: 36, nullable: true})
   actorId: string | null;
 
   // Story/comment context. Null for a 'follow' (which has neither) — populated
   // for 'comment'/'reply'.
-  @Column('uuid', {nullable: true})
+  @Column({type: 'varchar', length: 36, nullable: true})
   storyId: string | null;
 
   @Column({type: 'varchar', length: 255, nullable: true})
   storyTitle: string | null;
 
-  @Column('uuid', {nullable: true})
+  @Column({type: 'varchar', length: 36, nullable: true})
   commentId: string | null;
 
   // The top-level parent comment id when this notification targets a reply, so
   // the reader can expand the right thread before scrolling to it. Null for a
   // top-level comment notification (the target is itself top-level).
-  @Column('uuid', {nullable: true})
+  @Column({type: 'varchar', length: 36, nullable: true})
   parentId: string | null;
 
   @Column({default: false})
