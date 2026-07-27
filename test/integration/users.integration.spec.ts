@@ -665,4 +665,115 @@ describe('Users (integration)', () => {
       expect(queue.body.data[0].reportCount).toBe(2);
     });
   });
+
+  describe('auto-verification', () => {
+    const THIRTY_ONE_DAYS_AGO = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+
+    const publishAndAge = async (client: Agent) => {
+      const token = await getCsrfToken(client);
+      const {body} = await client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({title: 'A Debut Tale', content: 'x'.repeat(500)})
+        .expect(201);
+
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/admin/stories/${body.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: StoryStatus.Approved})
+        .expect(200);
+
+      await userRepository().update(
+        {email: DEFAULT_USER.email},
+        {createdAt: THIRTY_ONE_DAYS_AGO}
+      );
+
+      return {storyId: body.id as string, admin};
+    };
+
+    it('verifies a 31-day-old author with a published story on their next request', async () => {
+      const client = agent();
+      await registerUser(client);
+      await publishAndAge(client);
+
+      const response = await client.get('/users/me').expect(200);
+
+      expect(response.body.isVerified).toBe(true);
+    });
+
+    it('does not verify a published author under 30 days old', async () => {
+      const client = agent();
+      await registerUser(client);
+      const token = await getCsrfToken(client);
+      const {body} = await client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({title: 'A Debut Tale', content: 'x'.repeat(500)})
+        .expect(201);
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/admin/stories/${body.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: StoryStatus.Approved})
+        .expect(200);
+
+      const response = await client.get('/users/me').expect(200);
+
+      expect(response.body.isVerified).toBe(false);
+    });
+
+    it('does not verify a 31-day-old account with no published story', async () => {
+      const client = agent();
+      await registerUser(client);
+      await userRepository().update(
+        {email: DEFAULT_USER.email},
+        {createdAt: THIRTY_ONE_DAYS_AGO}
+      );
+
+      const response = await client.get('/users/me').expect(200);
+
+      expect(response.body.isVerified).toBe(false);
+    });
+
+    it('stays verified after the published story is deleted', async () => {
+      const client = agent();
+      await registerUser(client);
+      const {storyId} = await publishAndAge(client);
+      await client.get('/users/me').expect(200); // triggers verification
+
+      const token = await getCsrfToken(client);
+      await client
+        .delete(`/stories/${storyId}`)
+        .set('x-csrf-token', token)
+        .expect(204);
+
+      const response = await client.get('/users/me').expect(200);
+      expect(response.body.isVerified).toBe(true);
+    });
+
+    it('does not silently re-verify someone an admin has un-verified', async () => {
+      const client = agent();
+      await registerUser(client);
+      const {admin} = await publishAndAge(client);
+      await client.get('/users/me').expect(200); // auto-verifies
+
+      const dbUser = await userRepository().findOneByOrFail({
+        email: DEFAULT_USER.email,
+      });
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/admin/users/${dbUser.id}`)
+        .set('x-csrf-token', adminToken)
+        .send({isVerified: false})
+        .expect(200);
+
+      // Still eligible by age/published-story alone, but the admin's
+      // decision is locked in — the next request must not override it.
+      const response = await client.get('/users/me').expect(200);
+      expect(response.body.isVerified).toBe(false);
+    });
+  });
 });

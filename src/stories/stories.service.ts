@@ -720,7 +720,16 @@ export class StoriesService {
     story.status = status;
     story.isFlagged = status === StoryStatus.Flagged;
 
-    return await this.storiesRepository.save(story);
+    const updated = await this.storiesRepository.save(story);
+
+    // Latches the author's "ever published" flag the first time any of
+    // their stories reaches approved — feeds auto-verification
+    // (SessionAuthGuard) and survives this exact story being deleted later.
+    if (status === StoryStatus.Approved) {
+      await this.usersService.markHasPublishedStory(story.author.id);
+    }
+
+    return updated;
   }
 
   // A member flags a story for moderation. Gated to stories the reporter can

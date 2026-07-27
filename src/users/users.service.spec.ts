@@ -410,6 +410,40 @@ describe('UsersService', () => {
 
       expect(user.password).toBe('old-hash');
     });
+
+    it('locks verification when an admin explicitly sets isVerified', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        verificationLocked: false,
+      });
+
+      const user = (await service.update('user-1', {
+        isVerified: false,
+      })) as User;
+
+      expect(user.verificationLocked).toBe(true);
+    });
+
+    it('leaves verification unlocked when isVerified is not part of the update', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        verificationLocked: false,
+      });
+
+      const user = (await service.update('user-1', {name: 'New'})) as User;
+
+      expect(user.verificationLocked).toBe(false);
+    });
+  });
+
+  describe('markHasPublishedStory', () => {
+    it('sets the flag via a targeted update', async () => {
+      await service.markHasPublishedStory('user-1');
+
+      expect(repository.update).toHaveBeenCalledWith('user-1', {
+        hasPublishedStory: true,
+      });
+    });
   });
 
   describe('remove', () => {

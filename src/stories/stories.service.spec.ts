@@ -30,7 +30,7 @@ describe('StoriesService', () => {
     countBy: jest.Mock;
     delete: jest.Mock;
   };
-  let usersService: {findOne: jest.Mock};
+  let usersService: {findOne: jest.Mock; markHasPublishedStory: jest.Mock};
   let tagsService: {findManyByIds: jest.Mock};
   let seriesService: {findOrCreateForAuthor: jest.Mock};
   // Shared by findRandomApprovedId (select/where/orderBy/getOne) and
@@ -72,7 +72,10 @@ describe('StoriesService', () => {
       countBy: jest.fn().mockResolvedValue(0),
       delete: jest.fn(),
     };
-    usersService = {findOne: jest.fn().mockResolvedValue(author)};
+    usersService = {
+      findOne: jest.fn().mockResolvedValue(author),
+      markHasPublishedStory: jest.fn().mockResolvedValue(undefined),
+    };
     tagsService = {findManyByIds: jest.fn()};
     seriesService = {findOrCreateForAuthor: jest.fn()};
 
@@ -315,11 +318,25 @@ describe('StoriesService', () => {
       expect(repository.save).toHaveBeenCalled();
     });
 
+    it('marks the author as having published once approved', async () => {
+      await service.updateStatus('story-1', StoryStatus.Approved);
+
+      expect(usersService.markHasPublishedStory).toHaveBeenCalledWith(
+        'author-1'
+      );
+    });
+
     it('keeps isFlagged in sync when flagging', async () => {
       const story = await service.updateStatus('story-1', StoryStatus.Flagged);
 
       expect(story.status).toBe(StoryStatus.Flagged);
       expect(story.isFlagged).toBe(true);
+    });
+
+    it('does not mark the author as published for a non-approved status', async () => {
+      await service.updateStatus('story-1', StoryStatus.Rejected);
+
+      expect(usersService.markHasPublishedStory).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException for a missing story', async () => {

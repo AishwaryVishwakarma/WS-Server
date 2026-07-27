@@ -330,7 +330,24 @@ export class UsersService {
 
   async update(id: string, updateUserDto: UpdateUserDto) {
     const user = await this.findOne(id);
+
+    // An admin explicitly deciding isVerified (either way) locks it — the
+    // auto-verify check (SessionAuthGuard) never touches this account again,
+    // so a later un-verify here isn't silently overwritten on the user's
+    // next request. Self-service profile updates can never reach here with
+    // isVerified set — UpdateProfileDto has no such field, so
+    // ValidationPipe's whitelist strips it before this runs.
+    if (updateUserDto.isVerified !== undefined) {
+      user.verificationLocked = true;
+    }
+
     return this._applyUserUpdates(user, updateUserDto);
+  }
+
+  // Latches once — see User.hasPublishedStory. Called only from
+  // StoriesService.updateStatus when a story reaches approved.
+  async markHasPublishedStory(userId: string): Promise<void> {
+    await this.usersRepository.update(userId, {hasPublishedStory: true});
   }
 
   // A member deleting their own account (as opposed to admin removal, see

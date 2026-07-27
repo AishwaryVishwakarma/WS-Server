@@ -170,6 +170,27 @@ npm run dev:infra:down
   endpoint 503s (feature disabled), so dev/CI boot without it. It needs no
   client *secret* (no code exchange). Unit tests cover verify + link/create;
   integration covers the 400/503 wiring (a real token can't be minted in tests).
+- **Auto-verification** (`src/users/auto-verify.ts`): an account earns
+  `isVerified` automatically once it's ≥30 days old (`AUTO_VERIFY_MIN_ACCOUNT_AGE_MS`)
+  and has ever had a story reach `approved` — `User.hasPublishedStory` latches
+  once in `StoriesService.updateStatus` and is never cleared, so later
+  deleting that (hard-deleted, no `@DeleteDateColumn` on `Story`) story has no
+  effect. There's no scheduler in this codebase, so `shouldAutoVerify` is
+  checked lazily inside `SessionAuthGuard`'s existing per-request user reload
+  rather than adding one just for this — it fires on the account's own next
+  gated request, not necessarily the instant the 30-day mark passes.
+  `shouldAutoVerify` is a **plain predicate function**, not a `UsersService`
+  method — the guard only has `DataSource` injected (it's used across nearly
+  every module, so it can't depend on a service that isn't guaranteed
+  available everywhere), so it reads/writes the `User` repository directly.
+  `User.verificationLocked` means "isVerified has already been decided, one
+  way or the other" — set by the auto-check firing once, **or** by an admin
+  explicitly including `isVerified` in `PATCH /admin/users/:id`
+  (`UsersService.update`) — so an admin's later un-verify (or early manual
+  verify) is never silently overwritten the next time the auto-check runs.
+  Self-service profile updates can never set `isVerified` in the first place
+  (`UpdateProfileDto` has no such field; `ValidationPipe`'s whitelist strips
+  it), so the lock only ever engages from a genuine admin action.
 - **Password reset** (`POST /auth/forgot-password`, `POST /auth/reset-password`,
   both CSRF-exempt like login — no session exists at either step): a reset
   link's token is 256 bits of randomness (`crypto.randomBytes`), only ever

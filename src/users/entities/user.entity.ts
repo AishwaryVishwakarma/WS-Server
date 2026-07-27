@@ -52,6 +52,22 @@ export class User {
   @Column({default: false})
   isVerified: boolean;
 
+  // Set once an author's first story ever reaches `approved` (see
+  // StoriesService.updateStatus) and never cleared — including if that
+  // story is later deleted (a hard delete; see Story, which carries no
+  // @DeleteDateColumn). Feeds auto-verification (SessionAuthGuard); has no
+  // other reader.
+  @Column({default: false})
+  hasPublishedStory: boolean;
+
+  // Set once `isVerified` has been decided one way or the other — either by
+  // the auto-verify check firing (SessionAuthGuard) or by an admin
+  // explicitly setting `isVerified` (UsersService.update). Once set, the
+  // auto-check never touches this account again, so an admin's later
+  // un-verify (or early manual verify) always wins over the automatic path.
+  @Column({default: false})
+  verificationLocked: boolean;
+
   @Column({default: false})
   isBlocked: boolean;
 
