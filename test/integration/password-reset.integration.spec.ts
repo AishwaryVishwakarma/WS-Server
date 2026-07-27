@@ -219,5 +219,37 @@ describe('Password reset (integration)', () => {
         .send({token, password: 'NewP4ssword!'})
         .expect(204);
     });
+
+    it('logs out every other active session for the account', async () => {
+      // Two independent cookie jars, both authenticated as the same account
+      // (e.g. two devices/browsers), before a third agent (no session, mirrors
+      // the real unauthenticated forgot/reset flow) requests and consumes a
+      // reset link.
+      const deviceA = agent();
+      await registerUser(deviceA);
+      const deviceB = agent();
+      await deviceB
+        .post('/auth/login')
+        .send({email: DEFAULT_USER.email, password: DEFAULT_USER.password})
+        .expect(201);
+
+      await deviceA.get('/users/me').expect(200);
+      await deviceB.get('/users/me').expect(200);
+
+      const sendMail = spyOnMail();
+      await agent()
+        .post('/auth/forgot-password')
+        .send({email: DEFAULT_USER.email})
+        .expect(204);
+      const token = extractToken(sendMail.mock.calls[0][2]);
+
+      await agent()
+        .post('/auth/reset-password')
+        .send({token, password: 'NewP4ssword!'})
+        .expect(204);
+
+      await deviceA.get('/users/me').expect(401);
+      await deviceB.get('/users/me').expect(401);
+    });
   });
 });

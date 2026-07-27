@@ -173,6 +173,14 @@ npm run dev:infra:down
   sending it, so the flow is fully exercisable in dev/CI (grab the link from
   the console) without real mail credentials. `FRONTEND_URL` (optional,
   defaults to `http://localhost:3000`) builds the link the email points at.
+  Consuming a link also **logs out every active session for the account** via
+  `SessionRegistryService` (`src/session/session-registry.service.ts`): a
+  Redis SET `user-sessions:<userId>` of session ids, updated alongside
+  `express-session`'s own store (`SADD`/`EXPIRE` on login/register/Google
+  sign-in, `SREM` on logout) since connect-redis has no built-in per-user
+  lookup. `resetPassword` reads that set and `DEL`s each `sess:<sid>` key
+  directly — there's no "current" session to exempt here (the flow is
+  unauthenticated), unlike a hypothetical authenticated change-password.
 - **Two account-deletion paths, deliberately different** — both soft-delete
   (`deletedAt`), but only self-deletion releases the unique identifiers:
   - `DELETE /users/me` → `UsersService.deactivateSelf`: nulls `googleId` and

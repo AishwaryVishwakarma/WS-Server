@@ -4,6 +4,7 @@ import {getRepositoryToken} from '@nestjs/typeorm';
 import {ConfigService} from '@nestjs/config';
 import {UsersService} from 'src/users/users.service';
 import {MailService} from 'src/mail/mail.service';
+import {SessionRegistryService} from 'src/session/session-registry.service';
 import {PasswordResetToken} from './entities/password-reset-token.entity';
 import {PasswordResetService} from './password-reset.service';
 
@@ -17,6 +18,7 @@ describe('PasswordResetService', () => {
   };
   let usersService: {findOneByEmail: jest.Mock; updatePassword: jest.Mock};
   let mailService: {send: jest.Mock};
+  let sessionRegistryService: {invalidateAll: jest.Mock};
 
   const user = {id: 'user-1', email: 'reader@test.com'};
 
@@ -32,6 +34,9 @@ describe('PasswordResetService', () => {
       updatePassword: jest.fn().mockResolvedValue(undefined),
     };
     mailService = {send: jest.fn().mockResolvedValue(undefined)};
+    sessionRegistryService = {
+      invalidateAll: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -43,6 +48,7 @@ describe('PasswordResetService', () => {
         {provide: UsersService, useValue: usersService},
         {provide: MailService, useValue: mailService},
         {provide: ConfigService, useValue: {get: jest.fn()}},
+        {provide: SessionRegistryService, useValue: sessionRegistryService},
       ],
     }).compile();
 
@@ -138,6 +144,19 @@ describe('PasswordResetService', () => {
       expect(tokensRepository.delete).toHaveBeenCalledWith({
         user: {id: user.id},
       });
+    });
+
+    it('invalidates every active session for the user', async () => {
+      tokensRepository.findOne.mockResolvedValue({
+        user,
+        expiresAt: new Date(Date.now() + 1000),
+      });
+
+      await service.resetPassword('token', 'NewP4ss!word');
+
+      expect(sessionRegistryService.invalidateAll).toHaveBeenCalledWith(
+        user.id
+      );
     });
   });
 });

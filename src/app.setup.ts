@@ -10,6 +10,8 @@ import {requestIdMiddleware} from './middlewares/request-id';
 import {createHttpMetricsMiddleware} from './middlewares/http-metrics';
 import {MetricsService} from './metrics/metrics.service';
 import {NotificationsStream} from './notifications/notifications-stream.service';
+import {SessionRegistryService} from './session/session-registry.service';
+import {SESSION_MAX_AGE_MS} from './session/session.constants';
 
 // Applies the app-level wiring that lives outside the Nest module graph
 // (pipes, filters, Redis-backed session middleware). Shared by main.ts and
@@ -54,6 +56,10 @@ export async function setupApp(
   // ws_redis_up health gauge.
   metricsService.bindRedis(redisClient);
 
+  // Same story for the per-user session index (see SessionRegistryService).
+  const sessionRegistryService = app.get(SessionRegistryService);
+  sessionRegistryService.bindRedis(redisClient);
+
   // Wire notification pub/sub: the main client publishes, a dedicated
   // subscriber connection (a client in subscribe mode can't run commands) feeds
   // events into the SSE stream service. The subscriber is closed via the
@@ -88,7 +94,7 @@ export async function setupApp(
       resave: false,
       saveUninitialized: false,
       cookie: {
-        maxAge: 1000 * 60 * 60 * 24, // 1 day
+        maxAge: SESSION_MAX_AGE_MS,
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
         sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',

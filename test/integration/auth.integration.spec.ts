@@ -180,6 +180,21 @@ describe('Auth (integration)', () => {
     it('rejects logout without a session', async () => {
       await agent().post('/auth/logout').expect(401);
     });
+
+    it('does not affect another active session for the same user', async () => {
+      const deviceA = agent();
+      await registerUser(deviceA);
+      const deviceB = agent();
+      await deviceB
+        .post('/auth/login')
+        .send({email: DEFAULT_USER.email, password: DEFAULT_USER.password})
+        .expect(201);
+
+      await deviceA.post('/auth/logout').expect(204);
+
+      await deviceA.get('/users/me').expect(401);
+      await deviceB.get('/users/me').expect(200);
+    });
   });
 
   describe('POST /auth/google', () => {

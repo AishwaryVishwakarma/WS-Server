@@ -7,6 +7,7 @@ import * as bcrypt from 'bcrypt';
 import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import type {Request} from 'express';
 import {SessionService} from 'src/session/session.service';
+import {SessionRegistryService} from 'src/session/session-registry.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {GoogleAuthService} from './google-auth.service';
@@ -18,8 +19,21 @@ export class AuthService {
     private readonly usersRepository: Repository<User>,
     private readonly usersService: UsersService,
     private readonly sessionService: SessionService,
+    private readonly sessionRegistryService: SessionRegistryService,
     private readonly googleAuthService: GoogleAuthService
   ) {}
+
+  // Shared by register/login/googleSignIn: regenerate the session id, stamp
+  // the identity, then record the new sid against the user so a later
+  // password reset (see PasswordResetService) can find and destroy it.
+  private async _establishSession(req: Request, user: User): Promise<void> {
+    await this.sessionService.regenerate(req);
+
+    req.session.userId = user.id;
+    req.session.role = user.role || Role.User;
+
+    await this.sessionRegistryService.track(user.id, req.sessionID);
+  }
 
   async validateUser(loginInfoDto: LoginInfoDto) {
     const user = await this.usersRepository
@@ -51,10 +65,7 @@ export class AuthService {
   async register(registerUserDto: RegisterUserDto, req: Request) {
     const user = (await this.usersService.create(registerUserDto)) as User;
 
-    await this.sessionService.regenerate(req);
-
-    req.session.userId = user.id;
-    req.session.role = user.role || Role.User;
+    await this._establishSession(req, user);
 
     return user;
   }
@@ -62,10 +73,7 @@ export class AuthService {
   async login(loginInfoDto: LoginInfoDto, req: Request) {
     const user = await this.validateUser(loginInfoDto);
 
-    await this.sessionService.regenerate(req);
-
-    req.session.userId = user.id;
-    req.session.role = user.role || Role.User;
+    await this._establishSession(req, user);
 
     return user;
   }
@@ -87,15 +95,17 @@ export class AuthService {
       throw new UnauthorizedException('User is blocked');
     }
 
-    await this.sessionService.regenerate(req);
-
-    req.session.userId = user.id;
-    req.session.role = user.role || Role.User;
+    await this._establishSession(req, user);
 
     return user;
   }
 
   async logout(req: Request) {
+    const userId = req.session.userId;
+    const sid = req.sessionID;
+
     await this.sessionService.destroy(req);
+
+    if (userId) await this.sessionRegistryService.untrack(userId, sid);
   }
 }

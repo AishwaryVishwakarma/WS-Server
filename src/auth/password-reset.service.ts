@@ -6,6 +6,7 @@ import {Repository} from 'typeorm';
 import {PasswordResetToken} from './entities/password-reset-token.entity';
 import {UsersService} from 'src/users/users.service';
 import {MailService} from 'src/mail/mail.service';
+import {SessionRegistryService} from 'src/session/session-registry.service';
 
 // A link is valid for an hour and can only ever be used once.
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -17,7 +18,8 @@ export class PasswordResetService {
     private readonly tokensRepository: Repository<PasswordResetToken>,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly sessionRegistryService: SessionRegistryService
   ) {}
 
   private _hash(rawToken: string): string {
@@ -60,7 +62,10 @@ export class PasswordResetService {
   // Consumes a reset link: validates the hashed token and its expiry, sets
   // the new password, and invalidates every outstanding token for that user
   // (not just the one used) — a stale link from an earlier request must not
-  // also be replayable afterward.
+  // also be replayable afterward. Also logs out every active session for the
+  // account: this flow is unauthenticated (no session exists to exempt as
+  // "current"), and if the reset was prompted by a compromised password, a
+  // still-live session elsewhere is exactly what needs to be cut off.
   async resetPassword(rawToken: string, newPassword: string): Promise<void> {
     const token = await this.tokensRepository.findOne({
       where: {tokenHash: this._hash(rawToken)},
@@ -73,5 +78,6 @@ export class PasswordResetService {
 
     await this.usersService.updatePassword(token.user.id, newPassword);
     await this.tokensRepository.delete({user: {id: token.user.id}});
+    await this.sessionRegistryService.invalidateAll(token.user.id);
   }
 }

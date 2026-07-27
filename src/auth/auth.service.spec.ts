@@ -4,6 +4,7 @@ import {getRepositoryToken} from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import type {Request} from 'express';
 import {SessionService} from 'src/session/session.service';
+import {SessionRegistryService} from 'src/session/session-registry.service';
 import {User} from 'src/users/entities/user.entity';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
@@ -19,12 +20,14 @@ describe('AuthService', () => {
   };
   let usersService: {create: jest.Mock; findOrCreateGoogleUser: jest.Mock};
   let sessionService: {regenerate: jest.Mock; destroy: jest.Mock};
+  let sessionRegistryService: {track: jest.Mock; untrack: jest.Mock};
   let googleAuthService: {verify: jest.Mock};
 
   const password = 'S3cret!Password';
   let hashedPassword: string;
 
-  const createRequest = () => ({session: {}}) as unknown as Request;
+  const createRequest = () =>
+    ({session: {}, sessionID: 'sid-1'}) as unknown as Request;
 
   beforeAll(async () => {
     hashedPassword = await bcrypt.hash(password, 4);
@@ -41,6 +44,10 @@ describe('AuthService', () => {
       regenerate: jest.fn().mockResolvedValue(undefined),
       destroy: jest.fn().mockResolvedValue(undefined),
     };
+    sessionRegistryService = {
+      track: jest.fn().mockResolvedValue(undefined),
+      untrack: jest.fn().mockResolvedValue(undefined),
+    };
     googleAuthService = {verify: jest.fn()};
 
     const module = await Test.createTestingModule({
@@ -52,6 +59,7 @@ describe('AuthService', () => {
         },
         {provide: UsersService, useValue: usersService},
         {provide: SessionService, useValue: sessionService},
+        {provide: SessionRegistryService, useValue: sessionRegistryService},
         {provide: GoogleAuthService, useValue: googleAuthService},
       ],
     }).compile();
@@ -126,6 +134,10 @@ describe('AuthService', () => {
       expect(sessionService.regenerate).toHaveBeenCalledWith(req);
       expect(req.session.userId).toBe('user-1');
       expect(req.session.role).toBe(Role.User);
+      expect(sessionRegistryService.track).toHaveBeenCalledWith(
+        'user-1',
+        'sid-1'
+      );
       expect(user.id).toBe('user-1');
     });
   });
@@ -145,6 +157,10 @@ describe('AuthService', () => {
       expect(sessionService.regenerate).toHaveBeenCalledWith(req);
       expect(req.session.userId).toBe('user-1');
       expect(req.session.role).toBe(Role.Admin);
+      expect(sessionRegistryService.track).toHaveBeenCalledWith(
+        'user-1',
+        'sid-1'
+      );
     });
   });
 
@@ -172,6 +188,10 @@ describe('AuthService', () => {
       expect(sessionService.regenerate).toHaveBeenCalledWith(req);
       expect(req.session.userId).toBe('user-1');
       expect(req.session.role).toBe(Role.User);
+      expect(sessionRegistryService.track).toHaveBeenCalledWith(
+        'user-1',
+        'sid-1'
+      );
       expect(user.id).toBe('user-1');
     });
 
@@ -202,12 +222,25 @@ describe('AuthService', () => {
   });
 
   describe('logout', () => {
-    it('destroys the session', async () => {
+    it('destroys the session and untracks it from the registry', async () => {
       const req = createRequest();
+      req.session.userId = 'user-1';
 
       await service.logout(req);
 
       expect(sessionService.destroy).toHaveBeenCalledWith(req);
+      expect(sessionRegistryService.untrack).toHaveBeenCalledWith(
+        'user-1',
+        'sid-1'
+      );
+    });
+
+    it('skips untracking when the request has no session', async () => {
+      const req = createRequest();
+
+      await service.logout(req);
+
+      expect(sessionRegistryService.untrack).not.toHaveBeenCalled();
     });
   });
 });
