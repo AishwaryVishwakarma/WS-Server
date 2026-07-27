@@ -9,13 +9,25 @@ import {UpdateUserDto} from './dto/update-user.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
+import {Series} from 'src/series/entities/series.entity';
+import {Story} from 'src/stories/entities/story.entity';
+import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {ReportReason} from './enums/report-reason.enum';
+import {Badge} from './enums/badge.enum';
 import {Like, MoreThan, Repository, type FindOptionsWhere} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import {syncReportCount} from 'src/utils/report-count';
+
+// Thresholds for the "Prolific"/"Fan Favorite"/"Conversation Starter"
+// badges. Prolific mirrors StoriesService.FREE_PUBLISH_LIMIT (10) — the
+// same number that caps an author's publication pipeline is also where
+// their public output starts looking prolific.
+const PROLIFIC_STORY_COUNT = 10;
+const FAN_FAVORITE_LIKES = 25;
+const CONVERSATION_STARTER_COMMENTS = 25;
 
 @Injectable()
 export class UsersService {
@@ -25,6 +37,15 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
     @InjectRepository(UserReport)
     private readonly reportsRepository: Repository<UserReport>,
+    // Read directly off the Story/Series repositories (not StoriesService/
+    // SeriesService) for the badge computation below — those services
+    // already depend on UsersService, so injecting them here would be a
+    // genuine circular provider dependency, not just a circular module
+    // import. Both are plain aggregate reads, no business logic to reuse.
+    @InjectRepository(Story)
+    private readonly storiesRepository: Repository<Story>,
+    @InjectRepository(Series)
+    private readonly seriesRepository: Repository<Series>,
     private readonly configService: ConfigService
   ) {}
 
@@ -231,6 +252,47 @@ export class UsersService {
     return this.usersRepository.findOneByOrFail({id}).catch(() => {
       throw new NotFoundException(`User with ID ${id} not found`);
     });
+  }
+
+  // Achievement badges for the public profile (GET /users/:id). Computed on
+  // read from stats that already exist elsewhere — approved story count,
+  // likes/comments received, and series ownership — rather than stored and
+  // kept in sync via triggers scattered across StoriesService/LikesService/
+  // CommentsService/SeriesService.
+  async computeBadges(userId: string): Promise<Badge[]> {
+    const [raw, hasSeries] = await Promise.all([
+      this.storiesRepository
+        .createQueryBuilder('story')
+        .select('COUNT(*)', 'approvedCount')
+        .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
+        .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
+        .where('story.author = :authorId', {authorId: userId})
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getRawOne<{
+          approvedCount: string;
+          totalLikes: string;
+          totalComments: string;
+        }>(),
+      this.seriesRepository.exists({where: {author: {id: userId}}}),
+    ]);
+
+    const stats = {
+      approvedCount: Number(raw?.approvedCount) || 0,
+      totalLikes: Number(raw?.totalLikes) || 0,
+      totalComments: Number(raw?.totalComments) || 0,
+    };
+
+    const badges: Badge[] = [];
+    if (stats.approvedCount >= 1) badges.push(Badge.Published);
+    if (stats.approvedCount >= PROLIFIC_STORY_COUNT)
+      badges.push(Badge.Prolific);
+    if (stats.totalLikes >= FAN_FAVORITE_LIKES) badges.push(Badge.FanFavorite);
+    if (stats.totalComments >= CONVERSATION_STARTER_COMMENTS) {
+      badges.push(Badge.ConversationStarter);
+    }
+    if (hasSeries) badges.push(Badge.SeriesAuthor);
+
+    return badges;
   }
 
   // Unlike findOne, a miss is a valid outcome here — PasswordResetService

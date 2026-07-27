@@ -309,6 +309,24 @@ npm run dev:infra:down
   only on the admin single-user fetch (`GET /admin/users/:id`,
   `UsersService.findOneWithReports`) — the paginated register list stays lean.
   A pattern reusable for story/comment reports later.
+- **Achievement badges** (`src/users/enums/badge.enum.ts`): five milestone
+  badges on the public profile (`published`, `prolific`, `fan-favorite`,
+  `conversation-starter`, `series-author`), computed on read by
+  `UsersService.computeBadges` — not stored, not recomputed on a trigger.
+  Only `GET /users/:id` calls it (`PublicUsersController.findOne` attaches
+  `user.badges` before serializing); `UserPreviewResponseDto.badges` is
+  optional and stays unpopulated everywhere else the DTO is reused (admin
+  lists, a comment's `user`, etc.) to avoid the aggregate query on every row
+  of a bulk listing — the same "populated only when loaded here" idea as
+  `story.author`/`story.series`. Thresholds: `Published` at 1 approved
+  story, `Prolific` at 10 (mirrors `FREE_PUBLISH_LIMIT`), `FanFavorite`/
+  `ConversationStarter` at 25 likes/comments summed across approved stories,
+  `SeriesAuthor` on having created any series. `computeBadges` reads the
+  `Story`/`Series` repositories directly rather than injecting
+  `StoriesService`/`SeriesService` — both of those already depend on
+  `UsersService`, so injecting either back would be a genuine circular
+  *provider* dependency (not just a circular module import, which
+  `forwardRef` already handles elsewhere in this graph).
 - **Shared utils**: `src/utils/pagination.ts` (`paginate`, `getPaginatedResponse`
   — the `{message,data,total,page,limit,totalPages}` envelope),
   `handle-query-error.ts` (maps MySQL duplicate → 409), and `report-count.ts`

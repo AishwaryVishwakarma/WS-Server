@@ -1,6 +1,7 @@
 import {Exclude, Expose, Type} from 'class-transformer';
 import {Role} from '../enums/role';
 import type {ReportReason} from '../enums/report-reason.enum';
+import type {Badge} from '../enums/badge.enum';
 
 /**
  * [public]
@@ -13,6 +14,12 @@ export class UserPreviewResponseDto {
   @Expose() isVerified: boolean;
   @Expose() createdAt: Date;
   @Expose() updatedAt: Date;
+
+  // Populated only on the single-profile fetch (GET /users/:id) — see
+  // UsersService.computeBadges. Omitted everywhere else this DTO is reused
+  // (admin lists, a comment's `user`, etc.) to avoid the extra aggregate
+  // queries on every row of a bulk listing.
+  @Expose() badges?: Badge[];
 
   @Exclude() password: string;
 

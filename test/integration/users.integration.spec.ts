@@ -1,6 +1,8 @@
 import request from 'supertest';
 import {User} from 'src/users/entities/user.entity';
 import {Role} from 'src/users/enums/role';
+import {Story} from 'src/stories/entities/story.entity';
+import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import {
   ADMIN_USER,
   cleanDatabase,
@@ -10,6 +12,7 @@ import {
   getCsrfToken,
   registerUser,
   seedAdmin,
+  type Agent,
   type TestApp,
 } from './test-utils';
 
@@ -343,6 +346,124 @@ describe('Users (integration)', () => {
 
       expect(response.body.name).toBe(DEFAULT_USER.name);
       expect(response.body.email).toBeUndefined();
+    });
+
+    describe('badges', () => {
+      const storyRepository = () => testApp.dataSource.getRepository(Story);
+
+      const createApprovedStory = async (
+        client: Agent,
+        title: string,
+        adminAgent?: Agent
+      ): Promise<{id: string; admin: Agent}> => {
+        const token = await getCsrfToken(client);
+        const response = await client
+          .post('/stories')
+          .set('x-csrf-token', token)
+          .send({title, content: 'x'.repeat(500), scareLevel: 3})
+          .expect(201);
+
+        const admin = adminAgent ?? (await seedAdmin(testApp));
+        const adminToken = await getCsrfToken(admin);
+        await admin
+          .patch(`/admin/stories/${response.body.id}/status`)
+          .set('x-csrf-token', adminToken)
+          .send({status: StoryStatus.Approved})
+          .expect(200);
+
+        return {id: response.body.id as string, admin};
+      };
+
+      it('awards no badges to an author with no approved stories', async () => {
+        const client = agent();
+        const {body} = await registerUser(client);
+
+        const response = await client.get(`/users/${body.id}`).expect(200);
+
+        expect(response.body.badges).toEqual([]);
+      });
+
+      it('awards Published after one approved story', async () => {
+        const client = agent();
+        const {body} = await registerUser(client);
+        await createApprovedStory(client, 'A Story');
+
+        const response = await client.get(`/users/${body.id}`).expect(200);
+
+        expect(response.body.badges).toEqual(['published']);
+      });
+
+      it('does not count a pending story toward Published', async () => {
+        const client = agent();
+        const {body} = await registerUser(client);
+        const token = await getCsrfToken(client);
+        await client
+          .post('/stories')
+          .set('x-csrf-token', token)
+          .send({title: 'Still Pending', content: 'x'.repeat(500)})
+          .expect(201);
+
+        const response = await client.get(`/users/${body.id}`).expect(200);
+
+        expect(response.body.badges).toEqual([]);
+      });
+
+      it('awards Prolific at 10 approved stories', async () => {
+        const client = agent();
+        const {body} = await registerUser(client);
+
+        let admin: Agent | undefined;
+        for (let i = 0; i < 10; i++) {
+          admin = (await createApprovedStory(client, `Story ${i}`, admin))
+            .admin;
+        }
+
+        const response = await client.get(`/users/${body.id}`).expect(200);
+
+        expect(response.body.badges).toContain('prolific');
+      });
+
+      it('awards Fan Favorite and Conversation Starter at 25 likes/comments received', async () => {
+        const client = agent();
+        const {body} = await registerUser(client);
+        const {id: storyId} = await createApprovedStory(
+          client,
+          'A Beloved Tale'
+        );
+
+        // 25 real likes/comments would need 25 distinct member sessions —
+        // bump the denormalized counters directly, the same way the
+        // password-reset tests backdate expiresAt to simulate otherwise
+        // impractical-to-construct state.
+        await storyRepository().update(storyId, {
+          likeCount: 25,
+          commentCount: 25,
+        });
+
+        const response = await client.get(`/users/${body.id}`).expect(200);
+
+        expect(response.body.badges).toContain('fan-favorite');
+        expect(response.body.badges).toContain('conversation-starter');
+      });
+
+      it('awards Series Author once the author has started a series', async () => {
+        const client = agent();
+        const {body} = await registerUser(client);
+        const token = await getCsrfToken(client);
+        await client
+          .post('/stories')
+          .set('x-csrf-token', token)
+          .send({
+            title: 'Part One',
+            content: 'x'.repeat(500),
+            seriesTitle: 'A Fresh Series',
+          })
+          .expect(201);
+
+        const response = await client.get(`/users/${body.id}`).expect(200);
+
+        expect(response.body.badges).toContain('series-author');
+      });
     });
   });
 

@@ -14,6 +14,7 @@ import {Role} from '../enums/role';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {UserReport} from './user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
+import type {Badge} from '../enums/badge.enum';
 
 @Entity()
 // One Google identity maps to at most one account. Named + nullable-unique so
@@ -79,6 +80,10 @@ export class User {
 
   @OneToMany(() => UserReport, (report) => report.reportedUser)
   reports: UserReport[];
+
+  /** Not a column — computed by UsersService.computeBadges and attached
+   *  before serializing the single-profile fetch (GET /users/:id). */
+  badges?: Badge[];
 
   @CreateDateColumn()
   createdAt: Date;

@@ -11,7 +11,10 @@ import * as bcrypt from 'bcrypt';
 import {QueryFailedError} from 'typeorm';
 import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
+import {Story} from 'src/stories/entities/story.entity';
+import {Series} from 'src/series/entities/series.entity';
 import {ReportReason} from './enums/report-reason.enum';
+import {Badge} from './enums/badge.enum';
 import {UsersService} from './users.service';
 
 const duplicateEntryError = () => {
@@ -39,6 +42,15 @@ describe('UsersService', () => {
     delete: jest.Mock;
     find: jest.Mock;
   };
+  let storiesQueryBuilder: {
+    select: jest.Mock;
+    addSelect: jest.Mock;
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    getRawOne: jest.Mock;
+  };
+  let storiesRepository: {createQueryBuilder: jest.Mock};
+  let seriesRepository: {exists: jest.Mock};
 
   beforeEach(async () => {
     repository = {
@@ -58,12 +70,29 @@ describe('UsersService', () => {
       delete: jest.fn(),
       find: jest.fn().mockResolvedValue([]),
     };
+    storiesQueryBuilder = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({
+        approvedCount: '0',
+        totalLikes: '0',
+        totalComments: '0',
+      }),
+    };
+    storiesRepository = {
+      createQueryBuilder: jest.fn(() => storiesQueryBuilder),
+    };
+    seriesRepository = {exists: jest.fn().mockResolvedValue(false)};
 
     const module = await Test.createTestingModule({
       providers: [
         UsersService,
         {provide: getRepositoryToken(User), useValue: repository},
         {provide: getRepositoryToken(UserReport), useValue: reportsRepository},
+        {provide: getRepositoryToken(Story), useValue: storiesRepository},
+        {provide: getRepositoryToken(Series), useValue: seriesRepository},
         {
           provide: ConfigService,
           // Low salt rounds to keep hashing fast in tests
@@ -407,6 +436,98 @@ describe('UsersService', () => {
       await expect(service.restore('missing')).rejects.toThrow(
         NotFoundException
       );
+    });
+  });
+
+  describe('computeBadges', () => {
+    it('returns no badges for an author with no approved stories or series', async () => {
+      const badges = await service.computeBadges('user-1');
+
+      expect(badges).toEqual([]);
+    });
+
+    it('awards Published at 1 approved story, not before', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '1',
+        totalLikes: '0',
+        totalComments: '0',
+      });
+
+      expect(await service.computeBadges('user-1')).toEqual([Badge.Published]);
+    });
+
+    it('awards Prolific at 10 approved stories', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '10',
+        totalLikes: '0',
+        totalComments: '0',
+      });
+
+      const badges = await service.computeBadges('user-1');
+
+      expect(badges).toContain(Badge.Published);
+      expect(badges).toContain(Badge.Prolific);
+    });
+
+    it('does not award Prolific at 9 approved stories', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '9',
+        totalLikes: '0',
+        totalComments: '0',
+      });
+
+      expect(await service.computeBadges('user-1')).not.toContain(
+        Badge.Prolific
+      );
+    });
+
+    it('awards Fan Favorite at 25 likes received, not at 24', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '1',
+        totalLikes: '24',
+        totalComments: '0',
+      });
+      expect(await service.computeBadges('user-1')).not.toContain(
+        Badge.FanFavorite
+      );
+
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '1',
+        totalLikes: '25',
+        totalComments: '0',
+      });
+      expect(await service.computeBadges('user-1')).toContain(
+        Badge.FanFavorite
+      );
+    });
+
+    it('awards Conversation Starter at 25 comments received', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '1',
+        totalLikes: '0',
+        totalComments: '25',
+      });
+
+      expect(await service.computeBadges('user-1')).toContain(
+        Badge.ConversationStarter
+      );
+    });
+
+    it('awards Series Author only when the author has created a series', async () => {
+      seriesRepository.exists.mockResolvedValue(true);
+
+      const badges = await service.computeBadges('user-1');
+
+      expect(badges).toContain(Badge.SeriesAuthor);
+      expect(seriesRepository.exists).toHaveBeenCalledWith({
+        where: {author: {id: 'user-1'}},
+      });
+    });
+
+    it('treats a null aggregate (no rows) as all-zero stats', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue(undefined);
+
+      await expect(service.computeBadges('user-1')).resolves.toEqual([]);
     });
   });
 });
