@@ -8,6 +8,7 @@ describe('SessionRegistryService', () => {
     sRem: jest.Mock;
     sMembers: jest.Mock;
     expire: jest.Mock;
+    ttl: jest.Mock;
     del: jest.Mock;
   };
 
@@ -18,6 +19,7 @@ describe('SessionRegistryService', () => {
       sRem: jest.fn().mockResolvedValue(1),
       sMembers: jest.fn().mockResolvedValue([]),
       expire: jest.fn().mockResolvedValue(true),
+      ttl: jest.fn().mockResolvedValue(-2), // key doesn't exist yet, by default
       del: jest.fn().mockResolvedValue(1),
     };
   });
@@ -35,7 +37,7 @@ describe('SessionRegistryService', () => {
       service.bindRedis(redisClient as unknown as RedisClientType);
     });
 
-    it('track adds the sid to the user set and refreshes its TTL', async () => {
+    it('track adds the sid to the user set and sets its TTL when unset', async () => {
       await service.track('user-1', 'sid-1');
 
       expect(redisClient.sAdd).toHaveBeenCalledWith(
@@ -46,6 +48,36 @@ describe('SessionRegistryService', () => {
         'user-sessions:user-1',
         24 * 60 * 60
       );
+    });
+
+    it('track uses a custom maxAge (e.g. a remember-me session)', async () => {
+      const thirtyDaysMs = 1000 * 60 * 60 * 24 * 30;
+
+      await service.track('user-1', 'sid-1', thirtyDaysMs);
+
+      expect(redisClient.expire).toHaveBeenCalledWith(
+        'user-sessions:user-1',
+        30 * 24 * 60 * 60
+      );
+    });
+
+    it('track raises the index TTL when a longer session is tracked', async () => {
+      redisClient.ttl.mockResolvedValue(60 * 60); // 1 hour left
+
+      await service.track('user-1', 'sid-1', 1000 * 60 * 60 * 24); // 1 day
+
+      expect(redisClient.expire).toHaveBeenCalledWith(
+        'user-sessions:user-1',
+        24 * 60 * 60
+      );
+    });
+
+    it('track never shrinks the index TTL below an existing longer-lived entry', async () => {
+      redisClient.ttl.mockResolvedValue(30 * 24 * 60 * 60); // a remembered session
+
+      await service.track('user-1', 'sid-2', 1000 * 60 * 60 * 24); // plain login, 1 day
+
+      expect(redisClient.expire).not.toHaveBeenCalled();
     });
 
     it('untrack removes just that sid from the user set', async () => {

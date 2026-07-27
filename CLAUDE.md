@@ -145,7 +145,17 @@ npm run dev:infra:down
 - **Auth is session-based, not JWT.** `express-session` + `connect-redis`.
   `SessionAuthGuard` reloads the user from the DB on every request (so blocking
   or deleting a user invalidates live sessions and refreshes their role).
-  `RolesGuard` + `@Roles(Role.Admin)` for admin routes.
+  `RolesGuard` + `@Roles(Role.Admin)` for admin routes. Sessions default to a
+  1-day cookie (`SESSION_MAX_AGE_MS`, `src/session/session.constants.ts`);
+  `POST /auth/login`'s optional `rememberMe: true` swaps in a 30-day one
+  (`REMEMBER_ME_MAX_AGE_MS`) by setting `req.session.cookie.maxAge` after
+  `session.regenerate()` — register/Google sign-in don't take this option.
+  `SessionRegistryService.track` mirrors whichever maxAge was used into the
+  `user-sessions:<userId>` index's own TTL (see Password reset below), always
+  raising it to cover the longest-lived session currently tracked and never
+  shrinking it — otherwise a later plain login for the same user could
+  truncate the index out from under an still-live remembered session,
+  hiding it from a subsequent password-reset logout-everywhere.
 - **Google sign-in** (`POST /auth/google`, CSRF-exempt like login): the web
   sends the Google Identity Services **ID token**; `GoogleAuthService.verify`
   (google-auth-library, audience = `GOOGLE_CLIENT_ID`) checks it, then

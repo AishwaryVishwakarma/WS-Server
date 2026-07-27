@@ -30,6 +30,26 @@ describe('Auth (integration)', () => {
   const agent = () => request.agent(testApp.app.getHttpServer());
   const userRepository = () => testApp.dataSource.getRepository(User);
 
+  // Reads the session cookie's remaining lifetime off the Set-Cookie header —
+  // Max-Age when present, else derived from Expires — so remember-me's effect
+  // on the real cookie (not just the in-memory Session object) is observable.
+  const cookieMaxAgeSeconds = (response: request.Response): number => {
+    const setCookie = response.headers['set-cookie'] as unknown as
+      string[] | undefined;
+    const cookie = setCookie?.find((c) => c.startsWith('connect.sid='));
+    if (!cookie) throw new Error('No session cookie in the response');
+
+    const maxAgeMatch = /Max-Age=(\d+)/i.exec(cookie);
+    if (maxAgeMatch) return Number(maxAgeMatch[1]);
+
+    const expiresMatch = /Expires=([^;]+)/i.exec(cookie);
+    if (!expiresMatch)
+      throw new Error('Cookie has neither Max-Age nor Expires');
+    return Math.round(
+      (new Date(expiresMatch[1]).getTime() - Date.now()) / 1000
+    );
+  };
+
   describe('POST /auth/register', () => {
     it('creates the user, hashes the password, and starts a session', async () => {
       const client = agent();
@@ -163,6 +183,32 @@ describe('Auth (integration)', () => {
         .expect(401);
 
       expect(response.body.message).toBe('User is blocked');
+    });
+
+    it('keeps the default ~1 day cookie lifetime when rememberMe is omitted', async () => {
+      const response = await agent()
+        .post('/auth/login')
+        .send({email: DEFAULT_USER.email, password: DEFAULT_USER.password})
+        .expect(201);
+
+      const maxAgeSeconds = cookieMaxAgeSeconds(response);
+      expect(maxAgeSeconds).toBeGreaterThan(23 * 60 * 60);
+      expect(maxAgeSeconds).toBeLessThanOrEqual(24 * 60 * 60);
+    });
+
+    it('extends the cookie to ~30 days when rememberMe is true', async () => {
+      const response = await agent()
+        .post('/auth/login')
+        .send({
+          email: DEFAULT_USER.email,
+          password: DEFAULT_USER.password,
+          rememberMe: true,
+        })
+        .expect(201);
+
+      const maxAgeSeconds = cookieMaxAgeSeconds(response);
+      expect(maxAgeSeconds).toBeGreaterThan(29 * 24 * 60 * 60);
+      expect(maxAgeSeconds).toBeLessThanOrEqual(30 * 24 * 60 * 60);
     });
   });
 

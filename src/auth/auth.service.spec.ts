@@ -5,6 +5,10 @@ import * as bcrypt from 'bcrypt';
 import type {Request} from 'express';
 import {SessionService} from 'src/session/session.service';
 import {SessionRegistryService} from 'src/session/session-registry.service';
+import {
+  REMEMBER_ME_MAX_AGE_MS,
+  SESSION_MAX_AGE_MS,
+} from 'src/session/session.constants';
 import {User} from 'src/users/entities/user.entity';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
@@ -27,7 +31,7 @@ describe('AuthService', () => {
   let hashedPassword: string;
 
   const createRequest = () =>
-    ({session: {}, sessionID: 'sid-1'}) as unknown as Request;
+    ({session: {cookie: {}}, sessionID: 'sid-1'}) as unknown as Request;
 
   beforeAll(async () => {
     hashedPassword = await bcrypt.hash(password, 4);
@@ -136,7 +140,8 @@ describe('AuthService', () => {
       expect(req.session.role).toBe(Role.User);
       expect(sessionRegistryService.track).toHaveBeenCalledWith(
         'user-1',
-        'sid-1'
+        'sid-1',
+        SESSION_MAX_AGE_MS
       );
       expect(user.id).toBe('user-1');
     });
@@ -159,8 +164,42 @@ describe('AuthService', () => {
       expect(req.session.role).toBe(Role.Admin);
       expect(sessionRegistryService.track).toHaveBeenCalledWith(
         'user-1',
-        'sid-1'
+        'sid-1',
+        SESSION_MAX_AGE_MS
       );
+    });
+
+    it('extends the cookie and index to 30 days when rememberMe is set', async () => {
+      queryBuilder.getOne.mockResolvedValue({
+        id: 'user-1',
+        password: hashedPassword,
+        isBlocked: false,
+        role: Role.User,
+      });
+      const req = createRequest();
+
+      await service.login({email: 'a@b.com', password, rememberMe: true}, req);
+
+      expect(req.session.cookie.maxAge).toBe(REMEMBER_ME_MAX_AGE_MS);
+      expect(sessionRegistryService.track).toHaveBeenCalledWith(
+        'user-1',
+        'sid-1',
+        REMEMBER_ME_MAX_AGE_MS
+      );
+    });
+
+    it('leaves the default cookie maxAge untouched when rememberMe is false', async () => {
+      queryBuilder.getOne.mockResolvedValue({
+        id: 'user-1',
+        password: hashedPassword,
+        isBlocked: false,
+        role: Role.User,
+      });
+      const req = createRequest();
+
+      await service.login({email: 'a@b.com', password}, req);
+
+      expect(req.session.cookie.maxAge).toBeUndefined();
     });
   });
 
@@ -190,7 +229,8 @@ describe('AuthService', () => {
       expect(req.session.role).toBe(Role.User);
       expect(sessionRegistryService.track).toHaveBeenCalledWith(
         'user-1',
-        'sid-1'
+        'sid-1',
+        SESSION_MAX_AGE_MS
       );
       expect(user.id).toBe('user-1');
     });

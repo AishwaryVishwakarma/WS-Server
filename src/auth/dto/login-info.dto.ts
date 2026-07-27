@@ -1,4 +1,11 @@
-import {IsEmail, IsEmpty, IsNotEmpty, IsString} from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsEmpty,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class LoginInfoDto {
   @IsEmail()
@@ -12,4 +19,9 @@ export class LoginInfoDto {
   // input trip @IsEmpty and get a 400 before any credential check runs.
   @IsEmpty()
   website?: string;
+
+  // Opts into a long-lived (30-day) session instead of the 1-day default.
+  @IsOptional()
+  @IsBoolean()
+  rememberMe?: boolean;
 }

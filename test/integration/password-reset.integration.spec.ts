@@ -251,5 +251,46 @@ describe('Password reset (integration)', () => {
       await deviceA.get('/users/me').expect(401);
       await deviceB.get('/users/me').expect(401);
     });
+
+    it('logs out a remember-me (30-day) session too', async () => {
+      // Regression for SessionRegistryService.track's TTL: a remembered
+      // session's own key lives 30 days regardless, but the reverse index
+      // password-reset relies on to find it must not have been left at the
+      // default 1-day TTL by a subsequent plain login for the same user.
+      const rememberedDevice = agent();
+      await registerUser(rememberedDevice);
+      await rememberedDevice.post('/auth/logout').expect(204);
+      await rememberedDevice
+        .post('/auth/login')
+        .send({
+          email: DEFAULT_USER.email,
+          password: DEFAULT_USER.password,
+          rememberMe: true,
+        })
+        .expect(201);
+
+      const plainDevice = agent();
+      await plainDevice
+        .post('/auth/login')
+        .send({email: DEFAULT_USER.email, password: DEFAULT_USER.password})
+        .expect(201);
+
+      await rememberedDevice.get('/users/me').expect(200);
+
+      const sendMail = spyOnMail();
+      await agent()
+        .post('/auth/forgot-password')
+        .send({email: DEFAULT_USER.email})
+        .expect(204);
+      const token = extractToken(sendMail.mock.calls[0][2]);
+
+      await agent()
+        .post('/auth/reset-password')
+        .send({token, password: 'NewP4ssword!'})
+        .expect(204);
+
+      await rememberedDevice.get('/users/me').expect(401);
+      await plainDevice.get('/users/me').expect(401);
+    });
   });
 });

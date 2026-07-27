@@ -8,6 +8,10 @@ import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import type {Request} from 'express';
 import {SessionService} from 'src/session/session.service';
 import {SessionRegistryService} from 'src/session/session-registry.service';
+import {
+  REMEMBER_ME_MAX_AGE_MS,
+  SESSION_MAX_AGE_MS,
+} from 'src/session/session.constants';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {GoogleAuthService} from './google-auth.service';
@@ -26,13 +30,23 @@ export class AuthService {
   // Shared by register/login/googleSignIn: regenerate the session id, stamp
   // the identity, then record the new sid against the user so a later
   // password reset (see PasswordResetService) can find and destroy it.
-  private async _establishSession(req: Request, user: User): Promise<void> {
+  // `rememberMe` (login only) swaps the cookie's default 1-day maxAge for a
+  // 30-day one; the index tracks the same effective duration so it stays
+  // discoverable for the session's whole real lifetime.
+  private async _establishSession(
+    req: Request,
+    user: User,
+    rememberMe = false
+  ): Promise<void> {
     await this.sessionService.regenerate(req);
 
     req.session.userId = user.id;
     req.session.role = user.role || Role.User;
 
-    await this.sessionRegistryService.track(user.id, req.sessionID);
+    const maxAgeMs = rememberMe ? REMEMBER_ME_MAX_AGE_MS : SESSION_MAX_AGE_MS;
+    if (rememberMe) req.session.cookie.maxAge = maxAgeMs;
+
+    await this.sessionRegistryService.track(user.id, req.sessionID, maxAgeMs);
   }
 
   async validateUser(loginInfoDto: LoginInfoDto) {
@@ -73,7 +87,7 @@ export class AuthService {
   async login(loginInfoDto: LoginInfoDto, req: Request) {
     const user = await this.validateUser(loginInfoDto);
 
-    await this._establishSession(req, user);
+    await this._establishSession(req, user, loginInfoDto.rememberMe);
 
     return user;
   }

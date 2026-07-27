@@ -26,13 +26,26 @@ export class SessionRegistryService {
   }
 
   // Call once a session id is established (after session.regenerate()) so it
-  // can be found again later. Refreshes the index's own TTL on every call so
-  // it never outlives the sessions it lists.
-  async track(userId: string, sid: string): Promise<void> {
+  // can be found again later. `maxAgeMs` should match the session's actual
+  // cookie maxAge (e.g. a longer "remember me" session) — the index's own TTL
+  // is bumped up to cover it, but never shrunk, since a single Redis SET has
+  // no per-member TTL: a later plain login tracked for the same user must not
+  // truncate an existing remembered session out of the index it needs to stay
+  // findable by (e.g. for a password-reset logout-everywhere).
+  async track(
+    userId: string,
+    sid: string,
+    maxAgeMs: number = SESSION_MAX_AGE_MS
+  ): Promise<void> {
     if (!this.redisClient) return;
     const key = userSessionsKey(userId);
     await this.redisClient.sAdd(key, sid);
-    await this.redisClient.expire(key, SESSION_MAX_AGE_MS / 1000);
+
+    const newTtlSeconds = Math.ceil(maxAgeMs / 1000);
+    const currentTtlSeconds = await this.redisClient.ttl(key);
+    if (currentTtlSeconds < newTtlSeconds) {
+      await this.redisClient.expire(key, newTtlSeconds);
+    }
   }
 
   // Call when a session is deliberately destroyed (logout) so the index
