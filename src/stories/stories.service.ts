@@ -11,6 +11,7 @@ import {UpdateStoryDto} from './dto/update-story.dto';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Story} from './entities/story.entity';
 import {StoryReport} from './entities/story-report.entity';
+import {StoryRevision} from './entities/story-revision.entity';
 import {
   In,
   Like,
@@ -94,6 +95,7 @@ const SELECTED_FIELDS = {
   title: true,
   coverImageUrl: true,
   scareLevel: true,
+  contentWarnings: true,
   isFlagged: true,
   status: true,
   excerpt: true,
@@ -113,6 +115,8 @@ export class StoriesService {
     private readonly storiesRepository: Repository<Story>,
     @InjectRepository(StoryReport)
     private readonly reportsRepository: Repository<StoryReport>,
+    @InjectRepository(StoryRevision)
+    private readonly revisionsRepository: Repository<StoryRevision>,
     private readonly usersService: UsersService,
     private readonly tagsService: TagsService,
     @Inject(forwardRef(() => SeriesService))
@@ -662,6 +666,35 @@ export class StoriesService {
     // `draft` only applies at creation; submission goes through submitDraft
     delete rest.draft;
 
+    // Hoisted above any mutation below — used both to decide whether to
+    // snapshot a revision (with the story's still-unmutated values) and,
+    // further down, whether to reset status back to pending.
+    const contentChanged =
+      tagIds !== undefined ||
+      rest.title !== undefined ||
+      rest.content !== undefined ||
+      rest.coverImageUrl !== undefined ||
+      rest.excerpt !== undefined ||
+      rest.contentWarnings !== undefined;
+
+    // Snapshot the pre-edit state before anything is mutated. Drafts are
+    // exempt — nobody's edit history needs autosave churn, and a draft was
+    // never in moderation to begin with.
+    if (contentChanged && story.status !== StoryStatus.Draft) {
+      await this.revisionsRepository.save(
+        this.revisionsRepository.create({
+          story,
+          title: story.title,
+          excerpt: story.excerpt,
+          content: story.content,
+          coverImageUrl: story.coverImageUrl,
+          contentWarnings: story.contentWarnings.join(','),
+          tagNames: story.tags.map((tag) => tag.name),
+          statusBefore: story.status,
+        })
+      );
+    }
+
     if (tagIds?.length) {
       story.tags = await this._getTagsIfExists(tagIds);
     }
@@ -680,13 +713,6 @@ export class StoriesService {
     // A non-admin editing an already-moderated story sends it back to pending
     // so content changes can't bypass review. Drafts stay drafts — they were
     // never in moderation.
-    const contentChanged =
-      tagIds !== undefined ||
-      rest.title !== undefined ||
-      rest.content !== undefined ||
-      rest.coverImageUrl !== undefined ||
-      rest.excerpt !== undefined;
-
     if (
       contentChanged &&
       role !== Role.Admin &&
@@ -698,6 +724,17 @@ export class StoriesService {
     }
 
     return await this.storiesRepository.save(story);
+  }
+
+  // Owner-or-admin only — this is edit history, not public content. Newest
+  // first, mirroring the report/comment list ordering conventions.
+  async findRevisions(storyId: string, userId: string, role: Role) {
+    await this._getStoryIfAuthorized(storyId, userId, role);
+
+    return this.revisionsRepository.find({
+      where: {story: {id: storyId}},
+      order: {createdAt: 'DESC'},
+    });
   }
 
   // Author action: move a private draft into the moderation queue
@@ -731,6 +768,40 @@ export class StoriesService {
     }
 
     return updated;
+  }
+
+  // Transitions several stories at once, in a single DB transaction — either
+  // all of them move, or (an unknown id) none do. Mirrors updateStatus's own
+  // status/isFlagged assignment, just batched; markHasPublishedStory is
+  // deduped per author so bulk-approving several stories by the same author
+  // only latches once.
+  async bulkUpdateStatus(ids: string[], status: StoryStatus) {
+    return this.storiesRepository.manager.transaction(async (manager) => {
+      const repo = manager.withRepository(this.storiesRepository);
+      const stories = await repo.find({
+        where: {id: In(ids)},
+        relations: ['author', 'tags', 'series'],
+      });
+
+      if (stories.length !== ids.length) {
+        throw new NotFoundException('One or more stories not found');
+      }
+
+      for (const story of stories) {
+        story.status = status;
+        story.isFlagged = status === StoryStatus.Flagged;
+      }
+      await repo.save(stories);
+
+      if (status === StoryStatus.Approved) {
+        const authorIds = new Set(stories.map((story) => story.author.id));
+        for (const authorId of authorIds) {
+          await this.usersService.markHasPublishedStory(authorId);
+        }
+      }
+
+      return stories;
+    });
   }
 
   // A member flags a story for moderation. Gated to stories the reporter can

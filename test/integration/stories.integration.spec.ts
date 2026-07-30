@@ -1257,6 +1257,85 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('bulk moderation (PATCH /admin/stories/bulk-status)', () => {
+    it('approves several pending stories in one call', async () => {
+      const {story: storyA} = await createStory(
+        {...STORY_PAYLOAD, title: 'Bulk A'},
+        'bulk-a@test.com'
+      );
+      const {story: storyB} = await createStory(
+        {...STORY_PAYLOAD, title: 'Bulk B'},
+        'bulk-b@test.com'
+      );
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+
+      const response = await admin
+        .patch('/admin/stories/bulk-status')
+        .set('x-csrf-token', adminToken)
+        .send({ids: [storyA.id, storyB.id], status: StoryStatus.Approved})
+        .expect(200);
+
+      expect(
+        response.body.every((s: {status: string}) => s.status === 'approved')
+      ).toBe(true);
+
+      const check = await admin
+        .get('/admin/stories?status=approved')
+        .expect(200);
+      const ids = check.body.data.map((s: {id: string}) => s.id);
+      expect(ids).toEqual(expect.arrayContaining([storyA.id, storyB.id]));
+    });
+
+    it('rolls back the whole batch when one id is unknown', async () => {
+      const {story} = await createStory(STORY_PAYLOAD, 'bulk-c@test.com');
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+
+      await admin
+        .patch('/admin/stories/bulk-status')
+        .set('x-csrf-token', adminToken)
+        .send({
+          // Valid v4 shape (unlike an all-zeros UUID) so it clears DTO
+          // validation and reaches the not-found check.
+          ids: [story.id, 'ffffffff-ffff-4fff-8fff-ffffffffffff'],
+          status: StoryStatus.Approved,
+        })
+        .expect(404);
+
+      const check = await admin
+        .get('/admin/stories?status=pending')
+        .expect(200);
+      expect(check.body.data.some((s: {id: string}) => s.id === story.id)).toBe(
+        true
+      );
+    });
+
+    it('rejects an empty ids array with 400', async () => {
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+
+      await admin
+        .patch('/admin/stories/bulk-status')
+        .set('x-csrf-token', adminToken)
+        .send({ids: [], status: StoryStatus.Approved})
+        .expect(400);
+    });
+
+    it('rejects non-admins with 403', async () => {
+      const {client, token, story} = await createStory(
+        STORY_PAYLOAD,
+        'bulk-d@test.com'
+      );
+
+      await client
+        .patch('/admin/stories/bulk-status')
+        .set('x-csrf-token', token)
+        .send({ids: [story.id], status: StoryStatus.Approved})
+        .expect(403);
+    });
+  });
+
   describe('re-moderation on edit', () => {
     it('resets an approved story to pending when the author edits content', async () => {
       const {client, token, story} = await createStory();
@@ -1283,6 +1362,64 @@ describe('Stories (integration)', () => {
         .expect(200);
 
       expect(response.body.status).toBe(StoryStatus.Approved);
+    });
+  });
+
+  describe('story revisions (GET /stories/:id/revisions)', () => {
+    it('snapshots the pre-edit content of an approved story', async () => {
+      const {client, token, story} = await createStory({
+        ...STORY_PAYLOAD,
+        title: 'Original Title',
+      });
+      await approveStory(story.id);
+
+      await client
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', token)
+        .send({title: 'Rewritten Title'})
+        .expect(200);
+
+      const revisions = await client
+        .get(`/stories/${story.id}/revisions`)
+        .expect(200);
+
+      expect(revisions.body).toHaveLength(1);
+      expect(revisions.body[0].title).toBe('Original Title');
+      expect(revisions.body[0].statusBefore).toBe(StoryStatus.Approved);
+    });
+
+    it('does not snapshot edits to a draft', async () => {
+      const client = agent();
+      await registerUser(client, {email: 'drafter@test.com'});
+      const token = await getCsrfToken(client);
+
+      const {body: draft} = await client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({...STORY_PAYLOAD, title: 'A quiet draft', draft: true})
+        .expect(201);
+
+      await client
+        .patch(`/stories/${draft.id}`)
+        .set('x-csrf-token', token)
+        .send({title: 'Still a draft'})
+        .expect(200);
+
+      const revisions = await client
+        .get(`/stories/${draft.id}/revisions`)
+        .expect(200);
+
+      expect(revisions.body).toHaveLength(0);
+    });
+
+    it('rejects a non-owner non-admin with 403', async () => {
+      const {story} = await createStory(STORY_PAYLOAD, 'owner@test.com');
+      await approveStory(story.id);
+
+      const outsider = agent();
+      await registerUser(outsider, {email: 'outsider@test.com'});
+
+      await outsider.get(`/stories/${story.id}/revisions`).expect(403);
     });
   });
 

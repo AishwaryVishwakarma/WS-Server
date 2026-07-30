@@ -1,6 +1,7 @@
 import {Expose, Transform, Type} from 'class-transformer';
 import type {StoryStatus} from '../enums/story-status.enum';
 import type {StoryReportReason} from '../enums/story-report-reason.enum';
+import type {ContentWarning} from '../enums/content-warning.enum';
 import type {Story} from '../entities/story.entity';
 import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
 
@@ -43,6 +44,9 @@ export class StoryPreviewResponseDto {
   @Expose() title: string;
   @Expose() coverImageUrl?: string;
   @Expose() scareLevel: number;
+  /** Safety labels the reader should see before/while reading — a fixed
+   *  vocabulary, distinct from `tags`. */
+  @Expose() contentWarnings: ContentWarning[];
   @Expose() excerpt: string;
   @Expose() wordCount: number;
   @Expose() commentCount: number;
@@ -115,6 +119,27 @@ export class StoryReportResponseDto {
   user: StoryAuthorResponseDto;
 
   constructor(partial: Partial<StoryReportResponseDto>) {
+    Object.assign(this, partial);
+  }
+}
+
+/**
+ * [private, admin] — a snapshot of a story's content from before a past edit.
+ * View-only in v1 (no restore). Only ever fetched for the story's own
+ * author/an admin (see StoriesService.findRevisions).
+ */
+export class StoryRevisionResponseDto {
+  @Expose() id: string;
+  @Expose() title: string;
+  @Expose() excerpt: string;
+  @Expose() content: string;
+  @Expose() coverImageUrl?: string;
+  @Expose() contentWarnings: string;
+  @Expose() tagNames: string[];
+  @Expose() statusBefore: StoryStatus;
+  @Expose() createdAt: Date;
+
+  constructor(partial: Partial<StoryRevisionResponseDto>) {
     Object.assign(this, partial);
   }
 }

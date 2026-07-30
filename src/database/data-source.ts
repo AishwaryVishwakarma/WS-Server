@@ -5,6 +5,7 @@ import {UserReport} from 'src/users/entities/user-report.entity';
 import {PasswordResetToken} from 'src/auth/entities/password-reset-token.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {StoryReport} from 'src/stories/entities/story-report.entity';
+import {StoryRevision} from 'src/stories/entities/story-revision.entity';
 import {Tag} from 'src/tags/entities/tag.entity';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {CommentReport} from 'src/comments/entities/comment-report.entity';
@@ -31,6 +32,7 @@ export default new DataSource({
     UserReport,
     Story,
     StoryReport,
+    StoryRevision,
     Tag,
     Comment,
     CommentReport,

@@ -14,9 +14,11 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import {StoryStatus} from '../enums/story-status.enum';
+import {ContentWarning} from '../enums/content-warning.enum';
 import {Tag} from 'src/tags/entities/tag.entity';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {StoryReport} from './story-report.entity';
+import {StoryRevision} from './story-revision.entity';
 import {Series} from 'src/series/entities/series.entity';
 
 @Entity()
@@ -53,6 +55,29 @@ export class Story {
 
   @Column({type: 'int', default: 1})
   scareLevel: number;
+
+  // A fixed, developer-owned safety vocabulary (see ContentWarning) — distinct
+  // from `tags` (open-ended, admin-curated topics). Stored as a plain
+  // comma-joined varchar rather than a join table; a custom transformer (not
+  // TypeORM's `simple-array`, which is always `text` and can't take a
+  // `length`) keeps the column a `varchar(255)` — MySQL rejects a literal
+  // DEFAULT on TEXT/BLOB columns.
+  @Column({
+    type: 'varchar',
+    length: 255,
+    default: '',
+    transformer: {
+      to: (value: ContentWarning[] = []) => value.join(','),
+      // On insert, MySQL has no RETURNING clause, so TypeORM re-hydrates the
+      // entity from the value it already had in memory rather than a
+      // round-tripped DB string — `from` can see either shape.
+      from: (value: string | ContentWarning[]): ContentWarning[] => {
+        if (Array.isArray(value)) return value;
+        return value ? (value.split(',') as ContentWarning[]) : [];
+      },
+    },
+  })
+  contentWarnings: ContentWarning[];
 
   @Column({default: false})
   isFlagged: boolean;
@@ -105,6 +130,9 @@ export class Story {
 
   @OneToMany(() => StoryReport, (report) => report.story)
   reports: StoryReport[];
+
+  @OneToMany(() => StoryRevision, (revision) => revision.story)
+  revisions: StoryRevision[];
 
   // At most one series per story. Nullable — most stories are standalone;
   // SET NULL rather than CASCADE so a story never disappears just because

@@ -10,6 +10,7 @@ import {NotificationsService} from 'src/notifications/notifications.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {Story} from 'src/stories/entities/story.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
+import {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import {TagsService} from 'src/tags/tags.service';
 import {CreateUserDto} from 'src/users/dto/create-user.dto';
 import {User} from 'src/users/entities/user.entity';
@@ -87,6 +88,7 @@ const STORIES: {
   excerpt?: string;
   coverImageUrl?: string;
   scareLevel: number;
+  contentWarnings?: ContentWarning[];
   tags: string[];
   status: StoryStatus;
   /** A demo series, exercising StoriesService's find-or-create-by-title. */
@@ -158,6 +160,7 @@ const STORIES: {
       'It rang again at 12:40. This time my wife answered before I could stop her. She listened for a long time, nodded, and hung up. ' +
       'She has been very polite to me since. Too polite. Tonight I found a note in her handwriting that says WHEN IT RINGS AGAIN IT IS FOR YOU.',
     scareLevel: 5,
+    contentWarnings: [ContentWarning.GraphicViolence],
     tags: ['horror'],
     status: StoryStatus.Flagged,
   },
@@ -216,6 +219,7 @@ const STORIES: {
       'slightly too far to the left, waiting for me to stop counting.',
     coverImageUrl: 'https://picsum.photos/seed/mirror-math/800/450',
     scareLevel: 4,
+    contentWarnings: [ContentWarning.BodyHorror],
     tags: ['psychological', 'horror'],
     status: StoryStatus.Pending,
   },
@@ -708,6 +712,19 @@ async function seed() {
 
       storyIdsByTitle.set(story.title, story.id);
       statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);
+    }
+
+    // A demo revision (through the real service, as an admin edit so the
+    // approved status isn't reset) — gives the admin story-reports/revisions
+    // screens something to show right after a fresh seed.
+    const hollowLaneId = storyIdsByTitle.get('The House on Hollow Lane');
+    if (hollowLaneId) {
+      await storiesService.update(
+        hollowLaneId,
+        {excerpt: 'Every night at 3:11 a.m., the attic light comes on.'},
+        admin.id,
+        Role.Admin
+      );
     }
 
     // Comments

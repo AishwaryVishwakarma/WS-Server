@@ -27,6 +27,7 @@ import {
   StoryWithAuthorPreviewResponseDto,
   StoryResponseDto,
   StoryPreviewResponseDto,
+  StoryRevisionResponseDto,
 } from '../dto/story-response.dto';
 import type {Request} from 'express';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
@@ -256,6 +257,26 @@ export class PublicStoriesController {
       req.session.role!
     );
     return this._serialize(StoryResponseDto, story);
+  }
+
+  // The story's own edit history — gated to its author or an admin (not
+  // public content). View-only in v1: past snapshots, no restore.
+  @Get(':id/revisions')
+  @UseGuards(SessionAuthGuard)
+  async findRevisions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request
+  ) {
+    const revisions = await this.storiesService.findRevisions(
+      id,
+      req.session.userId!,
+      req.session.role!
+    );
+    return revisions.map((revision) =>
+      plainToInstance(StoryRevisionResponseDto, revision, {
+        excludeExtraneousValues: true,
+      })
+    );
   }
 
   @Delete(':id')

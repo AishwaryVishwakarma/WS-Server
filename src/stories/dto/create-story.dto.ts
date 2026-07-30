@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsEnum,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -13,6 +14,7 @@ import {
   Min,
 } from 'class-validator';
 import {IsClean} from 'src/common/moderation/is-clean.decorator';
+import {ContentWarning} from '../enums/content-warning.enum';
 
 export class CreateStoryDto {
   @IsString()
@@ -47,6 +49,14 @@ export class CreateStoryDto {
   @IsUUID('all', {each: true})
   @ArrayMaxSize(5)
   tags?: string[];
+
+  /** Safety labels the reader should see before/while reading — a fixed
+   *  vocabulary, distinct from `tags` (open-ended topics). */
+  @IsOptional()
+  @IsArray()
+  @IsEnum(ContentWarning, {each: true})
+  @ArrayMaxSize(6)
+  contentWarnings?: ContentWarning[];
 
   /** Save privately instead of submitting to moderation. */
   @IsOptional()

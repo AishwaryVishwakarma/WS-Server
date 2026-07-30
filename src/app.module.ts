@@ -18,6 +18,7 @@ import {SessionModule} from './session/session.module';
 import {StoriesModule} from './stories/stories.module';
 import {Story} from './stories/entities/story.entity';
 import {StoryReport} from './stories/entities/story-report.entity';
+import {StoryRevision} from './stories/entities/story-revision.entity';
 import {TagsModule} from './tags/tags.module';
 import {Tag} from './tags/entities/tag.entity';
 import {CommentsModule} from './comments/comments.module';
@@ -160,6 +161,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           UserReport,
           Story,
           StoryReport,
+          StoryRevision,
           Tag,
           Comment,
           CommentReport,

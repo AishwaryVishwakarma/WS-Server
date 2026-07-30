@@ -16,6 +16,7 @@ import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
 import {Role} from 'src/users/enums/role';
 import {UpdateStoryStatusDto} from '../dto/update-story-status.dto';
+import {BulkUpdateStoryStatusDto} from '../dto/bulk-update-story-status.dto';
 import {AdminStoryQueryDto} from '../dto/admin-story-query.dto';
 import {StoryResponseDto} from '../dto/story-response.dto';
 
@@ -66,6 +67,19 @@ export class AdminStoriesController {
       updateStoryStatusDto.status
     );
     return this._serialize(story);
+  }
+
+  // Transitions several stories at once (all-or-nothing — see
+  // StoriesService.bulkUpdateStatus). Not a route-order conflict with
+  // ':id/status' below: this is a single literal segment, not a two-segment
+  // path an :id could ever match.
+  @Patch('bulk-status')
+  async bulkUpdateStatus(@Body() dto: BulkUpdateStoryStatusDto) {
+    const stories = await this.storiesService.bulkUpdateStatus(
+      dto.ids,
+      dto.status
+    );
+    return stories.map((story) => this._serialize(story));
   }
 
   // Dismiss the member reports on a story (drop the rows, zero the count) so it

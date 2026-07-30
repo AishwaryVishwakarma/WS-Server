@@ -13,8 +13,10 @@ import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {Story} from './entities/story.entity';
 import {StoryReport} from './entities/story-report.entity';
+import {StoryRevision} from './entities/story-revision.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {StoryReportReason} from './enums/story-report-reason.enum';
+import {ContentWarning} from './enums/content-warning.enum';
 import {StoriesService} from './stories.service';
 
 const duplicateEntryError = () => {
@@ -37,12 +39,18 @@ describe('StoriesService', () => {
     update: jest.Mock;
     delete: jest.Mock;
     createQueryBuilder: jest.Mock;
+    manager: {transaction: jest.Mock};
   };
   let reportsRepository: {
     create: jest.Mock;
     save: jest.Mock;
     countBy: jest.Mock;
     delete: jest.Mock;
+    find: jest.Mock;
+  };
+  let revisionsRepository: {
+    create: jest.Mock;
+    save: jest.Mock;
     find: jest.Mock;
   };
   let usersService: {findOne: jest.Mock; markHasPublishedStory: jest.Mock};
@@ -81,12 +89,25 @@ describe('StoriesService', () => {
       update: jest.fn(),
       delete: jest.fn(),
       createQueryBuilder: jest.fn(() => randomQueryBuilder),
+      // bulkUpdateStatus runs inside a transaction; withRepository() just
+      // hands back this same mock, so its find/save calls behave identically
+      // whether or not a "real" transaction is in play.
+      manager: {
+        transaction: jest.fn((callback) =>
+          callback({withRepository: () => repository})
+        ),
+      },
     };
     reportsRepository = {
       create: jest.fn((data) => data),
       save: jest.fn((report) => Promise.resolve(report)),
       countBy: jest.fn().mockResolvedValue(0),
       delete: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
+    };
+    revisionsRepository = {
+      create: jest.fn((data) => data),
+      save: jest.fn((revision) => Promise.resolve(revision)),
       find: jest.fn().mockResolvedValue([]),
     };
     usersService = {
@@ -101,6 +122,10 @@ describe('StoriesService', () => {
         StoriesService,
         {provide: getRepositoryToken(Story), useValue: repository},
         {provide: getRepositoryToken(StoryReport), useValue: reportsRepository},
+        {
+          provide: getRepositoryToken(StoryRevision),
+          useValue: revisionsRepository,
+        },
         {provide: UsersService, useValue: usersService},
         {provide: TagsService, useValue: tagsService},
         {provide: SeriesService, useValue: seriesService},
@@ -196,6 +221,8 @@ describe('StoriesService', () => {
         id: 'story-1',
         title: 'Old title',
         author,
+        tags: [],
+        contentWarnings: [],
       });
     });
 
@@ -235,6 +262,8 @@ describe('StoriesService', () => {
         title: 'Old title',
         author,
         series: null,
+        tags: [],
+        contentWarnings: [],
       });
       const series = {id: 'series-1', title: 'Hollow Lane'};
       seriesService.findOrCreateForAuthor.mockResolvedValue(series);
@@ -262,6 +291,8 @@ describe('StoriesService', () => {
         author,
         series: {id: 'series-1', title: 'Hollow Lane'},
         seriesPosition: 2,
+        tags: [],
+        contentWarnings: [],
       });
 
       const story = await service.update(
@@ -283,6 +314,8 @@ describe('StoriesService', () => {
         author,
         series: {id: 'series-1', title: 'Hollow Lane'},
         seriesPosition: 2,
+        tags: [],
+        contentWarnings: [],
       });
 
       const story = await service.update(
@@ -303,6 +336,8 @@ describe('StoriesService', () => {
         author,
         series: {id: 'series-1', title: 'Hollow Lane'},
         seriesPosition: 2,
+        tags: [],
+        contentWarnings: [],
       });
 
       const story = await service.update(
@@ -314,6 +349,103 @@ describe('StoriesService', () => {
 
       expect(story.series).toEqual({id: 'series-1', title: 'Hollow Lane'});
       expect(story.seriesPosition).toBe(2);
+    });
+  });
+
+  describe('update — revisions', () => {
+    it('snapshots the pre-edit state on a content-changing edit to a non-draft story', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        excerpt: 'Old excerpt',
+        content: 'Old content',
+        coverImageUrl: null,
+        contentWarnings: [ContentWarning.GraphicViolence],
+        status: StoryStatus.Approved,
+        author,
+        tags: [{name: 'horror'}],
+      });
+
+      await service.update(
+        'story-1',
+        {title: 'New title'},
+        'author-1',
+        Role.User
+      );
+
+      expect(revisionsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Old title',
+          excerpt: 'Old excerpt',
+          content: 'Old content',
+          statusBefore: StoryStatus.Approved,
+          tagNames: ['horror'],
+        })
+      );
+      expect(revisionsRepository.save).toHaveBeenCalled();
+    });
+
+    it('does not snapshot a scareLevel-only edit', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        status: StoryStatus.Approved,
+        author,
+        tags: [],
+      });
+
+      await service.update('story-1', {scareLevel: 3}, 'author-1', Role.User);
+
+      expect(revisionsRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('does not snapshot an edit to a draft story, regardless of which fields change', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        status: StoryStatus.Draft,
+        author,
+        tags: [],
+      });
+
+      await service.update(
+        'story-1',
+        {title: 'New title', content: 'New content'},
+        'author-1',
+        Role.User
+      );
+
+      expect(revisionsRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findRevisions', () => {
+    it('returns the story revisions, newest first, for the owner', async () => {
+      repository.findOneOrFail.mockResolvedValue({id: 'story-1', author});
+      const revisions = [{id: 'rev-2'}, {id: 'rev-1'}];
+      revisionsRepository.find.mockResolvedValue(revisions);
+
+      const result = await service.findRevisions(
+        'story-1',
+        'author-1',
+        Role.User
+      );
+
+      expect(revisionsRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {story: {id: 'story-1'}},
+          order: {createdAt: 'DESC'},
+        })
+      );
+      expect(result).toBe(revisions);
+    });
+
+    it('rejects a non-owner non-admin user', async () => {
+      repository.findOneOrFail.mockResolvedValue({id: 'story-1', author});
+
+      await expect(
+        service.findRevisions('story-1', 'someone-else', Role.User)
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -362,6 +494,57 @@ describe('StoriesService', () => {
       await expect(
         service.updateStatus('missing', StoryStatus.Approved)
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('bulkUpdateStatus', () => {
+    it('transitions every story in one call', async () => {
+      const stories = [
+        {id: 'story-1', status: StoryStatus.Pending, author: {id: 'a1'}},
+        {id: 'story-2', status: StoryStatus.Pending, author: {id: 'a2'}},
+      ];
+      repository.find.mockResolvedValue(stories);
+
+      const result = await service.bulkUpdateStatus(
+        ['story-1', 'story-2'],
+        StoryStatus.Approved
+      );
+
+      expect(
+        result.every((story) => story.status === StoryStatus.Approved)
+      ).toBe(true);
+      expect(repository.save).toHaveBeenCalledWith(stories);
+    });
+
+    it('latches markHasPublishedStory once per distinct author when approving', async () => {
+      const stories = [
+        {id: 'story-1', status: StoryStatus.Pending, author: {id: 'a1'}},
+        {id: 'story-2', status: StoryStatus.Pending, author: {id: 'a1'}},
+      ];
+      repository.find.mockResolvedValue(stories);
+
+      await service.bulkUpdateStatus(
+        ['story-1', 'story-2'],
+        StoryStatus.Approved
+      );
+
+      expect(usersService.markHasPublishedStory).toHaveBeenCalledTimes(1);
+      expect(usersService.markHasPublishedStory).toHaveBeenCalledWith('a1');
+    });
+
+    it('rejects the whole batch (and changes nothing) when an id is missing', async () => {
+      repository.find.mockResolvedValue([
+        {id: 'story-1', status: StoryStatus.Pending, author: {id: 'a1'}},
+      ]);
+
+      await expect(
+        service.bulkUpdateStatus(
+          ['story-1', 'does-not-exist'],
+          StoryStatus.Approved
+        )
+      ).rejects.toThrow(NotFoundException);
+
+      expect(repository.save).not.toHaveBeenCalled();
     });
   });
 
