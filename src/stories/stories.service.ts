@@ -538,6 +538,53 @@ export class StoriesService {
     });
   }
 
+  // The author's own view of a series: every story regardless of status,
+  // ordered by position — unlike findApprovedBySeriesId (public, approved
+  // only), the reorder tool needs to show/reorder drafts and pending parts too.
+  async findAllBySeriesId(seriesId: string): Promise<Story[]> {
+    return this.storiesRepository.find({
+      where: {series: {id: seriesId}},
+      relations: ['tags', 'series'],
+      select: {...SELECTED_FIELDS, seriesPosition: true},
+      order: {seriesPosition: 'ASC'},
+    });
+  }
+
+  // Reassigns 1-based positions in the given order. Transactional and
+  // all-or-nothing, mirroring bulkUpdateStatus. storyIds must resolve to
+  // exactly the series' current stories (same set, any order) — the
+  // caller's guarantee that nothing was dropped, duplicated, or smuggled in
+  // from another series.
+  async reorderSeries(seriesId: string, storyIds: string[]): Promise<Story[]> {
+    return this.storiesRepository.manager.transaction(async (manager) => {
+      const repo = manager.withRepository(this.storiesRepository);
+      const stories = await repo.find({
+        where: {series: {id: seriesId}},
+        relations: ['tags', 'series'],
+      });
+
+      const currentIds = new Set(stories.map((story) => story.id));
+      if (
+        storyIds.length !== stories.length ||
+        !storyIds.every((id) => currentIds.has(id))
+      ) {
+        throw new BadRequestException(
+          "storyIds must exactly match this series' current stories"
+        );
+      }
+
+      const byId = new Map(stories.map((story) => [story.id, story]));
+      storyIds.forEach((id, index) => {
+        byId.get(id)!.seriesPosition = index + 1;
+      });
+
+      await repo.save(stories);
+      return stories.sort(
+        (a, b) => (a.seriesPosition ?? 0) - (b.seriesPosition ?? 0)
+      );
+    });
+  }
+
   // Keyset (cursor) paging for the infinite feed. Instead of OFFSET (which
   // scans and discards every earlier row), it seeks straight past the cursor
   // via `(sortKey, id)`, so page N costs the same as page 1. `total` is

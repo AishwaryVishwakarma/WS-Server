@@ -707,6 +707,77 @@ describe('StoriesService', () => {
     });
   });
 
+  describe('findAllBySeriesId', () => {
+    it('returns every story in the series regardless of status, ordered by position', async () => {
+      const stories = [
+        {id: 'story-1', status: StoryStatus.Draft, seriesPosition: 1},
+        {id: 'story-2', status: StoryStatus.Approved, seriesPosition: 2},
+      ];
+      repository.find.mockResolvedValue(stories);
+
+      const result = await service.findAllBySeriesId('series-1');
+
+      expect(result).toBe(stories);
+      expect(repository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {series: {id: 'series-1'}},
+          order: {seriesPosition: 'ASC'},
+        })
+      );
+    });
+  });
+
+  describe('reorderSeries', () => {
+    it('assigns 1-based positions in the submitted order', async () => {
+      const stories = [
+        {id: 'story-1', seriesPosition: 1},
+        {id: 'story-2', seriesPosition: 2},
+        {id: 'story-3', seriesPosition: 3},
+      ];
+      repository.find.mockResolvedValue(stories);
+
+      const result = await service.reorderSeries('series-1', [
+        'story-3',
+        'story-1',
+        'story-2',
+      ]);
+
+      expect(repository.save).toHaveBeenCalledWith(stories);
+      expect(result.map((story) => story.id)).toEqual([
+        'story-3',
+        'story-1',
+        'story-2',
+      ]);
+      expect(stories.find((s) => s.id === 'story-3')!.seriesPosition).toBe(1);
+      expect(stories.find((s) => s.id === 'story-1')!.seriesPosition).toBe(2);
+      expect(stories.find((s) => s.id === 'story-2')!.seriesPosition).toBe(3);
+    });
+
+    it('rejects a storyIds set missing one of the series current stories', async () => {
+      repository.find.mockResolvedValue([
+        {id: 'story-1', seriesPosition: 1},
+        {id: 'story-2', seriesPosition: 2},
+      ]);
+
+      await expect(
+        service.reorderSeries('series-1', ['story-1'])
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a storyIds set containing a foreign id', async () => {
+      repository.find.mockResolvedValue([
+        {id: 'story-1', seriesPosition: 1},
+        {id: 'story-2', seriesPosition: 2},
+      ]);
+
+      await expect(
+        service.reorderSeries('series-1', ['story-1', 'not-in-series'])
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('remove', () => {
     beforeEach(() => {
       repository.findOneOrFail.mockResolvedValue({id: 'story-1', author});

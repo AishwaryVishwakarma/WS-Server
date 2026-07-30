@@ -240,4 +240,165 @@ describe('Series (integration)', () => {
       );
     });
   });
+
+  describe('GET /users/me/series/:id', () => {
+    it('rejects an unauthenticated request', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        seriesTitle: 'Hollow Lane',
+      });
+
+      await agent().get(`/users/me/series/${story.series!.id}`).expect(401);
+    });
+
+    it('rejects a signed-in non-owner with 403', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        seriesTitle: 'Hollow Lane',
+      });
+      const stranger = agent();
+      await registerUser(stranger, {email: 'stranger@test.com'});
+
+      await stranger.get(`/users/me/series/${story.series!.id}`).expect(403);
+    });
+
+    it('lists every story in the series regardless of status, in position order', async () => {
+      const {client, story: first} = await createStory({
+        ...STORY_PAYLOAD,
+        title: 'Part One',
+        seriesTitle: 'Hollow Lane',
+      });
+      await createStory(
+        {...STORY_PAYLOAD, title: 'Part Two', seriesTitle: 'Hollow Lane'},
+        client
+      );
+      await approveStory(first.id);
+
+      const response = await client
+        .get(`/users/me/series/${first.series!.id}`)
+        .expect(200);
+
+      expect(
+        response.body.stories.map((s: {title: string}) => s.title)
+      ).toEqual(['Part One', 'Part Two']);
+      expect(response.body.stories[0].status).toBe(StoryStatus.Approved);
+      expect(response.body.stories[1].status).toBe(StoryStatus.Pending);
+    });
+  });
+
+  describe('PATCH /users/me/series/:id/reorder', () => {
+    it('rejects an unauthenticated request', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        seriesTitle: 'Hollow Lane',
+      });
+
+      // A session-less request can't hold a valid CSRF token, so it fails
+      // CSRF (403) before ever reaching the auth guard (401) — see CLAUDE.md.
+      await agent()
+        .patch(`/users/me/series/${story.series!.id}/reorder`)
+        .send({storyIds: [story.id]})
+        .expect(403);
+    });
+
+    it('rejects a signed-in non-owner with 403', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        seriesTitle: 'Hollow Lane',
+      });
+      const stranger = agent();
+      await registerUser(stranger, {email: 'stranger@test.com'});
+      const strangerToken = await getCsrfToken(stranger);
+
+      await stranger
+        .patch(`/users/me/series/${story.series!.id}/reorder`)
+        .set('x-csrf-token', strangerToken)
+        .send({storyIds: [story.id]})
+        .expect(403);
+    });
+
+    it('rejects a storyIds set that does not match the series current stories', async () => {
+      const {
+        client,
+        token,
+        story: first,
+      } = await createStory({
+        ...STORY_PAYLOAD,
+        title: 'Part One',
+        seriesTitle: 'Hollow Lane',
+      });
+      await createStory(
+        {...STORY_PAYLOAD, title: 'Part Two', seriesTitle: 'Hollow Lane'},
+        client
+      );
+
+      await client
+        .patch(`/users/me/series/${first.series!.id}/reorder`)
+        .set('x-csrf-token', token)
+        .send({storyIds: [first.id]})
+        .expect(400);
+    });
+
+    it('persists the new order and is reflected on a follow-up fetch', async () => {
+      const {
+        client,
+        token,
+        story: first,
+      } = await createStory({
+        ...STORY_PAYLOAD,
+        title: 'Part One',
+        seriesTitle: 'Hollow Lane',
+      });
+      const {story: second} = await createStory(
+        {...STORY_PAYLOAD, title: 'Part Two', seriesTitle: 'Hollow Lane'},
+        client
+      );
+
+      await client
+        .patch(`/users/me/series/${first.series!.id}/reorder`)
+        .set('x-csrf-token', token)
+        .send({storyIds: [second.id, first.id]})
+        .expect(200);
+
+      const response = await client
+        .get(`/users/me/series/${first.series!.id}`)
+        .expect(200);
+
+      expect(
+        response.body.stories.map((s: {title: string}) => s.title)
+      ).toEqual(['Part Two', 'Part One']);
+    });
+
+    it('reflects the new order on the public series page for the approved subset', async () => {
+      const {
+        client,
+        token,
+        story: first,
+      } = await createStory({
+        ...STORY_PAYLOAD,
+        title: 'Part One',
+        seriesTitle: 'Hollow Lane',
+      });
+      const {story: second} = await createStory(
+        {...STORY_PAYLOAD, title: 'Part Two', seriesTitle: 'Hollow Lane'},
+        client
+      );
+      const admin = await approveStory(first.id);
+      await approveStory(second.id, admin);
+
+      await client
+        .patch(`/users/me/series/${first.series!.id}/reorder`)
+        .set('x-csrf-token', token)
+        .send({storyIds: [second.id, first.id]})
+        .expect(200);
+
+      const response = await agent()
+        .get(`/series/${first.series!.id}`)
+        .expect(200);
+
+      expect(
+        response.body.stories.map((s: {title: string}) => s.title)
+      ).toEqual(['Part Two', 'Part One']);
+    });
+  });
 });
