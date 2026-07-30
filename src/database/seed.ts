@@ -338,6 +338,45 @@ function generateStories(): typeof STORIES {
   });
 }
 
+// A few very large, multi-chapter stories — the handcrafted and generated
+// stories above are all short-story length (~300-500 words), which barely
+// scrolls. These reuse the same OPENINGS/MIDDLES/QUOTES/ENDINGS fragments
+// (no new prose to hand-author), just cycling through them many more times,
+// landing each around 2,500-3,000 words so scroll-heavy features (reading
+// position/progress) have something substantial to scroll through.
+const LONG_STORY_TITLES = [
+  'The Long Descent',
+  'Everything the House Remembers',
+  'The Archive of Ordinary Nights',
+];
+
+const LONG_STORY_CHAPTERS = 36;
+
+function generateLongStory(index: number): (typeof STORIES)[number] {
+  const sections = [OPENINGS[index % OPENINGS.length]];
+  for (let chapter = 0; chapter < LONG_STORY_CHAPTERS; chapter++) {
+    sections.push(`## Chapter ${chapter + 1}`);
+    sections.push(MIDDLES[(index + chapter) % MIDDLES.length]);
+    sections.push(QUOTES[(index + chapter) % QUOTES.length]);
+  }
+  sections.push(ENDINGS[index % ENDINGS.length]);
+
+  return {
+    author: GENERATED_AUTHOR_ROTATION[index % GENERATED_AUTHOR_ROTATION.length],
+    title: LONG_STORY_TITLES[index],
+    content: sections.join('\n\n'),
+    excerpt: OPENINGS[index % OPENINGS.length].slice(0, 140).trimEnd() + '…',
+    coverImageUrl: `https://picsum.photos/seed/long-story-${index}/800/450`,
+    scareLevel: (index % 5) + 1,
+    tags: ['horror', 'psychological'],
+    status: StoryStatus.Approved,
+  };
+}
+
+function generateLongStories(): typeof STORIES {
+  return LONG_STORY_TITLES.map((_, index) => generateLongStory(index));
+}
+
 const COMMENT_REACTIONS = [
   'Read this alone at 2 a.m. Regretting my choices.',
   'The pacing on this one is merciless. Loved it.',
@@ -699,6 +738,7 @@ async function seed() {
     for (const {author, status, tags, rejectionReason, ...rest} of [
       ...STORIES,
       ...generateStories(),
+      ...generateLongStories(),
     ]) {
       const story = await storiesService.create(
         {

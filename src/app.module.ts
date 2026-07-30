@@ -35,6 +35,8 @@ import {StoryLike} from './likes/entities/story-like.entity';
 import {LikesModule} from './likes/likes.module';
 import {Series} from './series/entities/series.entity';
 import {SeriesModule} from './series/series.module';
+import {ReadingProgress} from './reading-progress/entities/reading-progress.entity';
+import {ReadingProgressModule} from './reading-progress/reading-progress.module';
 import {migrations} from './database/migrations';
 
 // mysql2's own default when no pool size is configured — used as our fallback
@@ -171,6 +173,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           StoryLike,
           PasswordResetToken,
           Series,
+          ReadingProgress,
         ],
         synchronize: false,
         migrations,
@@ -189,6 +192,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     FollowsModule,
     LikesModule,
     SeriesModule,
+    ReadingProgressModule,
   ],
   controllers: [AppController],
   providers: [

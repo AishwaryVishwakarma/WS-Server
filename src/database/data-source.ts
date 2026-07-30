@@ -14,6 +14,7 @@ import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
 import {StoryLike} from 'src/likes/entities/story-like.entity';
 import {Series} from 'src/series/entities/series.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {migrations} from './migrations';
 
 // CLI-facing DataSource for the typeorm binary (migration:generate/run/
@@ -42,6 +43,7 @@ export default new DataSource({
     StoryLike,
     PasswordResetToken,
     Series,
+    ReadingProgress,
   ],
   migrations,
 });
