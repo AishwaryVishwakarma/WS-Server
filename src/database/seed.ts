@@ -1,4 +1,4 @@
-import {NestFactory} from '@nestjs/core';
+﻿import {NestFactory} from '@nestjs/core';
 import {DataSource} from 'typeorm';
 import {AppModule} from 'src/app.module';
 import {BookmarksService} from 'src/bookmarks/bookmarks.service';
@@ -84,6 +84,7 @@ const STORIES: {
   title: string;
   content: string;
   excerpt?: string;
+  coverImageUrl?: string;
   scareLevel: number;
   tags: string[];
   status: StoryStatus;
@@ -100,6 +101,7 @@ const STORIES: {
       'THE LIGHT KEEPS IT ASLEEP. They repainted, of course. They always repaint. And that first dark night, at 3:11, the whole street woke to the sound of something enormous stretching.',
     excerpt:
       'Every night at 3:11 a.m., the attic light comes on. No one has lived there for eleven years.',
+    coverImageUrl: 'https://picsum.photos/seed/hollow-lane/800/450',
     scareLevel: 4,
     tags: ['horror', 'haunted-places'],
     status: StoryStatus.Approved,
@@ -112,9 +114,10 @@ const STORIES: {
       'The street slept for three nights after the stretching sound, and everyone agreed not to mention it. Then the new owners found the attic hatch ' +
       'unsealed — no nails, no chalk, just an empty room and a window painted shut from the outside. They called a glazier, who took one look at the ' +
       'paint (old, flaking, applied — he was certain — from the outside of a third-floor window with no ladder marks below) and left without his tools. ' +
-      'The light still comes at 3:11. It just doesn’t go out anymore.',
+      "The light still comes at 3:11. It just doesn't go out anymore.",
     excerpt:
-      'The attic hatch is unsealed now. The light doesn’t go out anymore.',
+      "The attic hatch is unsealed now. The light doesn't go out anymore.",
+    coverImageUrl: 'https://picsum.photos/seed/hollow-attic/800/450',
     scareLevel: 4,
     tags: ['horror', 'haunted-places'],
     status: StoryStatus.Approved,
@@ -127,6 +130,7 @@ const STORIES: {
       'My daughter says the baby monitor sings to her. I recorded it for a week and heard nothing but static. ' +
       'Then I played the recordings backwards, all seven nights spliced together, and it was not singing. It was counting. ' +
       'Last night it reached one.',
+    coverImageUrl: 'https://picsum.photos/seed/baby-monitor/800/450',
     scareLevel: 2,
     tags: ['psychological'],
     status: StoryStatus.Pending,
@@ -140,6 +144,7 @@ const STORIES: {
       'On quiet nights you can hear them on the far bank, going through their pockets, counting what they have saved.',
     excerpt:
       'Cross the river after dark with empty pockets and the ferryman returns alone.',
+    coverImageUrl: 'https://picsum.photos/seed/ferryman-toll/800/450',
     scareLevel: 3,
     tags: ['folk-tale'],
     status: StoryStatus.Approved,
@@ -162,6 +167,7 @@ const STORIES: {
       'The estate agent said the scratching was mice. Mice do not whisper your name. Mice do not slide handwritten apologies under the wallpaper, ' +
       'in handwriting that matches the previous owner, who — the neighbours swear — moved out in a hurry and left everything, even her shoes. ' +
       'I have started writing back. I slide my notes behind the loose skirting board, and in the morning they are gone. Yesterday the wall asked, very politely, whether I sleep on my back or my side.',
+    coverImageUrl: 'https://picsum.photos/seed/whisper-walls/800/450',
     scareLevel: 3,
     tags: ['paranormal', 'horror'],
     status: StoryStatus.Approved,
@@ -184,6 +190,7 @@ const STORIES: {
       'The thermostat says 22 degrees, but there is a corridor of winter running through my kitchen, exactly the width of a person. ' +
       'It moves a little each day, the way a queue moves. This morning it was pressed against the cellar door. ' +
       'I have started leaving the door open a crack, out of courtesy. The cold spot has started leaving me small dead birds, possibly for the same reason.',
+    coverImageUrl: 'https://picsum.photos/seed/cold-spots/800/450',
     scareLevel: 1,
     tags: ['paranormal'],
     status: StoryStatus.Approved,
@@ -206,6 +213,7 @@ const STORIES: {
       'There are five mirrors in my flat. I counted them when I moved in, the way you do. Last Tuesday there were six. ' +
       'I removed one — the new one, I was sure it was the new one — and now there are four reflections of me and one of somebody standing very still, ' +
       'slightly too far to the left, waiting for me to stop counting.',
+    coverImageUrl: 'https://picsum.photos/seed/mirror-math/800/450',
     scareLevel: 4,
     tags: ['psychological', 'horror'],
     status: StoryStatus.Pending,
@@ -303,6 +311,9 @@ function generateStories(): typeof STORIES {
       author: GENERATED_AUTHOR_ROTATION[i % 4],
       title,
       content,
+      ...(i % 3 === 0 && {
+        coverImageUrl: `https://picsum.photos/seed/${TITLE_NOUNS[Math.floor(i / 6)]}-${i}/800/450`,
+      }),
       scareLevel: (i % 5) + 1,
       // Two distinct tags each, so stories are multi-tagged and every tag in
       // the catalogue picks up a healthy story count.
@@ -323,7 +334,7 @@ const COMMENT_REACTIONS = [
   'Quietly the scariest thing on the shelves this month.',
   'The detail about the repainting broke me.',
   'I did not breathe for the last three paragraphs.',
-  'The ending recontextualises the whole thing. Chef’s kiss.',
+  "The ending recontextualises the whole thing. Chef's kiss.",
   'My smart speaker turned itself on while I was reading this. Coincidence, surely.',
   'Sent this to my sister. She has stopped speaking to me. Worth it.',
   'The restraint here is the scary part — it never over-explains.',
