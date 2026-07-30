@@ -72,6 +72,11 @@ export class PrivateUsersController {
     };
   }
 
+  @Get('stats')
+  async myStats(@Req() req: Request) {
+    return this.usersService.computeAuthorStats(req.session.userId!);
+  }
+
   @Get('stories')
   async findMyStories(@Req() req: Request, @Query() query: MyStoriesQueryDto) {
     return await this.storiesService.findAllByUserId(

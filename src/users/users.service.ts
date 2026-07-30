@@ -11,6 +11,8 @@ import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
 import {Story} from 'src/stories/entities/story.entity';
+import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
+import {Follow} from 'src/follows/entities/follow.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
@@ -37,15 +39,20 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
     @InjectRepository(UserReport)
     private readonly reportsRepository: Repository<UserReport>,
-    // Read directly off the Story/Series repositories (not StoriesService/
-    // SeriesService) for the badge computation below — those services
-    // already depend on UsersService, so injecting them here would be a
-    // genuine circular provider dependency, not just a circular module
-    // import. Both are plain aggregate reads, no business logic to reuse.
+    // Read directly off the Story/Series/Bookmark/Follow repositories (not
+    // StoriesService/SeriesService/FollowsService) for the badge/stats
+    // computations below — those services already depend on UsersService, so
+    // injecting them here would be a genuine circular provider dependency,
+    // not just a circular module import. All are plain aggregate reads, no
+    // business logic to reuse.
     @InjectRepository(Story)
     private readonly storiesRepository: Repository<Story>,
     @InjectRepository(Series)
     private readonly seriesRepository: Repository<Series>,
+    @InjectRepository(Bookmark)
+    private readonly bookmarksRepository: Repository<Bookmark>,
+    @InjectRepository(Follow)
+    private readonly followsRepository: Repository<Follow>,
     private readonly configService: ConfigService
   ) {}
 
@@ -293,6 +300,66 @@ export class UsersService {
     if (hasSeries) badges.push(Badge.SeriesAuthor);
 
     return badges;
+  }
+
+  // Aggregate snapshot for the author's own dashboard (GET /users/me/stats).
+  // Scoped to approved stories throughout, mirroring computeBadges — an
+  // author's published output and the engagement on it are one coherent set;
+  // draft/pending/rejected/flagged stories can't have accrued real
+  // engagement anyway (views/likes/comments/bookmarks all require the story
+  // to have been visible via findOneVisible). Followers/following are
+  // user-level, so they're computed independent of story status — same
+  // countBy shape as FollowsService.stats, reimplemented here against a
+  // directly-injected Follow repository rather than injecting FollowsService
+  // (FollowsModule imports UsersModule, so that would be a genuine circular
+  // provider dependency).
+  async computeAuthorStats(userId: string): Promise<{
+    storiesPublished: number;
+    totalViews: number;
+    totalLikes: number;
+    totalComments: number;
+    totalBookmarks: number;
+    followers: number;
+    following: number;
+  }> {
+    const [storyStats, totalBookmarks, followers, following] =
+      await Promise.all([
+        this.storiesRepository
+          .createQueryBuilder('story')
+          .select('COUNT(*)', 'storiesPublished')
+          .addSelect('COALESCE(SUM(story.viewCount), 0)', 'totalViews')
+          .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
+          .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
+          .where('story.author = :authorId', {authorId: userId})
+          .andWhere('story.status = :status', {status: StoryStatus.Approved})
+          .getRawOne<{
+            storiesPublished: string;
+            totalViews: string;
+            totalLikes: string;
+            totalComments: string;
+          }>(),
+        // A separate query, not joined onto the story aggregate above —
+        // joining `bookmark` before the SUM/COUNT would fan out one row per
+        // bookmark and multiply the story-side sums incorrectly.
+        this.bookmarksRepository
+          .createQueryBuilder('bookmark')
+          .innerJoin('bookmark.story', 'story')
+          .where('story.author = :authorId', {authorId: userId})
+          .andWhere('story.status = :status', {status: StoryStatus.Approved})
+          .getCount(),
+        this.followsRepository.countBy({following: {id: userId}}),
+        this.followsRepository.countBy({follower: {id: userId}}),
+      ]);
+
+    return {
+      storiesPublished: Number(storyStats?.storiesPublished) || 0,
+      totalViews: Number(storyStats?.totalViews) || 0,
+      totalLikes: Number(storyStats?.totalLikes) || 0,
+      totalComments: Number(storyStats?.totalComments) || 0,
+      totalBookmarks,
+      followers,
+      following,
+    };
   }
 
   // Unlike findOne, a miss is a valid outcome here — PasswordResetService

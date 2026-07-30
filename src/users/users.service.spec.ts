@@ -13,6 +13,8 @@ import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {Series} from 'src/series/entities/series.entity';
+import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
+import {Follow} from 'src/follows/entities/follow.entity';
 import {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
 import {UsersService} from './users.service';
@@ -51,6 +53,14 @@ describe('UsersService', () => {
   };
   let storiesRepository: {createQueryBuilder: jest.Mock};
   let seriesRepository: {exists: jest.Mock};
+  let bookmarksQueryBuilder: {
+    innerJoin: jest.Mock;
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    getCount: jest.Mock;
+  };
+  let bookmarksRepository: {createQueryBuilder: jest.Mock};
+  let followsRepository: {countBy: jest.Mock};
 
   beforeEach(async () => {
     repository = {
@@ -85,6 +95,16 @@ describe('UsersService', () => {
       createQueryBuilder: jest.fn(() => storiesQueryBuilder),
     };
     seriesRepository = {exists: jest.fn().mockResolvedValue(false)};
+    bookmarksQueryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+    };
+    bookmarksRepository = {
+      createQueryBuilder: jest.fn(() => bookmarksQueryBuilder),
+    };
+    followsRepository = {countBy: jest.fn().mockResolvedValue(0)};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -93,6 +113,8 @@ describe('UsersService', () => {
         {provide: getRepositoryToken(UserReport), useValue: reportsRepository},
         {provide: getRepositoryToken(Story), useValue: storiesRepository},
         {provide: getRepositoryToken(Series), useValue: seriesRepository},
+        {provide: getRepositoryToken(Bookmark), useValue: bookmarksRepository},
+        {provide: getRepositoryToken(Follow), useValue: followsRepository},
         {
           provide: ConfigService,
           // Low salt rounds to keep hashing fast in tests
@@ -562,6 +584,78 @@ describe('UsersService', () => {
       storiesQueryBuilder.getRawOne.mockResolvedValue(undefined);
 
       await expect(service.computeBadges('user-1')).resolves.toEqual([]);
+    });
+  });
+
+  describe('computeAuthorStats', () => {
+    it('returns all-zero stats for a fresh author', async () => {
+      const stats = await service.computeAuthorStats('user-1');
+
+      expect(stats).toEqual({
+        storiesPublished: 0,
+        totalViews: 0,
+        totalLikes: 0,
+        totalComments: 0,
+        totalBookmarks: 0,
+        followers: 0,
+        following: 0,
+      });
+    });
+
+    it('reflects the story aggregate row', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        storiesPublished: '3',
+        totalViews: '150',
+        totalLikes: '20',
+        totalComments: '8',
+      });
+
+      const stats = await service.computeAuthorStats('user-1');
+
+      expect(stats.storiesPublished).toBe(3);
+      expect(stats.totalViews).toBe(150);
+      expect(stats.totalLikes).toBe(20);
+      expect(stats.totalComments).toBe(8);
+    });
+
+    it('reflects the bookmark count', async () => {
+      bookmarksQueryBuilder.getCount.mockResolvedValue(7);
+
+      const stats = await service.computeAuthorStats('user-1');
+
+      expect(stats.totalBookmarks).toBe(7);
+      expect(bookmarksQueryBuilder.innerJoin).toHaveBeenCalledWith(
+        'bookmark.story',
+        'story'
+      );
+    });
+
+    it('reflects followers and following independently', async () => {
+      followsRepository.countBy
+        .mockResolvedValueOnce(12)
+        .mockResolvedValueOnce(4);
+
+      const stats = await service.computeAuthorStats('user-1');
+
+      expect(stats.followers).toBe(12);
+      expect(stats.following).toBe(4);
+      expect(followsRepository.countBy).toHaveBeenCalledWith({
+        following: {id: 'user-1'},
+      });
+      expect(followsRepository.countBy).toHaveBeenCalledWith({
+        follower: {id: 'user-1'},
+      });
+    });
+
+    it('treats a null aggregate (no rows) as all-zero story stats', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue(undefined);
+
+      const stats = await service.computeAuthorStats('user-1');
+
+      expect(stats.storiesPublished).toBe(0);
+      expect(stats.totalViews).toBe(0);
+      expect(stats.totalLikes).toBe(0);
+      expect(stats.totalComments).toBe(0);
     });
   });
 });

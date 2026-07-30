@@ -620,7 +620,9 @@ describe('Comments (integration)', () => {
       // A stranger never sees it at all.
       const stranger = agent();
       await registerUser(stranger, {email: 'stranger@test.com'});
-      const list = await stranger.get(`/stories/${story.id}/comments`).expect(200);
+      const list = await stranger
+        .get(`/stories/${story.id}/comments`)
+        .expect(200);
       expect(list.body.total).toBe(0);
 
       // The author still sees it, marked hidden.
@@ -652,7 +654,9 @@ describe('Comments (integration)', () => {
 
       const stranger = agent();
       await registerUser(stranger, {email: 'stranger@test.com'});
-      const list = await stranger.get(`/stories/${story.id}/comments`).expect(200);
+      const list = await stranger
+        .get(`/stories/${story.id}/comments`)
+        .expect(200);
       expect(list.body.total).toBe(1);
 
       // The reply, cascaded-hidden when its parent was hidden, stays hidden.
@@ -672,7 +676,9 @@ describe('Comments (integration)', () => {
 
       const stranger = agent();
       await registerUser(stranger, {email: 'stranger@test.com'});
-      const list = await stranger.get(`/stories/${story.id}/comments`).expect(200);
+      const list = await stranger
+        .get(`/stories/${story.id}/comments`)
+        .expect(200);
       expect(list.body.total).toBe(1);
       expect(list.body.data[0].id).toBe(comment.id);
 
@@ -692,7 +698,9 @@ describe('Comments (integration)', () => {
 
       const stranger = agent();
       await registerUser(stranger, {email: 'stranger@test.com'});
-      const list = await stranger.get(`/stories/${story.id}/comments`).expect(200);
+      const list = await stranger
+        .get(`/stories/${story.id}/comments`)
+        .expect(200);
       expect(list.body.total).toBe(0);
     });
 
@@ -709,11 +717,13 @@ describe('Comments (integration)', () => {
         .expect(403);
 
       // Confirm it's genuinely untouched — still visible to everyone.
-      const list = await outsider.get(`/stories/${story.id}/comments`).expect(200);
+      const list = await outsider
+        .get(`/stories/${story.id}/comments`)
+        .expect(200);
       expect(list.body.total).toBe(1);
     });
 
-    it("does not mark a hidden comment as edited (updatedAt preserved)", async () => {
+    it('does not mark a hidden comment as edited (updatedAt preserved)', async () => {
       const {author, authorToken, comment} = await hideFixture();
 
       const hidden = await author

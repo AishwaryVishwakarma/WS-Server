@@ -4,6 +4,8 @@ import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
 import {Story} from 'src/stories/entities/story.entity';
+import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
+import {Follow} from 'src/follows/entities/follow.entity';
 import {SessionModule} from 'src/session/session.module';
 import {PublicUsersController} from './controllers/public-users.controller';
 import {AdminUsersController} from './controllers/admin-users.controller';
@@ -14,12 +16,20 @@ import {UsersService} from './users.service';
 
 @Module({
   imports: [
-    // Story/Series are registered as repositories only (not their modules) —
-    // computeBadges just needs plain aggregate reads, not StoriesService/
-    // SeriesService business logic, and injecting either service directly
-    // would be a genuine circular provider dependency (both already depend
-    // on UsersService).
-    TypeOrmModule.forFeature([User, UserReport, Story, Series]),
+    // Story/Series/Bookmark/Follow are registered as repositories only (not
+    // their modules) — computeBadges/computeAuthorStats just need plain
+    // aggregate reads, not StoriesService/SeriesService/FollowsService
+    // business logic, and injecting any of those services directly would be
+    // a genuine circular provider dependency (Stories/Series/Follows modules
+    // all already depend on UsersModule).
+    TypeOrmModule.forFeature([
+      User,
+      UserReport,
+      Story,
+      Series,
+      Bookmark,
+      Follow,
+    ]),
     SessionModule,
     StoriesModule,
     forwardRef(() => CommentsModule),

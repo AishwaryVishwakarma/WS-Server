@@ -179,8 +179,14 @@ export class StoriesService {
     // demo/pagination data can exceed it.
     {enforcePublishLimit = true}: {enforcePublishLimit?: boolean} = {}
   ) {
-    const {tags: tagIds, excerpt, draft, seriesTitle, scheduledFor, ...rest} =
-      createStoryDto;
+    const {
+      tags: tagIds,
+      excerpt,
+      draft,
+      seriesTitle,
+      scheduledFor,
+      ...rest
+    } = createStoryDto;
 
     // Submitting straight to review counts against the publish limit; saving a
     // private draft does not.
@@ -410,10 +416,9 @@ export class StoriesService {
       .where('story.status = :status', {status: StoryStatus.Approved})
       // A scheduled story stays out of every public listing until its
       // moment passes — read-time only, no scheduler (mirrors findOneVisible).
-      .andWhere(
-        '(story.scheduledFor IS NULL OR story.scheduledFor <= :now)',
-        {now: new Date()}
-      )
+      .andWhere('(story.scheduledFor IS NULL OR story.scheduledFor <= :now)', {
+        now: new Date(),
+      })
       // Same rationale as findOne: keep stories by soft-deleted authors.
       .withDeleted();
 

@@ -51,6 +51,103 @@ describe('Users (integration)', () => {
     });
   });
 
+  describe('GET /users/me/stats', () => {
+    const storyRepository = () => testApp.dataSource.getRepository(Story);
+
+    it('rejects unauthenticated requests', async () => {
+      await agent().get('/users/me/stats').expect(401);
+    });
+
+    it('returns all-zero stats for a fresh author', async () => {
+      const client = agent();
+      await registerUser(client);
+
+      const response = await client.get('/users/me/stats').expect(200);
+
+      expect(response.body).toEqual({
+        storiesPublished: 0,
+        totalViews: 0,
+        totalLikes: 0,
+        totalComments: 0,
+        totalBookmarks: 0,
+        followers: 0,
+        following: 0,
+      });
+    });
+
+    it('reflects real engagement on an approved story, scoped to approved only', async () => {
+      const author = agent();
+      const {body: authorBody} = await registerUser(author);
+      const authorToken = await getCsrfToken(author);
+      const storyResponse = await author
+        .post('/stories')
+        .set('x-csrf-token', authorToken)
+        .send({
+          title: 'A Beloved Tale',
+          content: 'x'.repeat(500),
+          scareLevel: 3,
+        })
+        .expect(201);
+      const storyId = storyResponse.body.id as string;
+
+      const adminAgent = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(adminAgent);
+      await adminAgent
+        .patch(`/admin/stories/${storyId}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: StoryStatus.Approved})
+        .expect(200);
+
+      // A separate, still-pending story — its engagement (if any) must not
+      // leak into the approved-only totals below.
+      const pendingResponse = await author
+        .post('/stories')
+        .set('x-csrf-token', authorToken)
+        .send({title: 'Still Pending', content: 'x'.repeat(500)})
+        .expect(201);
+      await storyRepository().update(pendingResponse.body.id as string, {
+        viewCount: 40,
+        likeCount: 40,
+        commentCount: 40,
+      });
+
+      const reader = agent();
+      await registerUser(reader, {email: 'reader@test.com'});
+      const readerToken = await getCsrfToken(reader);
+
+      await reader.post(`/stories/${storyId}/view`).expect(200);
+      await reader
+        .put(`/stories/${storyId}/like`)
+        .set('x-csrf-token', readerToken)
+        .expect(204);
+      await reader
+        .put(`/stories/${storyId}/bookmark`)
+        .set('x-csrf-token', readerToken)
+        .expect(204);
+      await reader
+        .post('/comments')
+        .set('x-csrf-token', readerToken)
+        .send({content: 'Loved this.', storyId})
+        .expect(201);
+      await reader
+        .put(`/users/${authorBody.id}/follow`)
+        .set('x-csrf-token', readerToken)
+        .expect(204);
+
+      const response = await author.get('/users/me/stats').expect(200);
+
+      expect(response.body).toEqual({
+        storiesPublished: 1,
+        totalViews: 1,
+        totalLikes: 1,
+        totalComments: 1,
+        totalBookmarks: 1,
+        followers: 1,
+        following: 0,
+      });
+    });
+  });
+
   describe('PATCH /users/me', () => {
     it('updates profile fields', async () => {
       const client = agent();

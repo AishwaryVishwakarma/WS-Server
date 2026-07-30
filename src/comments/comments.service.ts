@@ -83,7 +83,11 @@ export class CommentsService {
     return comment;
   }
 
-  private _authorizeStoryOwner(comment: Comment, requesterId: string, role: Role) {
+  private _authorizeStoryOwner(
+    comment: Comment,
+    requesterId: string,
+    role: Role
+  ) {
     const isStoryAuthor = comment.story.author?.id === requesterId;
     if (role !== Role.Admin && !isStoryAuthor) {
       throw new ForbiddenException(
