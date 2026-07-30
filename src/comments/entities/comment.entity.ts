@@ -62,6 +62,13 @@ export class Comment {
   @OneToMany(() => CommentReport, (report) => report.comment)
   reports: CommentReport[];
 
+  // Set by the story's own author (or an admin) to quietly hide a comment
+  // without deleting it — reversible, unlike remove(). Excluded from the
+  // public thread for everyone else; the story owner/admin still sees it
+  // (CommentsService.findAllByStoryId/findReplies take includeHidden).
+  @Column({default: false})
+  isHiddenByAuthor: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

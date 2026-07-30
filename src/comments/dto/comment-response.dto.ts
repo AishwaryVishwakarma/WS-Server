@@ -21,6 +21,18 @@ export class CommentPreviewResponseDto {
   }
 }
 
+/**
+ * [story-owner/admin] — same shape as the public preview, plus the hidden
+ * flag. Only ever serialized for the story's own author or an admin (see
+ * PublicStoriesController.getCommentsForStory/getRepliesForComment,
+ * PublicCommentsController.hide/unhide) — a regular reader never receives a
+ * hidden row at all, so the flag would otherwise always read false for them;
+ * kept off the base preview tier for that reason.
+ */
+export class CommentModerationPreviewResponseDto extends CommentPreviewResponseDto {
+  @Expose() isHiddenByAuthor: boolean;
+}
+
 // Compact story context embedded in a member's own comment activity, so the
 // frontend can link back to (and group by) the story without a second fetch.
 export class CommentStoryPreviewDto {

@@ -69,6 +69,29 @@ export class CommentsService {
     }
   }
 
+  // For hide/unhide: authorization is "the story's own author, or an
+  // admin" — distinct from _authorize (comment ownership), since hiding is a
+  // story-owner moderation action, not something the comment's own author
+  // does to their own comment.
+  private async _findOrThrowWithStoryAuthor(id: string) {
+    const comment = await this.commentsRepository.findOne({
+      where: {id},
+      relations: ['user', 'story', 'story.author', 'parent'],
+    });
+    if (!comment)
+      throw new NotFoundException(`Comment with ID ${id} not found`);
+    return comment;
+  }
+
+  private _authorizeStoryOwner(comment: Comment, requesterId: string, role: Role) {
+    const isStoryAuthor = comment.story.author?.id === requesterId;
+    if (role !== Role.Admin && !isStoryAuthor) {
+      throw new ForbiddenException(
+        `You do not have permission to perform this action`
+      );
+    }
+  }
+
   async create(createCommentDto: CreateCommentDto, userId: string, role: Role) {
     // findOneVisible blocks commenting on stories the user can't see
     // (pending/rejected/flagged stories that aren't theirs).
@@ -247,22 +270,74 @@ export class CommentsService {
     return comment;
   }
 
+  // The story's own author (or an admin) quietly hides a comment — reversible,
+  // unlike remove(). Hiding a top-level comment cascades to its direct replies
+  // too, so a hidden thread doesn't leave orphaned replies visible with no
+  // visible parent to give them context; hiding a single reply only affects
+  // that row. updatedAt is preserved (a moderation action, not a content
+  // edit), mirroring the discipline syncReportCount uses for report counts.
+  async hide(commentId: string, requesterId: string, role: Role) {
+    const comment = await this._findOrThrowWithStoryAuthor(commentId);
+    this._authorizeStoryOwner(comment, requesterId, role);
+
+    await this.commentsRepository.update(commentId, {
+      isHiddenByAuthor: true,
+      updatedAt: comment.updatedAt,
+    });
+    comment.isHiddenByAuthor = true;
+
+    if (!comment.parent) {
+      await this.commentsRepository
+        .createQueryBuilder()
+        .update(Comment)
+        .set({isHiddenByAuthor: true})
+        .where('parent = :commentId', {commentId})
+        .execute();
+    }
+
+    return comment;
+  }
+
+  // Reverses hide() — does not reverse-cascade to replies (a still-hidden
+  // reply under a reopened thread is a fine state on its own merits).
+  async unhide(commentId: string, requesterId: string, role: Role) {
+    const comment = await this._findOrThrowWithStoryAuthor(commentId);
+    this._authorizeStoryOwner(comment, requesterId, role);
+
+    await this.commentsRepository.update(commentId, {
+      isHiddenByAuthor: false,
+      updatedAt: comment.updatedAt,
+    });
+    comment.isHiddenByAuthor = false;
+
+    return comment;
+  }
+
   async findAllByStoryId(
     storyId: string,
     page: number = 1,
-    limit: number = 20
+    limit: number = 20,
+    includeHidden: boolean = false
   ) {
     const {skip, take} = paginate(page, limit);
 
     // Top-level comments only; replies are fetched on demand via findReplies.
     // replyCount is loaded per row so the client can render a "view replies"
-    // affordance without a denormalized counter to keep in sync.
-    const [comments, total] = await this.commentsRepository
+    // affordance without a denormalized counter to keep in sync. includeHidden
+    // is true only for the story's own author/an admin (see the controller) —
+    // everyone else never sees a hidden comment at all.
+    const qb = this.commentsRepository
       .createQueryBuilder('comment')
       .leftJoinAndSelect('comment.user', 'user')
       .loadRelationCountAndMap('comment.replyCount', 'comment.replies')
       .where('comment.story = :storyId', {storyId})
-      .andWhere('comment.parent IS NULL')
+      .andWhere('comment.parent IS NULL');
+
+    if (!includeHidden) {
+      qb.andWhere('comment.isHiddenByAuthor = false');
+    }
+
+    const [comments, total] = await qb
       .orderBy('comment.createdAt', 'DESC')
       .skip(skip)
       .take(take)
@@ -271,14 +346,25 @@ export class CommentsService {
     return getPaginatedResponse<Comment>(comments, total, page, limit);
   }
 
-  async findReplies(parentId: string, page: number = 1, limit: number = 50) {
+  async findReplies(
+    parentId: string,
+    page: number = 1,
+    limit: number = 50,
+    includeHidden: boolean = false
+  ) {
     const {skip, take} = paginate(page, limit);
 
     // Replies read best oldest-first (the conversation flows downward).
-    const [replies, total] = await this.commentsRepository
+    const qb = this.commentsRepository
       .createQueryBuilder('comment')
       .leftJoinAndSelect('comment.user', 'user')
-      .where('comment.parent = :parentId', {parentId})
+      .where('comment.parent = :parentId', {parentId});
+
+    if (!includeHidden) {
+      qb.andWhere('comment.isHiddenByAuthor = false');
+    }
+
+    const [replies, total] = await qb
       .orderBy('comment.createdAt', 'ASC')
       .skip(skip)
       .take(take)

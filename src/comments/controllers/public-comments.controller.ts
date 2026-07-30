@@ -17,7 +17,10 @@ import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import type {Request} from 'express';
 import {plainToInstance} from 'class-transformer';
 import {Comment} from '../entities/comment.entity';
-import {CommentPreviewResponseDto} from '../dto/comment-response.dto';
+import {
+  CommentModerationPreviewResponseDto,
+  CommentPreviewResponseDto,
+} from '../dto/comment-response.dto';
 
 @UseGuards(SessionAuthGuard)
 @Controller('comments')
@@ -75,5 +78,31 @@ export class PublicCommentsController {
   @HttpCode(204)
   async report(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     await this.commentsService.report(id, req.session.userId!);
+  }
+
+  // Quietly hide/unhide a comment on your own story (or as an admin) — see
+  // CommentsService.hide/unhide for the authorization and cascade rules.
+  @Patch(':id/hide')
+  async hide(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const comment = await this.commentsService.hide(
+      id,
+      req.session.userId!,
+      req.session.role!
+    );
+    return plainToInstance(CommentModerationPreviewResponseDto, comment, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Patch(':id/unhide')
+  async unhide(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const comment = await this.commentsService.unhide(
+      id,
+      req.session.userId!,
+      req.session.role!
+    );
+    return plainToInstance(CommentModerationPreviewResponseDto, comment, {
+      excludeExtraneousValues: true,
+    });
   }
 }

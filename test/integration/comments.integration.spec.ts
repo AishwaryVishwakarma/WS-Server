@@ -1,4 +1,5 @@
 import request from 'supertest';
+import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import {
   cleanDatabase,
   closeTestApp,
@@ -552,6 +553,174 @@ describe('Comments (integration)', () => {
       expect(queue.body.data[0].id).toBe(heavily.body.id);
       expect(queue.body.data[0].reportCount).toBe(2);
       expect(queue.body.data[1].id).toBe(lightly.body.id);
+    });
+  });
+
+  describe('author comment moderation (hide/unhide)', () => {
+    // An approved story (so a stranger can comment/reply on it too) plus a
+    // top-level comment and a reply from a different member.
+    const hideFixture = async () => {
+      const author = agent();
+      await registerUser(author, {email: 'author@test.com'});
+      const authorToken = await getCsrfToken(author);
+      const {body: story} = await author
+        .post('/stories')
+        .set('x-csrf-token', authorToken)
+        .send({title: 'A story with comments', content: 'x'.repeat(500)})
+        .expect(201);
+
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/admin/stories/${story.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: StoryStatus.Approved})
+        .expect(200);
+
+      const commenter = agent();
+      await registerUser(commenter, {email: 'commenter@test.com'});
+      const commenterToken = await getCsrfToken(commenter);
+      const {body: comment} = await commenter
+        .post('/comments')
+        .set('x-csrf-token', commenterToken)
+        .send({content: 'A top-level whisper', storyId: story.id})
+        .expect(201);
+      const {body: reply} = await commenter
+        .post('/comments')
+        .set('x-csrf-token', commenterToken)
+        .send({
+          content: 'Replying to myself',
+          storyId: story.id,
+          parentId: comment.id,
+        })
+        .expect(201);
+
+      return {
+        author,
+        authorToken,
+        admin,
+        adminToken,
+        commenter,
+        commenterToken,
+        story,
+        comment,
+        reply,
+      };
+    };
+
+    it("lets the story's author hide a comment and its replies, invisible to a stranger but still visible (flagged) to the author", async () => {
+      const {author, authorToken, story, comment} = await hideFixture();
+
+      const hidden = await author
+        .patch(`/comments/${comment.id}/hide`)
+        .set('x-csrf-token', authorToken)
+        .expect(200);
+      expect(hidden.body.isHiddenByAuthor).toBe(true);
+
+      // A stranger never sees it at all.
+      const stranger = agent();
+      await registerUser(stranger, {email: 'stranger@test.com'});
+      const list = await stranger.get(`/stories/${story.id}/comments`).expect(200);
+      expect(list.body.total).toBe(0);
+
+      // The author still sees it, marked hidden.
+      const authorList = await author
+        .get(`/stories/${story.id}/comments`)
+        .expect(200);
+      expect(authorList.body.total).toBe(1);
+      expect(authorList.body.data[0].isHiddenByAuthor).toBe(true);
+
+      // The cascaded reply is also gone from a stranger's replies view.
+      const strangerReplies = await stranger
+        .get(`/stories/${story.id}/comments/${comment.id}/replies`)
+        .expect(200);
+      expect(strangerReplies.body.total).toBe(0);
+    });
+
+    it('lets the story author unhide a comment, restoring it to public view (without un-hiding its cascaded reply)', async () => {
+      const {author, authorToken, story, comment} = await hideFixture();
+
+      await author
+        .patch(`/comments/${comment.id}/hide`)
+        .set('x-csrf-token', authorToken)
+        .expect(200);
+      const unhidden = await author
+        .patch(`/comments/${comment.id}/unhide`)
+        .set('x-csrf-token', authorToken)
+        .expect(200);
+      expect(unhidden.body.isHiddenByAuthor).toBe(false);
+
+      const stranger = agent();
+      await registerUser(stranger, {email: 'stranger@test.com'});
+      const list = await stranger.get(`/stories/${story.id}/comments`).expect(200);
+      expect(list.body.total).toBe(1);
+
+      // The reply, cascaded-hidden when its parent was hidden, stays hidden.
+      const replies = await stranger
+        .get(`/stories/${story.id}/comments/${comment.id}/replies`)
+        .expect(200);
+      expect(replies.body.total).toBe(0);
+    });
+
+    it('hiding a single reply only affects that row, not its parent', async () => {
+      const {author, authorToken, story, comment, reply} = await hideFixture();
+
+      await author
+        .patch(`/comments/${reply.id}/hide`)
+        .set('x-csrf-token', authorToken)
+        .expect(200);
+
+      const stranger = agent();
+      await registerUser(stranger, {email: 'stranger@test.com'});
+      const list = await stranger.get(`/stories/${story.id}/comments`).expect(200);
+      expect(list.body.total).toBe(1);
+      expect(list.body.data[0].id).toBe(comment.id);
+
+      const replies = await stranger
+        .get(`/stories/${story.id}/comments/${comment.id}/replies`)
+        .expect(200);
+      expect(replies.body.total).toBe(0);
+    });
+
+    it('lets an admin hide a comment on a story they do not own', async () => {
+      const {admin, adminToken, story, comment} = await hideFixture();
+
+      await admin
+        .patch(`/comments/${comment.id}/hide`)
+        .set('x-csrf-token', adminToken)
+        .expect(200);
+
+      const stranger = agent();
+      await registerUser(stranger, {email: 'stranger@test.com'});
+      const list = await stranger.get(`/stories/${story.id}/comments`).expect(200);
+      expect(list.body.total).toBe(0);
+    });
+
+    it('rejects hide/unhide from a member who is neither the story author nor an admin (403)', async () => {
+      const {story, comment} = await hideFixture();
+
+      const outsider = agent();
+      await registerUser(outsider, {email: 'outsider@test.com'});
+      const outsiderToken = await getCsrfToken(outsider);
+
+      await outsider
+        .patch(`/comments/${comment.id}/hide`)
+        .set('x-csrf-token', outsiderToken)
+        .expect(403);
+
+      // Confirm it's genuinely untouched — still visible to everyone.
+      const list = await outsider.get(`/stories/${story.id}/comments`).expect(200);
+      expect(list.body.total).toBe(1);
+    });
+
+    it("does not mark a hidden comment as edited (updatedAt preserved)", async () => {
+      const {author, authorToken, comment} = await hideFixture();
+
+      const hidden = await author
+        .patch(`/comments/${comment.id}/hide`)
+        .set('x-csrf-token', authorToken)
+        .expect(200);
+      expect(hidden.body.updatedAt).toBe(comment.updatedAt);
     });
   });
 });

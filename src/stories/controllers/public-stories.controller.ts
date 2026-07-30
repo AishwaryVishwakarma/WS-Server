@@ -33,8 +33,12 @@ import type {Request} from 'express';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {StoryQueryDto} from '../dto/story-query.dto';
 import {CommentsService} from 'src/comments/comments.service';
-import {CommentPreviewResponseDto} from 'src/comments/dto/comment-response.dto';
+import {
+  CommentModerationPreviewResponseDto,
+  CommentPreviewResponseDto,
+} from 'src/comments/dto/comment-response.dto';
 import {ReportStoryDto} from '../dto/report-story.dto';
+import {Role} from 'src/users/enums/role';
 
 // Reads are public (anonymous allowed, throttled); mutations require a session
 @Controller('stories')
@@ -175,24 +179,32 @@ export class PublicStoriesController {
     @Req() req: Request
   ) {
     // Only expose comments if the story itself is visible to this user
-    await this.storiesService.findOneVisible(
+    const story = await this.storiesService.findOneVisible(
       id,
       req.session.userId,
       req.session.role
     );
 
+    // The story's own author (or an admin) also sees any hidden comments, so
+    // they can review/unhide them — everyone else never sees them at all.
+    const includeHidden =
+      req.session.role === Role.Admin ||
+      story.author?.id === req.session.userId;
+
     const {data, ...rest} = await this.commentsService.findAllByStoryId(
       id,
       paginationDto.page,
-      paginationDto.limit
+      paginationDto.limit,
+      includeHidden
     );
 
+    const dto = includeHidden
+      ? CommentModerationPreviewResponseDto
+      : CommentPreviewResponseDto;
     return {
       ...rest,
       data: data.map((comment) =>
-        plainToInstance(CommentPreviewResponseDto, comment, {
-          excludeExtraneousValues: true,
-        })
+        plainToInstance(dto, comment, {excludeExtraneousValues: true})
       ),
     };
   }
@@ -207,24 +219,30 @@ export class PublicStoriesController {
     @Req() req: Request
   ) {
     // Gate on the parent story's visibility, exactly like the comment list.
-    await this.storiesService.findOneVisible(
+    const story = await this.storiesService.findOneVisible(
       id,
       req.session.userId,
       req.session.role
     );
 
+    const includeHidden =
+      req.session.role === Role.Admin ||
+      story.author?.id === req.session.userId;
+
     const {data, ...rest} = await this.commentsService.findReplies(
       commentId,
       paginationDto.page,
-      paginationDto.limit
+      paginationDto.limit,
+      includeHidden
     );
 
+    const dto = includeHidden
+      ? CommentModerationPreviewResponseDto
+      : CommentPreviewResponseDto;
     return {
       ...rest,
       data: data.map((comment) =>
-        plainToInstance(CommentPreviewResponseDto, comment, {
-          excludeExtraneousValues: true,
-        })
+        plainToInstance(dto, comment, {excludeExtraneousValues: true})
       ),
     };
   }
