@@ -255,6 +255,122 @@ describe('StoriesService', () => {
     });
   });
 
+  describe('update — scheduled publishing', () => {
+    const future = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const past = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    it('rejects a non-admin scheduling an already-public story into the future', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        status: StoryStatus.Approved,
+        scheduledFor: null,
+        tags: [],
+        contentWarnings: [],
+      });
+
+      await expect(
+        service.update(
+          'story-1',
+          {scheduledFor: future()},
+          'author-1',
+          Role.User
+        )
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('allows an admin to schedule an already-public story into the future', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        status: StoryStatus.Approved,
+        scheduledFor: null,
+        tags: [],
+        contentWarnings: [],
+      });
+      const when = future();
+
+      const story = await service.update(
+        'story-1',
+        {scheduledFor: when},
+        'someone-else',
+        Role.Admin
+      );
+
+      expect(story.scheduledFor).toEqual(new Date(when));
+    });
+
+    it('allows a non-admin to schedule a still-pending story', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        status: StoryStatus.Pending,
+        scheduledFor: null,
+        tags: [],
+        contentWarnings: [],
+      });
+      const when = future();
+
+      const story = await service.update(
+        'story-1',
+        {scheduledFor: when},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.scheduledFor).toEqual(new Date(when));
+    });
+
+    it('allows a non-admin to push a not-yet-live approved story further out', async () => {
+      // Approved, but its existing schedule hasn't passed yet — not actually
+      // public, so the retroactive guard doesn't apply.
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        status: StoryStatus.Approved,
+        scheduledFor: new Date(Date.now() + 30 * 60 * 1000),
+        tags: [],
+        contentWarnings: [],
+      });
+      const when = future();
+
+      const story = await service.update(
+        'story-1',
+        {scheduledFor: when},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.scheduledFor).toEqual(new Date(when));
+    });
+
+    it('changing only the schedule does not reset an already-public story to pending', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        status: StoryStatus.Approved,
+        scheduledFor: null,
+        tags: [],
+        contentWarnings: [],
+      });
+
+      const story = await service.update(
+        'story-1',
+        {scheduledFor: past()},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.status).toBe(StoryStatus.Approved);
+      expect(revisionsRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('update — series membership', () => {
     it('attaches a new series when none was set', async () => {
       repository.findOneOrFail.mockResolvedValue({
@@ -747,10 +863,20 @@ describe('StoriesService', () => {
 
       expect(repository.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: {series: {id: 'series-1'}, status: StoryStatus.Approved},
+          // An array of where-clauses (TypeORM OR's them): "no schedule" OR
+          // "schedule already passed" — a still-scheduled story is excluded
+          // even once approved.
+          where: expect.arrayContaining([
+            expect.objectContaining({
+              series: {id: 'series-1'},
+              status: StoryStatus.Approved,
+            }),
+          ]),
           order: {seriesPosition: 'ASC'},
         })
       );
+      const {where} = repository.find.mock.calls[0][0];
+      expect(where).toHaveLength(2);
     });
   });
 

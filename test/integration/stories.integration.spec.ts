@@ -529,6 +529,106 @@ describe('Stories (integration)', () => {
     });
   });
 
+  describe('scheduled publishing', () => {
+    const future = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const past = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    it('hides an approved-but-not-yet-due story from other users with 404', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        scheduledFor: future(),
+      });
+      await approveStory(story.id);
+
+      const other = agent();
+      await registerUser(other, {email: 'other@test.com'});
+      await other.get(`/stories/${story.id}`).expect(404);
+    });
+
+    it('lets the author and an admin read an approved-but-not-yet-due story', async () => {
+      const {client, story} = await createStory({
+        ...STORY_PAYLOAD,
+        scheduledFor: future(),
+      });
+      const admin = await approveStory(story.id);
+
+      await client.get(`/stories/${story.id}`).expect(200);
+      await admin.get(`/stories/${story.id}`).expect(200);
+    });
+
+    it('shows an approved story to everyone once its schedule has passed', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        scheduledFor: past(),
+      });
+      await approveStory(story.id);
+
+      const other = agent();
+      await registerUser(other, {email: 'other@test.com'});
+      await other.get(`/stories/${story.id}`).expect(200);
+    });
+
+    it('excludes a not-yet-due story from the public feed, includes it once due', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        scheduledFor: future(),
+      });
+      const admin = await approveStory(story.id);
+
+      const hidden = await agent().get('/stories').expect(200);
+      expect(hidden.body.total).toBe(0);
+
+      // Flip it into the past directly (no need to wait out a real clock).
+      const adminToken = await getCsrfToken(admin);
+      await admin
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', adminToken)
+        .send({scheduledFor: past()})
+        .expect(200);
+
+      const shown = await agent().get('/stories').expect(200);
+      expect(shown.body.total).toBe(1);
+      expect(shown.body.data[0].id).toBe(story.id);
+    });
+
+    it("always shows the story on the author's own shelf, regardless of schedule", async () => {
+      const {client, token, story} = await createStory({
+        ...STORY_PAYLOAD,
+        scheduledFor: future(),
+      });
+      await approveStory(story.id);
+
+      const mine = await client
+        .get('/users/me/stories')
+        .set('x-csrf-token', token)
+        .expect(200);
+      expect(mine.body.data[0].id).toBe(story.id);
+    });
+
+    it('rejects a non-admin scheduling an already-published story into the future', async () => {
+      const {client, token, story} = await createStory(STORY_PAYLOAD);
+      await approveStory(story.id);
+
+      await client
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', token)
+        .send({scheduledFor: future()})
+        .expect(400);
+    });
+
+    it('lets an admin schedule an already-published story into the future', async () => {
+      const {story} = await createStory(STORY_PAYLOAD);
+      const admin = await approveStory(story.id);
+      const adminToken = await getCsrfToken(admin);
+
+      await admin
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', adminToken)
+        .send({scheduledFor: future()})
+        .expect(200);
+    });
+  });
+
   describe('GET /stories (public browse)', () => {
     it('lists only approved stories, without full content', async () => {
       const {story: approved} = await createStory(STORY_PAYLOAD, 'a@test.com');

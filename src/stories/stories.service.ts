@@ -14,6 +14,8 @@ import {StoryReport} from './entities/story-report.entity';
 import {StoryRevision} from './entities/story-revision.entity';
 import {
   In,
+  IsNull,
+  LessThanOrEqual,
   Like,
   MoreThan,
   Not,
@@ -98,6 +100,7 @@ const SELECTED_FIELDS = {
   contentWarnings: true,
   isFlagged: true,
   rejectionReason: true,
+  scheduledFor: true,
   status: true,
   excerpt: true,
   wordCount: true,
@@ -176,7 +179,8 @@ export class StoriesService {
     // demo/pagination data can exceed it.
     {enforcePublishLimit = true}: {enforcePublishLimit?: boolean} = {}
   ) {
-    const {tags: tagIds, excerpt, draft, seriesTitle, ...rest} = createStoryDto;
+    const {tags: tagIds, excerpt, draft, seriesTitle, scheduledFor, ...rest} =
+      createStoryDto;
 
     // Submitting straight to review counts against the publish limit; saving a
     // private draft does not.
@@ -190,6 +194,7 @@ export class StoriesService {
       ...rest,
       excerpt: excerpt || rest.content.slice(0, 280) + '...',
       status: draft ? StoryStatus.Draft : StoryStatus.Pending,
+      scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
       author,
     });
 
@@ -369,9 +374,14 @@ export class StoriesService {
     const story = await this.findOne(id);
 
     const isOwner = userId !== undefined && story.author?.id === userId;
+    // A scheduled story stays invisible to everyone but its author/an admin
+    // until the moment passes, even once approved — no scheduler involved,
+    // just this same read-time check every visibility gate already applies.
+    const stillScheduled =
+      story.scheduledFor !== null && story.scheduledFor > new Date();
 
     if (
-      story.status !== StoryStatus.Approved &&
+      (story.status !== StoryStatus.Approved || stillScheduled) &&
       !isOwner &&
       role !== Role.Admin
     ) {
@@ -398,6 +408,12 @@ export class StoriesService {
       .leftJoinAndSelect('story.author', 'author')
       .leftJoinAndSelect('story.tags', 'tags')
       .where('story.status = :status', {status: StoryStatus.Approved})
+      // A scheduled story stays out of every public listing until its
+      // moment passes — read-time only, no scheduler (mirrors findOneVisible).
+      .andWhere(
+        '(story.scheduledFor IS NULL OR story.scheduledFor <= :now)',
+        {now: new Date()}
+      )
       // Same rationale as findOne: keep stories by soft-deleted authors.
       .withDeleted();
 
@@ -502,8 +518,15 @@ export class StoriesService {
   // reader's "More in this series" strip). Series are small by nature, so
   // this returns the whole ordered list rather than paging it.
   async findApprovedBySeriesId(seriesId: string): Promise<Story[]> {
+    // Not built on _buildApprovedQuery (a plain find(), not a query builder),
+    // so the same "still scheduled" exclusion is expressed as an array of
+    // where-clauses — TypeORM OR's them together — rather than a raw AND/OR.
+    const base = {series: {id: seriesId}, status: StoryStatus.Approved};
     return this.storiesRepository.find({
-      where: {series: {id: seriesId}, status: StoryStatus.Approved},
+      where: [
+        {...base, scheduledFor: IsNull()},
+        {...base, scheduledFor: LessThanOrEqual(new Date())},
+      ],
       relations: ['tags', 'series'],
       select: {...SELECTED_FIELDS, seriesPosition: true},
       order: {seriesPosition: 'ASC'},
@@ -663,13 +686,33 @@ export class StoriesService {
   ) {
     const story = await this._getStoryIfAuthorized(id, userId, role);
 
-    const {tags: tagIds, seriesTitle, ...rest} = updateStoryDto;
+    const {tags: tagIds, seriesTitle, scheduledFor, ...rest} = updateStoryDto;
     // `draft` only applies at creation; submission goes through submitDraft
     delete rest.draft;
 
+    // A non-admin can't retroactively pull an already-public story back out
+    // of sight by scheduling it into the future — that's not what scheduled
+    // publishing is for, and would surprise readers who've already seen it.
+    // Checked against the story's state *before* any mutation below.
+    const wasPubliclyLive =
+      story.status === StoryStatus.Approved &&
+      (story.scheduledFor === null || story.scheduledFor <= new Date());
+    if (
+      role !== Role.Admin &&
+      wasPubliclyLive &&
+      scheduledFor &&
+      new Date(scheduledFor) > new Date()
+    ) {
+      throw new BadRequestException(
+        'Cannot schedule an already-published story back out of view'
+      );
+    }
+
     // Hoisted above any mutation below — used both to decide whether to
     // snapshot a revision (with the story's still-unmutated values) and,
-    // further down, whether to reset status back to pending.
+    // further down, whether to reset status back to pending. scheduledFor is
+    // deliberately excluded: changing only the publish schedule shouldn't
+    // force a re-review the way editing title/content/etc. does.
     const contentChanged =
       tagIds !== undefined ||
       rest.title !== undefined ||
@@ -710,6 +753,10 @@ export class StoriesService {
     }
 
     Object.assign(story, rest);
+
+    if (scheduledFor !== undefined) {
+      story.scheduledFor = scheduledFor ? new Date(scheduledFor) : null;
+    }
 
     // A non-admin editing an already-moderated story sends it back to pending
     // so content changes can't bypass review. Drafts stay drafts — they were

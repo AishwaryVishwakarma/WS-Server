@@ -89,6 +89,14 @@ export class Story {
   @Column({type: 'varchar', length: 500, nullable: true})
   rejectionReason: string | null;
 
+  // Set when the author wants the story's public debut timed for later —
+  // it still goes through the normal moderation queue, but even once
+  // approved, stays invisible to everyone but its author/an admin until
+  // this moment passes (checked at read time; see StoriesService's
+  // findOneVisible/_buildApprovedQuery — no scheduler/cron involved).
+  @Column({type: 'datetime', nullable: true})
+  scheduledFor: Date | null;
+
   /** Kept in sync by the hook below; powers reading-time estimates. */
   @Column({type: 'int', default: 0})
   wordCount: number;

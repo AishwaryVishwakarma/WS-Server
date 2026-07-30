@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsISO8601,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -75,4 +76,17 @@ export class CreateStoryDto {
   @MaxLength(100)
   @IsClean()
   seriesTitle?: string | null;
+
+  /**
+   * Time the story's public debut for later — it still goes through the
+   * normal moderation queue, but stays invisible to everyone but its
+   * author/an admin until this passes, even once approved. `null` clears an
+   * existing schedule; omitting the key leaves one untouched (see
+   * UpdateStoryDto and toStoryInput.ts's matching "always send" convention).
+   * No "must be in the future" check — a past value is harmlessly
+   * equivalent to none.
+   */
+  @IsOptional()
+  @IsISO8601()
+  scheduledFor?: string | null;
 }
