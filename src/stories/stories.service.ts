@@ -36,6 +36,7 @@ import {
   type DecodedCursor,
 } from './story-cursor';
 import {toBooleanFulltextQuery} from './story-search';
+import {StoryReportReason} from './enums/story-report-reason.enum';
 
 interface StoryFilters {
   tag?: string;
@@ -738,7 +739,13 @@ export class StoriesService {
   // reporting (mapped to 409); reportCount is recomputed from the rows so it
   // never drifts. Mirrors CommentsService.report — but a report only surfaces
   // the story for review, it does not change the public status.
-  async report(storyId: string, userId: string, role?: Role) {
+  async report(
+    storyId: string,
+    userId: string,
+    reason: StoryReportReason,
+    details?: string,
+    role?: Role
+  ) {
     const story = await this.findOneVisible(storyId, userId, role);
 
     if (story.author?.id === userId) {
@@ -749,7 +756,12 @@ export class StoriesService {
 
     try {
       await this.reportsRepository.save(
-        this.reportsRepository.create({story, user})
+        this.reportsRepository.create({
+          story,
+          user,
+          reason,
+          details: details ?? null,
+        })
       );
     } catch (error) {
       handleQueryFailedError(error, 'report story');
@@ -769,6 +781,21 @@ export class StoriesService {
 
     await this.reportsRepository.delete({story: {id: storyId}});
     await syncReportCount(this.storiesRepository, story, 0);
+    return story;
+  }
+
+  // Admin single-story detail (GET /admin/stories/:id): the story plus the
+  // individual reports against it (reason, optional detail, and who filed it)
+  // — the aggregate reportCount alone doesn't say why it was reported.
+  async findOneWithReports(id: string) {
+    const story = await this.findOne(id);
+
+    story.reports = await this.reportsRepository.find({
+      where: {story: {id}},
+      relations: ['user'],
+      order: {createdAt: 'DESC'},
+    });
+
     return story;
   }
 

@@ -234,12 +234,13 @@ describe('Stories (integration)', () => {
       return {storyId: story.id, admin, reporter, reporterToken};
     };
 
-    it('reports an approved story into the queue and resolves it', async () => {
+    it('reports an approved story into the queue (with reason + detail) and resolves it', async () => {
       const {storyId, admin, reporter, reporterToken} = await reportFixture();
 
       await reporter
         .post(`/stories/${storyId}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'plagiarism', details: 'Copied from another site.'})
         .expect(204);
 
       // The queue surfaces only reported stories, annotated with the count —
@@ -249,6 +250,18 @@ describe('Stories (integration)', () => {
       expect(queue.body.data[0].id).toBe(storyId);
       expect(queue.body.data[0].reportCount).toBe(1);
       expect(queue.body.data[0].status).toBe(StoryStatus.Approved);
+
+      // The individual report (reason, detail, reporter) shows on the admin
+      // single-story fetch — the aggregate count alone doesn't say why.
+      const detail = await admin.get(`/admin/stories/${storyId}`).expect(200);
+      expect(detail.body.reports).toHaveLength(1);
+      expect(detail.body.reports[0].reason).toBe('plagiarism');
+      expect(detail.body.reports[0].details).toBe('Copied from another site.');
+      expect(detail.body.reports[0].user.id).toBeDefined();
+
+      // The paginated moderation list stays lean — no per-row reports array.
+      const list = await admin.get('/admin/stories?reported=true').expect(200);
+      expect(list.body.data[0].reports).toBeUndefined();
 
       // Resolving drops the reports, emptying the queue but keeping the story.
       const adminToken = await getCsrfToken(admin);
@@ -269,6 +282,46 @@ describe('Stories (integration)', () => {
       );
     });
 
+    it('rejects a report with no reason (400) and an unknown reason (400)', async () => {
+      const {storyId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/stories/${storyId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .send({})
+        .expect(400);
+
+      await reporter
+        .post(`/stories/${storyId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .send({reason: 'not-a-real-reason'})
+        .expect(400);
+    });
+
+    it('rejects a detail over 100 characters with 400', async () => {
+      const {storyId, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/stories/${storyId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam', details: 'x'.repeat(101)})
+        .expect(400);
+    });
+
+    it('accepts a reason with no detail (details is optional)', async () => {
+      const {storyId, admin, reporter, reporterToken} = await reportFixture();
+
+      await reporter
+        .post(`/stories/${storyId}/report`)
+        .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam'})
+        .expect(204);
+
+      const detail = await admin.get(`/admin/stories/${storyId}`).expect(200);
+      expect(detail.body.reports[0].reason).toBe('spam');
+      expect(detail.body.reports[0].details).toBeNull();
+    });
+
     it('does not mark a reported story as edited (updatedAt preserved)', async () => {
       const {storyId, admin, reporter, reporterToken} = await reportFixture();
 
@@ -278,6 +331,7 @@ describe('Stories (integration)', () => {
       await reporter
         .post(`/stories/${storyId}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam'})
         .expect(204);
 
       const queue = await admin.get('/admin/stories?reported=true').expect(200);
@@ -291,11 +345,13 @@ describe('Stories (integration)', () => {
       await reporter
         .post(`/stories/${storyId}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam'})
         .expect(204);
 
       await reporter
         .post(`/stories/${storyId}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'other'})
         .expect(409);
 
       const queue = await admin.get('/admin/stories?reported=true').expect(200);
@@ -312,6 +368,7 @@ describe('Stories (integration)', () => {
       await client
         .post(`/stories/${story.id}/report`)
         .set('x-csrf-token', token)
+        .send({reason: 'spam'})
         .expect(400);
     });
 
@@ -329,6 +386,7 @@ describe('Stories (integration)', () => {
       await reporter
         .post(`/stories/${story.id}/report`)
         .set('x-csrf-token', reporterToken)
+        .send({reason: 'spam'})
         .expect(404);
     });
 
@@ -352,6 +410,7 @@ describe('Stories (integration)', () => {
         await reporter
           .post(`/stories/${storyId}/report`)
           .set('x-csrf-token', token)
+          .send({reason: 'spam'})
           .expect(204);
       };
       await report(storyA.id, 'r1@test.com');

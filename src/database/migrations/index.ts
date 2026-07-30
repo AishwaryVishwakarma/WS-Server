@@ -25,6 +25,7 @@ import {AddUserReportReason1785500000000} from './1785500000000-AddUserReportRea
 import {AddPasswordResetToken1785600000000} from './1785600000000-AddPasswordResetToken';
 import {AddSeries1785700000000} from './1785700000000-AddSeries';
 import {AddUserVerificationTracking1785800000000} from './1785800000000-AddUserVerificationTracking';
+import {AddStoryReportReason1785900000000} from './1785900000000-AddStoryReportReason';
 
 export const migrations = [
   Baseline1783883957794,
@@ -47,4 +48,5 @@ export const migrations = [
   AddPasswordResetToken1785600000000,
   AddSeries1785700000000,
   AddUserVerificationTracking1785800000000,
+  AddStoryReportReason1785900000000,
 ];

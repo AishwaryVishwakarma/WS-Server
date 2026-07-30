@@ -1,6 +1,12 @@
-import {ForbiddenException, NotFoundException} from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {Test} from '@nestjs/testing';
 import {getRepositoryToken} from '@nestjs/typeorm';
+import {QueryFailedError} from 'typeorm';
 import {TagsService} from 'src/tags/tags.service';
 import {SeriesService} from 'src/series/series.service';
 import {Role} from 'src/users/enums/role';
@@ -8,7 +14,14 @@ import {UsersService} from 'src/users/users.service';
 import {Story} from './entities/story.entity';
 import {StoryReport} from './entities/story-report.entity';
 import {StoryStatus} from './enums/story-status.enum';
+import {StoryReportReason} from './enums/story-report-reason.enum';
 import {StoriesService} from './stories.service';
+
+const duplicateEntryError = () => {
+  const error = new QueryFailedError('INSERT', [], new Error('dup'));
+  (error as any).code = 'ER_DUP_ENTRY';
+  return error;
+};
 
 describe('StoriesService', () => {
   let service: StoriesService;
@@ -21,6 +34,7 @@ describe('StoriesService', () => {
     findOne: jest.Mock;
     findOneOrFail: jest.Mock;
     increment: jest.Mock;
+    update: jest.Mock;
     delete: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
@@ -29,6 +43,7 @@ describe('StoriesService', () => {
     save: jest.Mock;
     countBy: jest.Mock;
     delete: jest.Mock;
+    find: jest.Mock;
   };
   let usersService: {findOne: jest.Mock; markHasPublishedStory: jest.Mock};
   let tagsService: {findManyByIds: jest.Mock};
@@ -63,6 +78,7 @@ describe('StoriesService', () => {
       findOne: jest.fn(),
       findOneOrFail: jest.fn(),
       increment: jest.fn().mockResolvedValue({affected: 1}),
+      update: jest.fn(),
       delete: jest.fn(),
       createQueryBuilder: jest.fn(() => randomQueryBuilder),
     };
@@ -71,6 +87,7 @@ describe('StoriesService', () => {
       save: jest.fn((report) => Promise.resolve(report)),
       countBy: jest.fn().mockResolvedValue(0),
       delete: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
     };
     usersService = {
       findOne: jest.fn().mockResolvedValue(author),
@@ -367,6 +384,122 @@ describe('StoriesService', () => {
         service.remove('story-1', 'someone-else', Role.User)
       ).rejects.toThrow(ForbiddenException);
       expect(repository.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('report', () => {
+    it('rejects reporting your own story', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        status: StoryStatus.Approved,
+        author: {id: 'author-1'},
+      });
+
+      await expect(
+        service.report('story-1', 'author-1', StoryReportReason.Spam)
+      ).rejects.toThrow(BadRequestException);
+      expect(reportsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('saves a report (with reason and detail) and recomputes reportCount from the rows', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-2',
+        status: StoryStatus.Approved,
+        author: {id: 'author-1'},
+        updatedAt: new Date('2020-01-01'),
+      });
+      reportsRepository.countBy.mockResolvedValue(3);
+
+      const story = await service.report(
+        'story-2',
+        'reader-1',
+        StoryReportReason.Plagiarism,
+        'This is copied from another site.'
+      );
+
+      expect(reportsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: StoryReportReason.Plagiarism,
+          details: 'This is copied from another site.',
+        })
+      );
+      expect(reportsRepository.save).toHaveBeenCalled();
+      expect(repository.update).toHaveBeenCalledWith(
+        'story-2',
+        expect.objectContaining({reportCount: 3})
+      );
+      expect(story.reportCount).toBe(3);
+    });
+
+    it('stores null details when none are given', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-2',
+        status: StoryStatus.Approved,
+        author: {id: 'author-1'},
+        updatedAt: new Date(),
+      });
+
+      await service.report('story-2', 'reader-1', StoryReportReason.Spam);
+
+      expect(reportsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({details: null})
+      );
+    });
+
+    it('maps a duplicate report to ConflictException', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-2',
+        status: StoryStatus.Approved,
+        author: {id: 'author-1'},
+        updatedAt: new Date(),
+      });
+      reportsRepository.save.mockRejectedValue(duplicateEntryError());
+
+      await expect(
+        service.report('story-2', 'reader-1', StoryReportReason.Spam)
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('resolveReports', () => {
+    it('drops the report rows and zeroes the count', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-2',
+        updatedAt: new Date(),
+        reportCount: 5,
+      });
+
+      const story = await service.resolveReports('story-2');
+
+      expect(reportsRepository.delete).toHaveBeenCalledWith({
+        story: {id: 'story-2'},
+      });
+      expect(repository.update).toHaveBeenCalledWith(
+        'story-2',
+        expect.objectContaining({reportCount: 0})
+      );
+      expect(story.reportCount).toBe(0);
+    });
+  });
+
+  describe('findOneWithReports', () => {
+    it('attaches the individual reports, most recent first', async () => {
+      repository.findOneOrFail.mockResolvedValue({id: 'story-2'});
+      const reports = [
+        {id: 'r1', reason: StoryReportReason.Spam, user: {id: 'a'}},
+        {id: 'r2', reason: StoryReportReason.Plagiarism, user: {id: 'b'}},
+      ];
+      reportsRepository.find.mockResolvedValue(reports);
+
+      const story = await service.findOneWithReports('story-2');
+
+      expect(reportsRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {story: {id: 'story-2'}},
+          relations: ['user'],
+        })
+      );
+      expect(story.reports).toBe(reports);
     });
   });
 

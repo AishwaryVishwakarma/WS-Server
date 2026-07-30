@@ -33,6 +33,7 @@ import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {StoryQueryDto} from '../dto/story-query.dto';
 import {CommentsService} from 'src/comments/comments.service';
 import {CommentPreviewResponseDto} from 'src/comments/dto/comment-response.dto';
+import {ReportStoryDto} from '../dto/report-story.dto';
 
 // Reads are public (anonymous allowed, throttled); mutations require a session
 @Controller('stories')
@@ -128,8 +129,18 @@ export class PublicStoriesController {
   @Post(':id/report')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
-  async report(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
-    await this.storiesService.report(id, req.session.userId!, req.session.role);
+  async report(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() reportStoryDto: ReportStoryDto,
+    @Req() req: Request
+  ) {
+    await this.storiesService.report(
+      id,
+      req.session.userId!,
+      reportStoryDto.reason,
+      reportStoryDto.details,
+      req.session.role
+    );
   }
 
   // Must be registered before `:id` below, or Nest would match the literal

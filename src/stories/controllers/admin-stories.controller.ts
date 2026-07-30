@@ -47,6 +47,15 @@ export class AdminStoriesController {
     };
   }
 
+  // Includes the individual reports against this story (reason + optional
+  // detail + reporter) — the aggregate reportCount alone doesn't tell an
+  // admin *why* it was reported.
+  @Get(':id')
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    const story = await this.storiesService.findOneWithReports(id);
+    return this._serialize(story);
+  }
+
   @Patch(':id/status')
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string,

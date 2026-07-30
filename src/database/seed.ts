@@ -15,6 +15,7 @@ import {CreateUserDto} from 'src/users/dto/create-user.dto';
 import {User} from 'src/users/entities/user.entity';
 import {Role} from 'src/users/enums/role';
 import {ReportReason} from 'src/users/enums/report-reason.enum';
+import {StoryReportReason} from 'src/stories/enums/story-report-reason.enum';
 import {UsersService} from 'src/users/users.service';
 
 // The Nest Logger is muted below ({logger: ['error', 'warn']}) to hide
@@ -485,14 +486,29 @@ const REPORTS: {commentContent: string; reporters: string[]}[] = [
 // the story's author (self-reports are rejected) and can only report stories
 // they can see (approved). The differing report counts exercise the
 // most-reported-first ordering. Matched to the seeded stories by title.
-const STORY_REPORTS: {story: string; reporters: string[]}[] = [
+const STORY_REPORTS: {
+  story: string;
+  reports: {reporter: string; reason: StoryReportReason; details?: string}[];
+}[] = [
   {
     story: 'The House on Hollow Lane',
-    reporters: ['bob@whisperingshadows.dev', 'carol@whisperingshadows.dev'],
+    reports: [
+      {
+        reporter: 'bob@whisperingshadows.dev',
+        reason: StoryReportReason.Plagiarism,
+        details: 'This is lifted almost word for word from another site.',
+      },
+      {
+        reporter: 'carol@whisperingshadows.dev',
+        reason: StoryReportReason.Copyright,
+      },
+    ],
   },
   {
     story: 'Cold Spots',
-    reporters: ['alice@whisperingshadows.dev'],
+    reports: [
+      {reporter: 'alice@whisperingshadows.dev', reason: StoryReportReason.Spam},
+    ],
   },
 ];
 
@@ -737,11 +753,13 @@ async function seed() {
     // Story reports (through the real service so reportCount and the per-member
     // unique constraint behave exactly as in production)
     let reportedStories = 0;
-    for (const {story, reporters} of STORY_REPORTS) {
+    for (const {story, reports} of STORY_REPORTS) {
       const storyId = storyIdsByTitle.get(story);
       if (!storyId) continue;
-      for (const email of reporters) {
-        await storiesService.report(storyId, usersByEmail.get(email)!.id);
+      for (const {reporter, reason, details} of reports) {
+        const reporterId = usersByEmail.get(reporter)?.id;
+        if (!reporterId) continue;
+        await storiesService.report(storyId, reporterId, reason, details);
       }
       reportedStories++;
     }

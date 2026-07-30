@@ -1,5 +1,6 @@
 import {Expose, Transform, Type} from 'class-transformer';
 import type {StoryStatus} from '../enums/story-status.enum';
+import type {StoryReportReason} from '../enums/story-report-reason.enum';
 import type {Story} from '../entities/story.entity';
 import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
 
@@ -99,6 +100,26 @@ export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
 }
 
 /**
+ * [admin] — one report against a story: the reporter's own reason/detail.
+ * Only populated on the single-story admin fetch (see
+ * StoriesService.findOneWithReports), never the paginated moderation list.
+ */
+export class StoryReportResponseDto {
+  @Expose() id: string;
+  @Expose() reason: StoryReportReason;
+  @Expose() details?: string;
+  @Expose() createdAt: Date;
+
+  @Expose()
+  @Type(() => StoryAuthorResponseDto)
+  user: StoryAuthorResponseDto;
+
+  constructor(partial: Partial<StoryReportResponseDto>) {
+    Object.assign(this, partial);
+  }
+}
+
+/**
  * [private, admin]
  */
 export class StoryResponseDto extends StoryPreviewResponseDto {
@@ -107,6 +128,11 @@ export class StoryResponseDto extends StoryPreviewResponseDto {
   @Expose() status: StoryStatus;
   /** Member reports; drives the admin ?reported=true queue ordering. */
   @Expose() reportCount: number;
+
+  /** The individual reports against this story — see StoryReportResponseDto. */
+  @Expose()
+  @Type(() => StoryReportResponseDto)
+  reports?: StoryReportResponseDto[];
 
   constructor(partial: Partial<StoryResponseDto>) {
     super(partial);
