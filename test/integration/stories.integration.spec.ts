@@ -219,6 +219,66 @@ describe('Stories (integration)', () => {
         .send({status: 'published'})
         .expect(400);
     });
+
+    it('requires a reason to reject a story, and surfaces it to the author', async () => {
+      const {client, story} = await createStory(
+        STORY_PAYLOAD,
+        'rejectee@test.com'
+      );
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+
+      // No reason at all — rejected by validation.
+      await admin
+        .patch(`/admin/stories/${story.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: StoryStatus.Rejected})
+        .expect(400);
+
+      // With a reason, the rejection goes through and the author can see it
+      // on both the reader fetch and their own shelf.
+      await admin
+        .patch(`/admin/stories/${story.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({
+          status: StoryStatus.Rejected,
+          rejectionReason: 'Too short — please expand the ending.',
+        })
+        .expect(200);
+
+      const detail = await client.get(`/stories/${story.id}`).expect(200);
+      expect(detail.body.rejectionReason).toBe(
+        'Too short — please expand the ending.'
+      );
+
+      const shelf = await client.get('/users/me/stories').expect(200);
+      const row = shelf.body.data.find((s: {id: string}) => s.id === story.id);
+      expect(row.rejectionReason).toBe('Too short — please expand the ending.');
+    });
+
+    it('clears the rejection reason once the story is approved', async () => {
+      const {client, story} = await createStory(
+        STORY_PAYLOAD,
+        'cleared@test.com'
+      );
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+
+      await admin
+        .patch(`/admin/stories/${story.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: StoryStatus.Rejected, rejectionReason: 'Needs work.'})
+        .expect(200);
+
+      await admin
+        .patch(`/admin/stories/${story.id}/status`)
+        .set('x-csrf-token', adminToken)
+        .send({status: StoryStatus.Approved})
+        .expect(200);
+
+      const detail = await client.get(`/stories/${story.id}`).expect(200);
+      expect(detail.body.rejectionReason).toBeFalsy();
+    });
   });
 
   describe('moderation via member reports', () => {

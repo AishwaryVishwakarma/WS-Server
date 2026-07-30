@@ -94,6 +94,9 @@ export class StoryPreviewResponseDto {
 export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
   @Expose() status: StoryStatus;
+  /** Set only when status is rejected (see StoriesService.updateStatus) —
+   *  a rejected story is only ever visible here to its own author/an admin. */
+  @Expose() rejectionReason?: string | null;
 
   // `author` is inherited from StoryPreviewResponseDto.
 
@@ -151,6 +154,8 @@ export class StoryResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
   @Expose() isFlagged: boolean;
   @Expose() status: StoryStatus;
+  /** Set only when status is rejected — cleared on every other transition. */
+  @Expose() rejectionReason?: string | null;
   /** Member reports; drives the admin ?reported=true queue ordering. */
   @Expose() reportCount: number;
 

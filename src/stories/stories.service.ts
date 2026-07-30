@@ -97,6 +97,7 @@ const SELECTED_FIELDS = {
   scareLevel: true,
   contentWarnings: true,
   isFlagged: true,
+  rejectionReason: true,
   status: true,
   excerpt: true,
   wordCount: true,
@@ -752,11 +753,19 @@ export class StoriesService {
     return await this.storiesRepository.save(story);
   }
 
-  async updateStatus(id: string, status: StoryStatus) {
+  async updateStatus(
+    id: string,
+    status: StoryStatus,
+    rejectionReason?: string
+  ) {
     const story = await this.findOne(id);
 
     story.status = status;
     story.isFlagged = status === StoryStatus.Flagged;
+    // Cleared on every transition except a reasoned rejection, so a later
+    // re-approval/re-rejection never shows a stale explanation.
+    story.rejectionReason =
+      status === StoryStatus.Rejected ? (rejectionReason ?? null) : null;
 
     const updated = await this.storiesRepository.save(story);
 
@@ -790,6 +799,10 @@ export class StoriesService {
       for (const story of stories) {
         story.status = status;
         story.isFlagged = status === StoryStatus.Flagged;
+        // Bulk never supplies a reason (see UpdateStoryStatusDto's single-
+        // story-only requirement) — always clear it so a story previously
+        // rejected-with-a-reason doesn't carry a stale one forward.
+        story.rejectionReason = null;
       }
       await repo.save(stories);
 

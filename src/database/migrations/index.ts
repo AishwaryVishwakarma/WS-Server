@@ -27,6 +27,7 @@ import {AddSeries1785700000000} from './1785700000000-AddSeries';
 import {AddUserVerificationTracking1785800000000} from './1785800000000-AddUserVerificationTracking';
 import {AddStoryReportReason1785900000000} from './1785900000000-AddStoryReportReason';
 import {AddContentWarningsAndRevisions1786000000000} from './1786000000000-AddContentWarningsAndRevisions';
+import {AddStoryRejectionReason1786100000000} from './1786100000000-AddStoryRejectionReason';
 
 export const migrations = [
   Baseline1783883957794,
@@ -51,4 +52,5 @@ export const migrations = [
   AddUserVerificationTracking1785800000000,
   AddStoryReportReason1785900000000,
   AddContentWarningsAndRevisions1786000000000,
+  AddStoryRejectionReason1786100000000,
 ];

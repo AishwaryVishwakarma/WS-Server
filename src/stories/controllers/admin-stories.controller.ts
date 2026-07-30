@@ -64,7 +64,8 @@ export class AdminStoriesController {
   ) {
     const story = await this.storiesService.updateStatus(
       id,
-      updateStoryStatusDto.status
+      updateStoryStatusDto.status,
+      updateStoryStatusDto.rejectionReason
     );
     return this._serialize(story);
   }

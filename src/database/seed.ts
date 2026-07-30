@@ -91,6 +91,9 @@ const STORIES: {
   contentWarnings?: ContentWarning[];
   tags: string[];
   status: StoryStatus;
+  /** Threaded through the moderating updateStatus() call below — only
+   *  meaningful (and only sent) when status is Rejected. */
+  rejectionReason?: string;
   /** A demo series, exercising StoriesService's find-or-create-by-title. */
   seriesTitle?: string;
 }[] = [
@@ -186,6 +189,10 @@ const STORIES: {
     scareLevel: 2,
     tags: [],
     status: StoryStatus.Rejected,
+    rejectionReason:
+      'A lovely image, but a little too gentle for the shelves — ' +
+      "we're looking for horror with real teeth. Happy to take another look " +
+      'if you raise the stakes.',
   },
   {
     author: 'dave@whisperingshadows.dev',
@@ -689,7 +696,7 @@ async function seed() {
     const storyIdsByTitle = new Map<string, string>();
     const statusCounts = new Map<StoryStatus, number>();
 
-    for (const {author, status, tags, ...rest} of [
+    for (const {author, status, tags, rejectionReason, ...rest} of [
       ...STORIES,
       ...generateStories(),
     ]) {
@@ -707,7 +714,7 @@ async function seed() {
       );
 
       if (status !== StoryStatus.Pending && status !== StoryStatus.Draft) {
-        await storiesService.updateStatus(story.id, status);
+        await storiesService.updateStatus(story.id, status, rejectionReason);
       }
 
       storyIdsByTitle.set(story.title, story.id);

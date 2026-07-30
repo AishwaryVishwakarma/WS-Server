@@ -82,6 +82,13 @@ export class Story {
   @Column({default: false})
   isFlagged: boolean;
 
+  // Set whenever an admin rejects the story via the single-story status
+  // transition (required there — see UpdateStoryStatusDto). Cleared on any
+  // other status transition (including bulk, which never supplies one) so a
+  // later re-rejection never shows a stale explanation.
+  @Column({type: 'varchar', length: 500, nullable: true})
+  rejectionReason: string | null;
+
   /** Kept in sync by the hook below; powers reading-time estimates. */
   @Column({type: 'int', default: 0})
   wordCount: number;

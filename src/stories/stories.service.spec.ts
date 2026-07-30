@@ -495,6 +495,30 @@ describe('StoriesService', () => {
         service.updateStatus('missing', StoryStatus.Approved)
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('stores the reason when rejecting', async () => {
+      const story = await service.updateStatus(
+        'story-1',
+        StoryStatus.Rejected,
+        'Too short for our guidelines.'
+      );
+
+      expect(story.rejectionReason).toBe('Too short for our guidelines.');
+    });
+
+    it('clears the reason on every other transition', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        status: StoryStatus.Rejected,
+        rejectionReason: 'An old reason from before.',
+        isFlagged: false,
+        author,
+      });
+
+      const story = await service.updateStatus('story-1', StoryStatus.Approved);
+
+      expect(story.rejectionReason).toBeNull();
+    });
   });
 
   describe('bulkUpdateStatus', () => {
@@ -514,6 +538,25 @@ describe('StoriesService', () => {
         result.every((story) => story.status === StoryStatus.Approved)
       ).toBe(true);
       expect(repository.save).toHaveBeenCalledWith(stories);
+    });
+
+    it('always clears the rejection reason, even a pre-existing one', async () => {
+      const stories = [
+        {
+          id: 'story-1',
+          status: StoryStatus.Approved,
+          rejectionReason: 'Stale from a prior rejection.',
+          author: {id: 'a1'},
+        },
+      ];
+      repository.find.mockResolvedValue(stories);
+
+      const result = await service.bulkUpdateStatus(
+        ['story-1'],
+        StoryStatus.Rejected
+      );
+
+      expect(result[0].rejectionReason).toBeNull();
     });
 
     it('latches markHasPublishedStory once per distinct author when approving', async () => {
