@@ -40,10 +40,14 @@ export class SeriesService {
 
   // The author's own series, for the story editor's "you already have"
   // hints — so retyping an exact existing title (rather than a near-miss)
-  // is easy to get right.
+  // is easy to get right — and for /me's My Series list, which shows each
+  // series' story count. Eager-loads `stories` (every status, matching
+  // this endpoint's existing "regardless of moderation status" scope) so
+  // SeriesResponseDto can compute storyCount from it.
   async findAllByAuthor(authorId: string): Promise<Series[]> {
     return this.seriesRepository.find({
       where: {author: {id: authorId}},
+      relations: ['stories'],
       order: {title: 'ASC'},
     });
   }

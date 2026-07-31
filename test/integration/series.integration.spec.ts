@@ -224,6 +224,10 @@ describe('Series (integration)', () => {
         seriesTitle: 'Hollow Lane',
       });
       await createStory(
+        {...STORY_PAYLOAD, title: 'Second Part', seriesTitle: 'Hollow Lane'},
+        client
+      );
+      await createStory(
         {...STORY_PAYLOAD, title: 'Other', seriesTitle: 'Second Series'},
         client
       );
@@ -235,8 +239,14 @@ describe('Series (integration)', () => {
 
       const response = await client.get('/users/me/series').expect(200);
 
-      expect(response.body.map((s: {title: string}) => s.title).sort()).toEqual(
-        ['Hollow Lane', 'Second Series']
+      const series = response.body as {title: string; storyCount: number}[];
+      expect(series.map((s) => s.title).sort()).toEqual([
+        'Hollow Lane',
+        'Second Series',
+      ]);
+      expect(series.find((s) => s.title === 'Hollow Lane')?.storyCount).toBe(2);
+      expect(series.find((s) => s.title === 'Second Series')?.storyCount).toBe(
+        1
       );
     });
   });
