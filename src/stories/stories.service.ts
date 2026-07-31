@@ -47,8 +47,9 @@ import {StoryReportReason} from './enums/story-report-reason.enum';
 
 interface StoryFilters {
   tag?: string;
-  /** The /stories feed's multi-select tag filter — AND semantics, distinct
-   *  from the single-slug `tag` above (which stays the shelf page's own). */
+  /** The /stories feed's multi-select tag filter — OR semantics (a story
+   *  matching any one of these matches), distinct from the single-slug
+   *  `tag` above (which stays the shelf page's own). */
   tags?: string[];
   search?: string;
   scareLevel?: number;
@@ -491,18 +492,23 @@ export class StoriesService {
     }
 
     if (tags && tags.length > 0) {
-      // One inner join per required tag, each narrowed to exactly one slug
-      // (uniquely aliased/parameterized) — AND semantics without the
-      // fan-out risk a single multi-slug join would have. Same safety as
-      // the single-tag `tagFilter` join above, just repeated per tag.
-      tags.forEach((slug, index) => {
-        qb.innerJoin(
-          'story.tags',
-          `tagsFilter${index}`,
-          `tagsFilter${index}.slug = :tagsSlug${index}`,
-          {[`tagsSlug${index}`]: slug}
-        );
-      });
+      // OR semantics — a story matching any one of these tags qualifies. A
+      // plain `innerJoin('story.tags', ..., 'slug IN (:...tags)')` would fan
+      // out one row per matching tag (on top of the unconditional
+      // `tags` eager-load above) for a story carrying more than one of the
+      // selected tags — a subquery keeps that existence check row-count-safe,
+      // mirroring the For You feed's `forYouTagIds` affinity filter below.
+      const tagsFilterSubQuery = qb
+        .subQuery()
+        .select('tagsFilterStory.id')
+        .from(Story, 'tagsFilterStory')
+        .innerJoin(
+          'tagsFilterStory.tags',
+          'tagsFilterTag',
+          'tagsFilterTag.slug IN (:...tagsSlugs)'
+        )
+        .getQuery();
+      qb.andWhere(`story.id IN ${tagsFilterSubQuery}`, {tagsSlugs: tags});
     }
 
     if (search) {

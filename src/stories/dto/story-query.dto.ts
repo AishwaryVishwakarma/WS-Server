@@ -54,9 +54,9 @@ export class StoryQueryDto extends PaginationDto {
   tag?: string;
 
   /** Tag slugs, comma-separated — the /stories feed's multi-select filter.
-   *  AND semantics: a story must carry every one of these, not just any.
-   *  Distinct from `tag` above (that one stays single-slug for the shelf
-   *  page); capped at 5 to match TagPicker's own selection limit. */
+   *  OR semantics: a story matching any one of these matches. Distinct
+   *  from `tag` above (that one stays single-slug for the shelf page);
+   *  capped at 5 to match TagPicker's own selection limit. */
   @IsOptional()
   @Transform(({value}: {value: unknown}) =>
     typeof value === 'string' ? value.split(',').filter(Boolean) : value

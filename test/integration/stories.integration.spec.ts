@@ -921,26 +921,40 @@ describe('Stories (integration)', () => {
       await browser.get('/stories?sort=spookiest').expect(400);
     });
 
-    it('filters by multiple tags with AND semantics', async () => {
-      const {browser, lighthouse} = await setupCatalog();
+    it('filters by multiple tags with OR semantics, without duplicating a double match', async () => {
+      const {browser, lighthouse, walls} = await setupCatalog();
 
-      // Only the lighthouse carries both ghosts and demons — the walls
-      // story is demons-only, so it must not match.
+      // lighthouse carries both ghosts and demons; walls carries demons
+      // only — OR semantics must return both, and the lighthouse (which
+      // matches twice, once per selected tag) must appear exactly once —
+      // proving the subquery filter doesn't fan out.
       const response = await browser
         .get('/stories?tags=ghosts,demons')
+        .expect(200);
+
+      expect(response.body.total).toBe(2);
+      const ids = response.body.data.map((story: {id: string}) => story.id);
+      expect(ids).toEqual(expect.arrayContaining([lighthouse.id, walls.id]));
+    });
+
+    it('matches a story carrying just one of several selected tags', async () => {
+      const {browser, lighthouse} = await setupCatalog();
+
+      // "vampires" is a valid slug format but never attached to any story —
+      // OR semantics still matches the lighthouse via "ghosts" alone.
+      const response = await browser
+        .get('/stories?tags=ghosts,vampires')
         .expect(200);
 
       expect(response.body.total).toBe(1);
       expect(response.body.data[0].id).toBe(lighthouse.id);
     });
 
-    it('returns an empty page when no single story carries every tag', async () => {
+    it('returns an empty page when no story carries any selected tag', async () => {
       const {browser} = await setupCatalog();
 
-      // ghosts+demons together only matches the lighthouse; adding a tag
-      // slug that exists but was never attached to it excludes it too.
       const response = await browser
-        .get('/stories?tags=ghosts,demons,vampires')
+        .get('/stories?tags=vampires,werewolves')
         .expect(200);
 
       expect(response.body.total).toBe(0);
