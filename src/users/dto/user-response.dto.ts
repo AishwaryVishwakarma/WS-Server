@@ -2,6 +2,7 @@ import {Exclude, Expose, Type} from 'class-transformer';
 import {Role} from '../enums/role';
 import type {ReportReason} from '../enums/report-reason.enum';
 import type {Badge} from '../enums/badge.enum';
+import type {ContentWarning} from 'src/stories/enums/content-warning.enum';
 
 /**
  * [public]
@@ -36,6 +37,9 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
   // Your own role is not sensitive, and the frontend needs it to decide
   // whether to surface the admin area.
   @Expose() role: Role;
+  // A private reading preference, not public profile data — never on the
+  // preview tier.
+  @Expose() mutedContentWarnings: ContentWarning[];
 
   constructor(partial: Partial<UserPrivateResponseDto>) {
     super(partial);

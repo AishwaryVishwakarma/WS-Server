@@ -17,6 +17,8 @@ import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
 import {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
+import {ContentWarning} from 'src/stories/enums/content-warning.enum';
+import type {UpdateUserDto} from './dto/update-user.dto';
 import {UsersService} from './users.service';
 
 const duplicateEntryError = () => {
@@ -455,6 +457,29 @@ describe('UsersService', () => {
       const user = (await service.update('user-1', {name: 'New'})) as User;
 
       expect(user.verificationLocked).toBe(false);
+    });
+
+    it('persists mutedContentWarnings via the generic pass-through', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        mutedContentWarnings: [],
+      });
+
+      // mutedContentWarnings lives on UpdateProfileDto (self-service only,
+      // not the admin UpdateUserDto family this method is typed against) —
+      // the cast mirrors how PrivateUsersController.updateMe passes a real
+      // UpdateProfileDto instance through structurally.
+      const user = (await service.update('user-1', {
+        mutedContentWarnings: [
+          ContentWarning.GraphicViolence,
+          ContentWarning.BodyHorror,
+        ],
+      } as UpdateUserDto)) as User;
+
+      expect(user.mutedContentWarnings).toEqual([
+        ContentWarning.GraphicViolence,
+        ContentWarning.BodyHorror,
+      ]);
     });
   });
 

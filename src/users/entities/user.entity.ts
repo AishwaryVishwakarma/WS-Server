@@ -15,6 +15,7 @@ import {Comment} from 'src/comments/entities/comment.entity';
 import {UserReport} from './user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
 import type {Badge} from '../enums/badge.enum';
+import type {ContentWarning} from 'src/stories/enums/content-warning.enum';
 
 @Entity()
 // One Google identity maps to at most one account. Named + nullable-unique so
@@ -76,6 +77,24 @@ export class User {
 
   @Column({length: 500, nullable: true})
   bio: string;
+
+  // A signed-in reader's own persistent "hide stories carrying these"
+  // preference — distinct from Story.contentWarnings (what a story carries).
+  // Same transformer as that column: simple-array forces a TEXT column with
+  // no length, and MySQL rejects a literal DEFAULT on TEXT/BLOB.
+  @Column({
+    type: 'varchar',
+    length: 255,
+    default: '',
+    transformer: {
+      to: (value: ContentWarning[] = []) => value.join(','),
+      from: (value: string | ContentWarning[]): ContentWarning[] => {
+        if (Array.isArray(value)) return value;
+        return value ? (value.split(',') as ContentWarning[]) : [];
+      },
+    },
+  })
+  mutedContentWarnings: ContentWarning[];
 
   // Recomputed from the user_report rows on every report/resolve (see
   // UsersService) — an orderable, drift-free mirror of the report count so the

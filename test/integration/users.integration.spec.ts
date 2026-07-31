@@ -163,6 +163,63 @@ describe('Users (integration)', () => {
       expect(response.body.bio).toBe('I write scary stories');
     });
 
+    it('persists and round-trips mutedContentWarnings', async () => {
+      const client = agent();
+      await registerUser(client);
+      const token = await getCsrfToken(client);
+
+      const response = await client
+        .patch('/users/me')
+        .set('x-csrf-token', token)
+        .send({mutedContentWarnings: ['graphic_violence', 'body_horror']})
+        .expect(200);
+
+      expect(response.body.mutedContentWarnings).toEqual([
+        'graphic_violence',
+        'body_horror',
+      ]);
+
+      const me = await client.get('/users/me').expect(200);
+      expect(me.body.mutedContentWarnings).toEqual([
+        'graphic_violence',
+        'body_horror',
+      ]);
+    });
+
+    it('rejects an unknown content warning value with 400', async () => {
+      const client = agent();
+      await registerUser(client);
+      const token = await getCsrfToken(client);
+
+      await client
+        .patch('/users/me')
+        .set('x-csrf-token', token)
+        .send({mutedContentWarnings: ['not-a-real-warning']})
+        .expect(400);
+    });
+
+    it('rejects more than 6 muted content warnings with 400', async () => {
+      const client = agent();
+      await registerUser(client);
+      const token = await getCsrfToken(client);
+
+      await client
+        .patch('/users/me')
+        .set('x-csrf-token', token)
+        .send({
+          mutedContentWarnings: [
+            'graphic_violence',
+            'self_harm_suicide',
+            'sexual_content',
+            'animal_cruelty',
+            'child_harm',
+            'body_horror',
+            'graphic_violence',
+          ],
+        })
+        .expect(400);
+    });
+
     it('cannot escalate privileges (regression)', async () => {
       const client = agent();
       await registerUser(client);

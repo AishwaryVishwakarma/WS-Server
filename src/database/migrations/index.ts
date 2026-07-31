@@ -32,6 +32,7 @@ import {AddReadingProgress1785429083383} from './1785429083383-AddReadingProgres
 import {AddCommentHiddenByAuthor1785431685812} from './1785431685812-AddCommentHiddenByAuthor';
 import {AddStoryScheduledFor1785433843318} from './1785433843318-AddStoryScheduledFor';
 import {AddScareVotes1785474118036} from './1785474118036-AddScareVotes';
+import {AddMutedContentWarnings1785484220156} from './1785484220156-AddMutedContentWarnings';
 
 export const migrations = [
   Baseline1783883957794,
@@ -61,4 +62,5 @@ export const migrations = [
   AddCommentHiddenByAuthor1785431685812,
   AddStoryScheduledFor1785433843318,
   AddScareVotes1785474118036,
+  AddMutedContentWarnings1785484220156,
 ];
