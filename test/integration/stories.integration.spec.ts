@@ -1732,6 +1732,18 @@ describe('Stories (integration)', () => {
       await registerUser(reader, {email: 'for-you-reader@test.com'});
       await likeStory(reader, liked.id);
 
+      // The reader's own story, sharing an affinity tag but never liked/
+      // bookmarked/read (can't engage with your own story that way) — must
+      // still never recommend a reader's own work back to them.
+      const readerToken = await getCsrfToken(reader);
+      const ownStoryResponse = await reader
+        .post('/stories')
+        .set('x-csrf-token', readerToken)
+        .send({...STORY_PAYLOAD, title: 'My Own Story', tags: [ghosts.id]})
+        .expect(201);
+      const ownStory = ownStoryResponse.body as {id: string};
+      await approveStory(ownStory.id, admin);
+
       // Page through with a small limit to also exercise the keyset paging
       // path — the fan-out bug would truncate a page below `limit` and end
       // the feed early.
@@ -1755,6 +1767,7 @@ describe('Stories (integration)', () => {
       expect(collected.sort()).toEqual([bothTags.id, oneTag.id].sort());
       expect(collected).not.toContain(liked.id);
       expect(collected).not.toContain(unrelated.id);
+      expect(collected).not.toContain(ownStory.id);
     });
   });
 });

@@ -1111,6 +1111,7 @@ describe('StoriesService', () => {
         filters: {
           forYouTagIds: ['tag-1', 'tag-2'],
           excludeStoryIds: ['story-1', 'story-2'],
+          excludeAuthorId: 'reader-1',
         },
       });
     });

@@ -53,6 +53,8 @@ interface StoryFilters {
   forYouTagIds?: string[];
   /** For You feed only: exclude stories the reader has already engaged with. */
   excludeStoryIds?: string[];
+  /** For You feed only: exclude the reader's own stories. */
+  excludeAuthorId?: string;
 }
 
 // The slice of session state recordView reads/writes. Structural so the service
@@ -425,8 +427,15 @@ export class StoriesService {
   private _buildApprovedQuery(
     filters: StoryFilters
   ): SelectQueryBuilder<Story> {
-    const {tag, search, scareLevel, sort, forYouTagIds, excludeStoryIds} =
-      filters;
+    const {
+      tag,
+      search,
+      scareLevel,
+      sort,
+      forYouTagIds,
+      excludeStoryIds,
+      excludeAuthorId,
+    } = filters;
 
     const qb = this.storiesRepository
       .createQueryBuilder('story')
@@ -501,6 +510,15 @@ export class StoriesService {
 
     if (excludeStoryIds && excludeStoryIds.length > 0) {
       qb.andWhere('story.id NOT IN (:...excludeStoryIds)', {excludeStoryIds});
+    }
+
+    if (excludeAuthorId) {
+      // author is a left join (a soft-deleted author's stories still show,
+      // per the withDeleted scope above) — a plain `!=` would silently drop
+      // those rows too, since SQL's NULL != x is NULL, not true.
+      qb.andWhere('(author.id IS NULL OR author.id != :excludeAuthorId)', {
+        excludeAuthorId,
+      });
     }
 
     if (forYouTagIds && forYouTagIds.length > 0) {
@@ -857,7 +875,11 @@ export class StoriesService {
     return this.findApprovedFeed({
       cursor: params.cursor,
       limit: params.limit,
-      filters: {forYouTagIds, excludeStoryIds: engagedStoryIds},
+      filters: {
+        forYouTagIds,
+        excludeStoryIds: engagedStoryIds,
+        excludeAuthorId: userId,
+      },
     });
   }
 
