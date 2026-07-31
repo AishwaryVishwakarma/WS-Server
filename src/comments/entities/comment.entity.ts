@@ -69,6 +69,12 @@ export class Comment {
   @Column({default: false})
   isHiddenByAuthor: boolean;
 
+  // Denormalized count of "this crept me out" reactions (CommentReaction),
+  // maintained by CommentReactionsService on react/unreact — mirrors
+  // Story.likeCount.
+  @Column({type: 'int', default: 0})
+  reactionCount: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

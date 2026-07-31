@@ -41,6 +41,8 @@ import {Series} from './series/entities/series.entity';
 import {SeriesModule} from './series/series.module';
 import {ReadingProgress} from './reading-progress/entities/reading-progress.entity';
 import {ReadingProgressModule} from './reading-progress/reading-progress.module';
+import {CommentReaction} from './comment-reactions/entities/comment-reaction.entity';
+import {CommentReactionsModule} from './comment-reactions/comment-reactions.module';
 import {migrations} from './database/migrations';
 
 // mysql2's own default when no pool size is configured — used as our fallback
@@ -180,6 +182,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           ReadingProgress,
           ScareVote,
           MutedAuthor,
+          CommentReaction,
         ],
         synchronize: false,
         migrations,
@@ -201,6 +204,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     SeriesModule,
     ReadingProgressModule,
     ScareRatingsModule,
+    CommentReactionsModule,
   ],
   controllers: [AppController],
   providers: [

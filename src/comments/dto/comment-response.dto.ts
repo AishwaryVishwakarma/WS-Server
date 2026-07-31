@@ -12,6 +12,10 @@ export class CommentPreviewResponseDto {
   // on reply rows, which never carry their own replies.
   @Expose() replyCount?: number;
 
+  // "This crept me out" reaction count — public social proof, like a
+  // story's likeCount, on both top-level comments and replies.
+  @Expose() reactionCount: number;
+
   @Expose()
   @Type(() => UserPreviewResponseDto)
   user: UserPreviewResponseDto;
@@ -77,6 +81,9 @@ export class MyCommentActivityResponseDto {
 
   // Engagement on a comment the member started; 0 on their own replies.
   @Expose() replyCount: number;
+
+  // "This crept me out" reactions this comment/reply has received.
+  @Expose() reactionCount: number;
 
   // null = a top-level comment the member started; set = it is their reply to
   // that parent (so the frontend can render "you replied" vs "N replies").
