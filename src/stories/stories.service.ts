@@ -107,6 +107,8 @@ const SELECTED_FIELDS = {
   commentCount: true,
   viewCount: true,
   likeCount: true,
+  scareRatingSum: true,
+  scareRatingCount: true,
   reportCount: true,
   createdAt: true,
   updatedAt: true,

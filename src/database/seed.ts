@@ -4,6 +4,7 @@ import {AppModule} from 'src/app.module';
 import {BookmarksService} from 'src/bookmarks/bookmarks.service';
 import {FollowsService} from 'src/follows/follows.service';
 import {LikesService} from 'src/likes/likes.service';
+import {ScareRatingsService} from 'src/scare-ratings/scare-ratings.service';
 import {CommentsService} from 'src/comments/comments.service';
 import {Notification} from 'src/notifications/entities/notification.entity';
 import {NotificationsService} from 'src/notifications/notifications.service';
@@ -618,6 +619,28 @@ const LIKES: {reader: string; story: string}[] = [
   {reader: 'bob@whisperingshadows.dev', story: 'Cold Spots'},
 ];
 
+// Reader scare votes on a few approved stories so scareRatingAverage/Count
+// have data — distinct from each story's own author-set scareLevel above.
+const SCARE_VOTES: {reader: string; story: string; value: number}[] = [
+  {
+    reader: 'alice@whisperingshadows.dev',
+    story: "The Ferryman's Toll",
+    value: 5,
+  },
+  {reader: 'bob@whisperingshadows.dev', story: "The Ferryman's Toll", value: 4},
+  {
+    reader: 'carol@whisperingshadows.dev',
+    story: "The Ferryman's Toll",
+    value: 5,
+  },
+  {
+    reader: 'alice@whisperingshadows.dev',
+    story: 'Whisper in the Walls',
+    value: 3,
+  },
+  {reader: 'bob@whisperingshadows.dev', story: 'Cold Spots', value: 2},
+];
+
 // A small follow graph so the Following feed and follower counts have data.
 const FOLLOWS: {follower: string; following: string}[] = [
   {
@@ -687,6 +710,7 @@ async function seed() {
     const bookmarksService = app.get(BookmarksService);
     const followsService = app.get(FollowsService);
     const likesService = app.get(LikesService);
+    const scareRatingsService = app.get(ScareRatingsService);
     const notificationsService = app.get(NotificationsService);
 
     const existingAdmin = await dataSource
@@ -859,6 +883,17 @@ async function seed() {
       likes++;
     }
 
+    // Scare votes (through the real service — validates visibility + keeps
+    // scareRatingSum/scareRatingCount)
+    let scareVotes = 0;
+    for (const {reader, story, value} of SCARE_VOTES) {
+      const storyId = storyIdsByTitle.get(story);
+      const readerId = usersByEmail.get(reader)?.id;
+      if (!storyId || !readerId) continue;
+      await scareRatingsService.castVote(readerId, storyId, value);
+      scareVotes++;
+    }
+
     // Follows (through the real service — validates target + unique pair)
     let follows = 0;
     for (const {follower, following} of FOLLOWS) {
@@ -906,7 +941,7 @@ async function seed() {
         `${allComments.length} comments + ${REPLIES.length} replies ` +
         `(${reportedComments} reported), ${reportedStories} reported stories, ` +
         `${reportedUsers} reported users, ${bookmarks} bookmarks, ` +
-        `${follows} follows, ${likes} likes`
+        `${follows} follows, ${likes} likes, ${scareVotes} scare votes`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`

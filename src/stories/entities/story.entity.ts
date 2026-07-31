@@ -114,6 +114,16 @@ export class Story {
   @Column({type: 'int', default: 0})
   likeCount: number;
 
+  /** Sum of all reader scare-vote values; paired with scareRatingCount to
+   *  derive the average at the DTO layer (see StoryPreviewResponseDto).
+   *  Distinct from the author's own self-assigned `scareLevel` above —
+   *  maintained by ScareRatingsService (cast/change/remove). */
+  @Column({type: 'int', default: 0})
+  scareRatingSum: number;
+
+  @Column({type: 'int', default: 0})
+  scareRatingCount: number;
+
   // Recomputed from the story_report rows on every report/resolve (see
   // StoriesService) — an orderable, drift-free mirror of the report count so
   // the admin queue can sort most-reported-first. Distinct from `isFlagged`

@@ -33,6 +33,8 @@ import {Follow} from './follows/entities/follow.entity';
 import {FollowsModule} from './follows/follows.module';
 import {StoryLike} from './likes/entities/story-like.entity';
 import {LikesModule} from './likes/likes.module';
+import {ScareVote} from './scare-ratings/entities/scare-vote.entity';
+import {ScareRatingsModule} from './scare-ratings/scare-ratings.module';
 import {Series} from './series/entities/series.entity';
 import {SeriesModule} from './series/series.module';
 import {ReadingProgress} from './reading-progress/entities/reading-progress.entity';
@@ -174,6 +176,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           PasswordResetToken,
           Series,
           ReadingProgress,
+          ScareVote,
         ],
         synchronize: false,
         migrations,
@@ -193,6 +196,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     LikesModule,
     SeriesModule,
     ReadingProgressModule,
+    ScareRatingsModule,
   ],
   controllers: [AppController],
   providers: [

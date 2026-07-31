@@ -55,6 +55,20 @@ export class StoryPreviewResponseDto {
   @Expose() createdAt: Date;
   @Expose() updatedAt: Date;
 
+  // Reader-voted "how scary was this, really?" aggregate — distinct from the
+  // author's own self-assigned scareLevel above. Derived here (not stored)
+  // from the sum/count columns, mirroring how StorySeriesResponseDto combines
+  // story.series with the sibling seriesPosition column.
+  @Expose()
+  @Transform(({obj}: {obj: Story}) =>
+    obj.scareRatingCount > 0
+      ? Math.round((obj.scareRatingSum / obj.scareRatingCount) * 10) / 10
+      : null
+  )
+  scareRatingAverage: number | null;
+
+  @Expose() scareRatingCount: number;
+
   @Expose()
   @Type(() => TagResponseDto)
   tags: TagResponseDto[];
