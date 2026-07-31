@@ -42,7 +42,7 @@ export class PublicUsersController {
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const user = await this.usersService.findOne(id);
-    user.badges = await this.usersService.computeBadges(id);
+    user.badges = await this.usersService.computeBadges(id, user.longestStreak);
     return this._serialize(user);
   }
 

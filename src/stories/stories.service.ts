@@ -743,6 +743,14 @@ export class StoriesService {
       throw new NotFoundException(`Story with ID ${storyId} not found`);
     }
 
+    // Reading-streak activity is a per-day, not per-story, concept — record
+    // it for any signed-in viewer regardless of whether this particular view
+    // moves the story's own viewCount (dedup/self-view below only govern
+    // that counter).
+    if (viewerId) {
+      await this.usersService.recordActivity(viewerId);
+    }
+
     const alreadyViewed = session.viewedStoryIds?.includes(storyId) ?? false;
     const isAuthor = viewerId != null && viewerId === story.author?.id;
 

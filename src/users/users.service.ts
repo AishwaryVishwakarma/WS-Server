@@ -22,6 +22,7 @@ import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import {syncReportCount} from 'src/utils/report-count';
+import {computeStreakUpdate} from './streak';
 
 // Thresholds for the "Prolific"/"Fan Favorite"/"Conversation Starter"
 // badges. Prolific mirrors StoriesService.FREE_PUBLISH_LIMIT (10) — the
@@ -30,6 +31,8 @@ import {syncReportCount} from 'src/utils/report-count';
 const PROLIFIC_STORY_COUNT = 10;
 const FAN_FAVORITE_LIKES = 25;
 const CONVERSATION_STARTER_COMMENTS = 25;
+const WEEK_STREAK_DAYS = 7;
+const MONTH_STREAK_DAYS = 30;
 
 @Injectable()
 export class UsersService {
@@ -266,7 +269,24 @@ export class UsersService {
   // likes/comments received, and series ownership — rather than stored and
   // kept in sync via triggers scattered across StoriesService/LikesService/
   // CommentsService/SeriesService.
-  async computeBadges(userId: string): Promise<Badge[]> {
+  // Records reading activity for today (UTC), extending/resetting the
+  // user's streak via the pure computeStreakUpdate — triggered from
+  // StoriesService.recordView on any story view. A no-op (no query beyond
+  // the initial read) once today is already recorded, since a reader can
+  // view many stories in one day. Uses a targeted `.update()`, not
+  // `.save()`, to avoid touching unrelated fields (mirrors syncReportCount).
+  async recordActivity(userId: string): Promise<void> {
+    const user = await this.usersRepository.findOneBy({id: userId});
+    if (!user) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const updated = computeStreakUpdate(user, today);
+    if (!updated) return;
+
+    await this.usersRepository.update(userId, updated);
+  }
+
+  async computeBadges(userId: string, longestStreak: number): Promise<Badge[]> {
     const [raw, hasSeries] = await Promise.all([
       this.storiesRepository
         .createQueryBuilder('story')
@@ -298,6 +318,11 @@ export class UsersService {
       badges.push(Badge.ConversationStarter);
     }
     if (hasSeries) badges.push(Badge.SeriesAuthor);
+    // Based on longestStreak (permanent, like every other badge here), not
+    // the fluctuating currentStreak — a lapsed streak doesn't take the
+    // badge away.
+    if (longestStreak >= WEEK_STREAK_DAYS) badges.push(Badge.WeekStreak);
+    if (longestStreak >= MONTH_STREAK_DAYS) badges.push(Badge.MonthStreak);
 
     return badges;
   }

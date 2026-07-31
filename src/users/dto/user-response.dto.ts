@@ -40,6 +40,12 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
   // A private reading preference, not public profile data — never on the
   // preview tier.
   @Expose() mutedContentWarnings: ContentWarning[];
+  // Reading-streak stats and the digest opt-out — self-only; the public
+  // preview tier only ever sees the derived badges (week-streak/
+  // month-streak), not the raw counters.
+  @Expose() currentStreak: number;
+  @Expose() longestStreak: number;
+  @Expose() digestEmailEnabled: boolean;
 
   constructor(partial: Partial<UserPrivateResponseDto>) {
     super(partial);

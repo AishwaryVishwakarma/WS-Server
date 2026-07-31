@@ -1,5 +1,11 @@
 import {PartialType} from '@nestjs/mapped-types';
-import {ArrayMaxSize, IsArray, IsEnum, IsOptional} from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+} from 'class-validator';
 import {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import {RegisterUserDto} from './register-user.dto';
 
@@ -13,4 +19,10 @@ export class UpdateProfileDto extends PartialType(RegisterUserDto) {
   @IsEnum(ContentWarning, {each: true})
   @ArrayMaxSize(6)
   mutedContentWarnings?: ContentWarning[];
+
+  // Opt-out of the weekly digest email (see DigestService). Not privileged,
+  // same pass-through treatment as mutedContentWarnings.
+  @IsOptional()
+  @IsBoolean()
+  digestEmailEnabled?: boolean;
 }

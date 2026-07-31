@@ -4,6 +4,7 @@ import {AppService} from './app.service';
 import {ConfigModule, ConfigService} from '@nestjs/config';
 import {TypeOrmModule} from '@nestjs/typeorm';
 import {ThrottlerModule} from '@nestjs/throttler';
+import {ScheduleModule} from '@nestjs/schedule';
 import {APP_GUARD} from '@nestjs/core';
 import {SessionThrottlerGuard} from './common/gaurds/session-throttler.gaurd';
 import {DEFAULT_THROTTLE} from './common/constants/throttle';
@@ -43,6 +44,7 @@ import {ReadingProgress} from './reading-progress/entities/reading-progress.enti
 import {ReadingProgressModule} from './reading-progress/reading-progress.module';
 import {CommentReaction} from './comment-reactions/entities/comment-reaction.entity';
 import {CommentReactionsModule} from './comment-reactions/comment-reactions.module';
+import {DigestModule} from './digest/digest.module';
 import {migrations} from './database/migrations';
 
 // mysql2's own default when no pool size is configured — used as our fallback
@@ -205,6 +207,8 @@ const DEFAULT_DB_POOL_SIZE = 10;
     ReadingProgressModule,
     ScareRatingsModule,
     CommentReactionsModule,
+    ScheduleModule.forRoot(),
+    DigestModule,
   ],
   controllers: [AppController],
   providers: [

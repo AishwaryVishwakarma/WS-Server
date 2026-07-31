@@ -9,4 +9,8 @@ export enum Badge {
   FanFavorite = 'fan-favorite',
   ConversationStarter = 'conversation-starter',
   SeriesAuthor = 'series-author',
+  // Based on User.longestStreak (see streak.ts) — permanent once earned,
+  // like every badge above, so a lapsed streak doesn't take it away.
+  WeekStreak = 'week-streak',
+  MonthStreak = 'month-streak',
 }

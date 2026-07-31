@@ -522,7 +522,7 @@ describe('UsersService', () => {
 
   describe('computeBadges', () => {
     it('returns no badges for an author with no approved stories or series', async () => {
-      const badges = await service.computeBadges('user-1');
+      const badges = await service.computeBadges('user-1', 0);
 
       expect(badges).toEqual([]);
     });
@@ -534,7 +534,9 @@ describe('UsersService', () => {
         totalComments: '0',
       });
 
-      expect(await service.computeBadges('user-1')).toEqual([Badge.Published]);
+      expect(await service.computeBadges('user-1', 0)).toEqual([
+        Badge.Published,
+      ]);
     });
 
     it('awards Prolific at 10 approved stories', async () => {
@@ -544,7 +546,7 @@ describe('UsersService', () => {
         totalComments: '0',
       });
 
-      const badges = await service.computeBadges('user-1');
+      const badges = await service.computeBadges('user-1', 0);
 
       expect(badges).toContain(Badge.Published);
       expect(badges).toContain(Badge.Prolific);
@@ -557,7 +559,7 @@ describe('UsersService', () => {
         totalComments: '0',
       });
 
-      expect(await service.computeBadges('user-1')).not.toContain(
+      expect(await service.computeBadges('user-1', 0)).not.toContain(
         Badge.Prolific
       );
     });
@@ -568,7 +570,7 @@ describe('UsersService', () => {
         totalLikes: '24',
         totalComments: '0',
       });
-      expect(await service.computeBadges('user-1')).not.toContain(
+      expect(await service.computeBadges('user-1', 0)).not.toContain(
         Badge.FanFavorite
       );
 
@@ -577,7 +579,7 @@ describe('UsersService', () => {
         totalLikes: '25',
         totalComments: '0',
       });
-      expect(await service.computeBadges('user-1')).toContain(
+      expect(await service.computeBadges('user-1', 0)).toContain(
         Badge.FanFavorite
       );
     });
@@ -589,7 +591,7 @@ describe('UsersService', () => {
         totalComments: '25',
       });
 
-      expect(await service.computeBadges('user-1')).toContain(
+      expect(await service.computeBadges('user-1', 0)).toContain(
         Badge.ConversationStarter
       );
     });
@@ -597,7 +599,7 @@ describe('UsersService', () => {
     it('awards Series Author only when the author has created a series', async () => {
       seriesRepository.exists.mockResolvedValue(true);
 
-      const badges = await service.computeBadges('user-1');
+      const badges = await service.computeBadges('user-1', 0);
 
       expect(badges).toContain(Badge.SeriesAuthor);
       expect(seriesRepository.exists).toHaveBeenCalledWith({
@@ -608,7 +610,22 @@ describe('UsersService', () => {
     it('treats a null aggregate (no rows) as all-zero stats', async () => {
       storiesQueryBuilder.getRawOne.mockResolvedValue(undefined);
 
-      await expect(service.computeBadges('user-1')).resolves.toEqual([]);
+      await expect(service.computeBadges('user-1', 0)).resolves.toEqual([]);
+    });
+
+    it('awards the week/month streak badges at their thresholds, not before', async () => {
+      expect(await service.computeBadges('user-1', 6)).not.toContain(
+        Badge.WeekStreak
+      );
+      expect(await service.computeBadges('user-1', 7)).toContain(
+        Badge.WeekStreak
+      );
+      expect(await service.computeBadges('user-1', 29)).not.toContain(
+        Badge.MonthStreak
+      );
+      expect(await service.computeBadges('user-1', 30)).toContain(
+        Badge.MonthStreak
+      );
     });
   });
 

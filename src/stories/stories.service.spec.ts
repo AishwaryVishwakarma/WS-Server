@@ -60,7 +60,11 @@ describe('StoriesService', () => {
   let storyLikeRepository: {find: jest.Mock};
   let bookmarkRepository: {find: jest.Mock};
   let readingProgressRepository: {find: jest.Mock};
-  let usersService: {findOne: jest.Mock; markHasPublishedStory: jest.Mock};
+  let usersService: {
+    findOne: jest.Mock;
+    markHasPublishedStory: jest.Mock;
+    recordActivity: jest.Mock;
+  };
   let tagsService: {findManyByIds: jest.Mock};
   let seriesService: {findOrCreateForAuthor: jest.Mock};
   let mutesService: {mutedAuthorIds: jest.Mock};
@@ -124,6 +128,7 @@ describe('StoriesService', () => {
     usersService = {
       findOne: jest.fn().mockResolvedValue(author),
       markHasPublishedStory: jest.fn().mockResolvedValue(undefined),
+      recordActivity: jest.fn().mockResolvedValue(undefined),
     };
     tagsService = {findManyByIds: jest.fn()};
     seriesService = {findOrCreateForAuthor: jest.fn()};

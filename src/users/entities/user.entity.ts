@@ -104,6 +104,32 @@ export class User {
   @Column({type: 'int', default: 0})
   reportCount: number;
 
+  // Reading-streak state, maintained by UsersService.recordActivity
+  // (triggered from StoriesService.recordView on any story view). Permanent
+  // once earned — longestStreak never decreases, mirroring how every other
+  // badge milestone works. lastActiveDate is a plain UTC 'YYYY-MM-DD'
+  // string, not a MySQL DATE column — sidesteps driver timezone conversion
+  // entirely; "yesterday" is just string-date arithmetic (see streak.ts).
+  @Column({type: 'int', default: 0})
+  currentStreak: number;
+
+  @Column({type: 'int', default: 0})
+  longestStreak: number;
+
+  @Column({type: 'varchar', length: 10, nullable: true})
+  lastActiveDate: string | null;
+
+  // Self-service opt-out for the weekly digest email. Default true —
+  // mirrors this app's existing lack of granular notification toggles
+  // elsewhere (comment/reply/follow notifications have no on/off switch).
+  @Column({default: true})
+  digestEmailEnabled: boolean;
+
+  // When this user was last sent a digest — the window start for "what's
+  // new" in their next one (see DigestService).
+  @Column({type: 'datetime', nullable: true})
+  lastDigestSentAt: Date | null;
+
   @OneToMany(() => Story, (story) => story.author)
   stories: Story[];
 
