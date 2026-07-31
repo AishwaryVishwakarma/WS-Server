@@ -1668,4 +1668,93 @@ describe('Stories (integration)', () => {
       expect(await testApp.dataSource.getRepository(Comment).count()).toBe(0);
     });
   });
+
+  describe('GET /stories/for-you', () => {
+    const likeStory = async (client: Agent, storyId: string) => {
+      const token = await getCsrfToken(client);
+      await client
+        .put(`/stories/${storyId}/like`)
+        .set('x-csrf-token', token)
+        .expect(204);
+    };
+
+    it('401s for an anonymous request', async () => {
+      await agent().get('/stories/for-you').expect(401);
+    });
+
+    it('is empty for a signed-in reader with no engagement history', async () => {
+      const reader = agent();
+      await registerUser(reader, {email: 'no-history@test.com'});
+
+      const response = await reader.get('/stories/for-you').expect(200);
+
+      expect(response.body.data).toEqual([]);
+      expect(response.body.total).toBe(0);
+    });
+
+    it("surfaces stories sharing a liked story's tags, excluding the liked story itself and unrelated stories", async () => {
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+      const createTag = (name: string) =>
+        admin.post('/admin/tags').set('x-csrf-token', adminToken).send({name});
+
+      const {body: ghosts} = await createTag('ghosts').expect(201);
+      const {body: demons} = await createTag('demons').expect(201);
+      const {body: vampires} = await createTag('vampires').expect(201);
+
+      const {story: liked} = await createStory(
+        {...STORY_PAYLOAD, title: 'Liked Story', tags: [ghosts.id, demons.id]},
+        'liked-author@test.com'
+      );
+      await approveStory(liked.id, admin);
+
+      // Shares both tags with the liked story — the case that would fan out
+      // via a second join on story.tags (must appear exactly once).
+      const {story: bothTags} = await createStory(
+        {...STORY_PAYLOAD, title: 'Both Tags', tags: [ghosts.id, demons.id]},
+        'both-tags-author@test.com'
+      );
+      await approveStory(bothTags.id, admin);
+
+      const {story: oneTag} = await createStory(
+        {...STORY_PAYLOAD, title: 'One Tag', tags: [ghosts.id]},
+        'one-tag-author@test.com'
+      );
+      await approveStory(oneTag.id, admin);
+
+      const {story: unrelated} = await createStory(
+        {...STORY_PAYLOAD, title: 'Unrelated', tags: [vampires.id]},
+        'unrelated-author@test.com'
+      );
+      await approveStory(unrelated.id, admin);
+
+      const reader = agent();
+      await registerUser(reader, {email: 'for-you-reader@test.com'});
+      await likeStory(reader, liked.id);
+
+      // Page through with a small limit to also exercise the keyset paging
+      // path — the fan-out bug would truncate a page below `limit` and end
+      // the feed early.
+      const collected: string[] = [];
+      let cursor: string | null = null;
+      for (let i = 0; i < 5; i++) {
+        const query =
+          `?limit=1` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+        const response = await reader
+          .get(`/stories/for-you${query}`)
+          .expect(200);
+        const body = response.body as {
+          data: {id: string}[];
+          nextCursor: string | null;
+        };
+        collected.push(...body.data.map((s) => s.id));
+        cursor = body.nextCursor;
+        if (!cursor) break;
+      }
+
+      expect(collected.sort()).toEqual([bothTags.id, oneTag.id].sort());
+      expect(collected).not.toContain(liked.id);
+      expect(collected).not.toContain(unrelated.id);
+    });
+  });
 });

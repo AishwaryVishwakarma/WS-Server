@@ -12,6 +12,9 @@ import {InjectRepository} from '@nestjs/typeorm';
 import {Story} from './entities/story.entity';
 import {StoryReport} from './entities/story-report.entity';
 import {StoryRevision} from './entities/story-revision.entity';
+import {StoryLike} from 'src/likes/entities/story-like.entity';
+import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {
   In,
   IsNull,
@@ -46,6 +49,10 @@ interface StoryFilters {
   search?: string;
   scareLevel?: number;
   sort?: StorySortOption;
+  /** For You feed only: restrict to stories carrying any of these tag ids. */
+  forYouTagIds?: string[];
+  /** For You feed only: exclude stories the reader has already engaged with. */
+  excludeStoryIds?: string[];
 }
 
 // The slice of session state recordView reads/writes. Structural so the service
@@ -123,6 +130,16 @@ export class StoriesService {
     private readonly reportsRepository: Repository<StoryReport>,
     @InjectRepository(StoryRevision)
     private readonly revisionsRepository: Repository<StoryRevision>,
+    // Read directly rather than injecting LikesService/BookmarksService/
+    // ReadingProgressService — all three already inject StoriesService, so
+    // the reverse would be a circular provider dependency (same reasoning as
+    // UsersService.computeBadges reading Story/Series repositories directly).
+    @InjectRepository(StoryLike)
+    private readonly storyLikeRepository: Repository<StoryLike>,
+    @InjectRepository(Bookmark)
+    private readonly bookmarkRepository: Repository<Bookmark>,
+    @InjectRepository(ReadingProgress)
+    private readonly readingProgressRepository: Repository<ReadingProgress>,
     private readonly usersService: UsersService,
     private readonly tagsService: TagsService,
     @Inject(forwardRef(() => SeriesService))
@@ -408,7 +425,8 @@ export class StoriesService {
   private _buildApprovedQuery(
     filters: StoryFilters
   ): SelectQueryBuilder<Story> {
-    const {tag, search, scareLevel, sort} = filters;
+    const {tag, search, scareLevel, sort, forYouTagIds, excludeStoryIds} =
+      filters;
 
     const qb = this.storiesRepository
       .createQueryBuilder('story')
@@ -479,6 +497,32 @@ export class StoriesService {
 
     if (scareLevel) {
       qb.andWhere('story.scareLevel = :scareLevel', {scareLevel});
+    }
+
+    if (excludeStoryIds && excludeStoryIds.length > 0) {
+      qb.andWhere('story.id NOT IN (:...excludeStoryIds)', {excludeStoryIds});
+    }
+
+    if (forYouTagIds && forYouTagIds.length > 0) {
+      // A second `innerJoin` on `story.tags` (like the `tag` filter above)
+      // would multiply rows for a story sharing several affinity tags, on
+      // top of the unconditional `tags` eager-load already in this query —
+      // silently truncating a keyset page below `limit`. A subquery keeps
+      // that fan-out contained, so the outer row shape is untouched. The
+      // join's ON-condition carries the raw `:...forYouTagIds` placeholder
+      // without binding it here — the value is supplied once, by the
+      // `andWhere` below, against the fully-assembled SQL string.
+      const affinitySubQuery = qb
+        .subQuery()
+        .select('affinityStory.id')
+        .from(Story, 'affinityStory')
+        .innerJoin(
+          'affinityStory.tags',
+          'affinityTag',
+          'affinityTag.id IN (:...forYouTagIds)'
+        )
+        .getQuery();
+      qb.andWhere(`story.id IN ${affinitySubQuery}`, {forYouTagIds});
     }
 
     return qb;
@@ -730,6 +774,91 @@ export class StoriesService {
       `(${column} ${cmp} :ck OR (${column} = :ck AND story.id ${cmp} :cid))`,
       {ck: key, cid: cursor.id}
     );
+  }
+
+  // Recent story ids this reader has liked/bookmarked/made reading progress
+  // on — capped per source so a long-time member's full history doesn't
+  // balloon the query. Recency, not completeness, is what should drive
+  // affinity.
+  private async _engagedStoryIds(userId: string): Promise<string[]> {
+    const CAP = 50;
+    const [likes, bookmarks, progress] = await Promise.all([
+      this.storyLikeRepository.find({
+        where: {user: {id: userId}},
+        relations: {story: true},
+        order: {createdAt: 'DESC'},
+        take: CAP,
+      }),
+      this.bookmarkRepository.find({
+        where: {user: {id: userId}},
+        relations: {story: true},
+        order: {createdAt: 'DESC'},
+        take: CAP,
+      }),
+      this.readingProgressRepository.find({
+        where: {user: {id: userId}},
+        relations: {story: true},
+        order: {updatedAt: 'DESC'},
+        take: CAP,
+      }),
+    ]);
+
+    const ids = new Set<string>();
+    [...likes, ...bookmarks, ...progress].forEach((row) =>
+      ids.add(row.story.id)
+    );
+    return [...ids];
+  }
+
+  // Top tags among those engaged stories, most-frequent first, capped. Not
+  // carried forward as a per-story score — For You is a filter (any shared
+  // tag), not a ranked recommender.
+  private async _affinityTagIds(
+    engagedStoryIds: string[],
+    limit = 8
+  ): Promise<string[]> {
+    if (engagedStoryIds.length === 0) return [];
+
+    const stories = await this.storiesRepository.find({
+      where: {id: In(engagedStoryIds)},
+      relations: {tags: true},
+      select: {id: true},
+    });
+
+    const freq = new Map<string, number>();
+    stories.forEach((story) =>
+      story.tags.forEach((tag) => freq.set(tag.id, (freq.get(tag.id) ?? 0) + 1))
+    );
+
+    return [...freq.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([id]) => id);
+  }
+
+  // The "For You" feed: approved stories tagged like what this reader has
+  // engaged with, newest first, excluding what they've already interacted
+  // with. Keyset-paged via the same findApprovedFeed used by the public
+  // feed — no `sort` is passed, so it defaults to plain createdAt ordering.
+  async findForYouFeed(
+    userId: string,
+    params: {cursor?: string; limit?: number}
+  ): Promise<{data: Story[]; nextCursor: string | null; total?: number}> {
+    const engagedStoryIds = await this._engagedStoryIds(userId);
+    if (engagedStoryIds.length === 0) {
+      return {data: [], nextCursor: null, total: 0};
+    }
+
+    const forYouTagIds = await this._affinityTagIds(engagedStoryIds);
+    if (forYouTagIds.length === 0) {
+      return {data: [], nextCursor: null, total: 0};
+    }
+
+    return this.findApprovedFeed({
+      cursor: params.cursor,
+      limit: params.limit,
+      filters: {forYouTagIds, excludeStoryIds: engagedStoryIds},
+    });
   }
 
   async update(

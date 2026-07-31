@@ -14,6 +14,9 @@ import {UsersService} from 'src/users/users.service';
 import {Story} from './entities/story.entity';
 import {StoryReport} from './entities/story-report.entity';
 import {StoryRevision} from './entities/story-revision.entity';
+import {StoryLike} from 'src/likes/entities/story-like.entity';
+import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {StoryReportReason} from './enums/story-report-reason.enum';
 import {ContentWarning} from './enums/content-warning.enum';
@@ -53,6 +56,9 @@ describe('StoriesService', () => {
     save: jest.Mock;
     find: jest.Mock;
   };
+  let storyLikeRepository: {find: jest.Mock};
+  let bookmarkRepository: {find: jest.Mock};
+  let readingProgressRepository: {find: jest.Mock};
   let usersService: {findOne: jest.Mock; markHasPublishedStory: jest.Mock};
   let tagsService: {findManyByIds: jest.Mock};
   let seriesService: {findOrCreateForAuthor: jest.Mock};
@@ -110,6 +116,9 @@ describe('StoriesService', () => {
       save: jest.fn((revision) => Promise.resolve(revision)),
       find: jest.fn().mockResolvedValue([]),
     };
+    storyLikeRepository = {find: jest.fn().mockResolvedValue([])};
+    bookmarkRepository = {find: jest.fn().mockResolvedValue([])};
+    readingProgressRepository = {find: jest.fn().mockResolvedValue([])};
     usersService = {
       findOne: jest.fn().mockResolvedValue(author),
       markHasPublishedStory: jest.fn().mockResolvedValue(undefined),
@@ -125,6 +134,12 @@ describe('StoriesService', () => {
         {
           provide: getRepositoryToken(StoryRevision),
           useValue: revisionsRepository,
+        },
+        {provide: getRepositoryToken(StoryLike), useValue: storyLikeRepository},
+        {provide: getRepositoryToken(Bookmark), useValue: bookmarkRepository},
+        {
+          provide: getRepositoryToken(ReadingProgress),
+          useValue: readingProgressRepository,
         },
         {provide: UsersService, useValue: usersService},
         {provide: TagsService, useValue: tagsService},
@@ -1042,6 +1057,62 @@ describe('StoriesService', () => {
       await expect(service.findRandomApprovedId()).rejects.toThrow(
         NotFoundException
       );
+    });
+  });
+
+  describe('findForYouFeed', () => {
+    it('returns empty without querying when the reader has no engagement history', async () => {
+      const result = await service.findForYouFeed('reader-1', {});
+
+      expect(result).toEqual({data: [], nextCursor: null, total: 0});
+      expect(repository.find).not.toHaveBeenCalled();
+    });
+
+    it('returns empty when engaged stories carry no tags', async () => {
+      storyLikeRepository.find.mockResolvedValue([{story: {id: 'story-1'}}]);
+      repository.find.mockResolvedValue([{id: 'story-1', tags: []}]);
+
+      const result = await service.findForYouFeed('reader-1', {});
+
+      expect(result).toEqual({data: [], nextCursor: null, total: 0});
+    });
+
+    it('derives affinity tags and exclusions from likes/bookmarks/reading progress', async () => {
+      storyLikeRepository.find.mockResolvedValue([{story: {id: 'story-1'}}]);
+      bookmarkRepository.find.mockResolvedValue([{story: {id: 'story-2'}}]);
+      readingProgressRepository.find.mockResolvedValue([
+        {story: {id: 'story-1'}}, // already-seen id, should dedupe
+      ]);
+      repository.find.mockResolvedValue([
+        {id: 'story-1', tags: [{id: 'tag-1'}, {id: 'tag-2'}]},
+        {id: 'story-2', tags: [{id: 'tag-1'}]},
+      ]);
+
+      const feedResult = {
+        data: [],
+        nextCursor: null,
+        total: 0,
+      };
+      const findApprovedFeedSpy = jest
+        .spyOn(service, 'findApprovedFeed')
+        .mockResolvedValue(feedResult);
+
+      const result = await service.findForYouFeed('reader-1', {
+        cursor: 'abc',
+        limit: 10,
+      });
+
+      expect(result).toBe(feedResult);
+      // tag-1 appears on both engaged stories (frequency 2) and should sort
+      // ahead of tag-2 (frequency 1).
+      expect(findApprovedFeedSpy).toHaveBeenCalledWith({
+        cursor: 'abc',
+        limit: 10,
+        filters: {
+          forYouTagIds: ['tag-1', 'tag-2'],
+          excludeStoryIds: ['story-1', 'story-2'],
+        },
+      });
     });
   });
 });

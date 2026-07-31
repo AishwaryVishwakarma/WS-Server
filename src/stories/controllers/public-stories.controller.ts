@@ -32,6 +32,7 @@ import {
 import type {Request} from 'express';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {StoryQueryDto} from '../dto/story-query.dto';
+import {ForYouQueryDto} from '../dto/for-you-query.dto';
 import {CommentsService} from 'src/comments/comments.service';
 import {
   CommentModerationPreviewResponseDto,
@@ -156,6 +157,25 @@ export class PublicStoriesController {
   async findRandom() {
     const id = await this.storiesService.findRandomApprovedId();
     return {id};
+  }
+
+  // The signed-in reader's personalized feed — same reason as `random`,
+  // must come before `:id`. Gated (not public like the rest of this
+  // controller's reads): the "for you" set is derived from the caller's own
+  // engagement history, not something an anonymous request can produce.
+  @Get('for-you')
+  @UseGuards(SessionAuthGuard)
+  async findForYou(@Query() query: ForYouQueryDto, @Req() req: Request) {
+    const {data, nextCursor, total} = await this.storiesService.findForYouFeed(
+      req.session.userId!,
+      {cursor: query.cursor, limit: query.limit}
+    );
+    return {
+      message: 'Success',
+      data: this._serializePreviews(data),
+      nextCursor,
+      total,
+    };
   }
 
   @Get(':id')
