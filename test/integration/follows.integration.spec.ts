@@ -200,6 +200,31 @@ describe('Follows (integration)', () => {
     expect(followers.body.data[0].id).toBe(readerId);
   });
 
+  it('excludes a muted-but-still-followed author from the Following feed', async () => {
+    const author = await authorWithStory('author@test.com');
+    const {client, token} = await member('reader@test.com');
+
+    await client
+      .put(`/users/${author.id}/follow`)
+      .set('x-csrf-token', token)
+      .expect(204);
+
+    const before = await client.get('/users/me/feed').expect(200);
+    expect(before.body.total).toBe(1);
+
+    await client
+      .put(`/users/${author.id}/mute`)
+      .set('x-csrf-token', token)
+      .expect(204);
+
+    const after = await client.get('/users/me/feed').expect(200);
+    expect(after.body.total).toBe(0);
+
+    // Muting is silent — the follow relationship itself is untouched.
+    const following = await client.get('/users/me/following/ids').expect(200);
+    expect(following.body).toEqual([author.id]);
+  });
+
   it('requires a session for the gated routes', async () => {
     const author = await authorWithStory('author@test.com');
     const anon = agent();

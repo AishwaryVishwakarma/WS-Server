@@ -3,6 +3,7 @@ import {TypeOrmModule} from '@nestjs/typeorm';
 import {StoriesModule} from 'src/stories/stories.module';
 import {UsersModule} from 'src/users/users.module';
 import {NotificationsModule} from 'src/notifications/notifications.module';
+import {MutesModule} from 'src/mutes/mutes.module';
 import {Follow} from './entities/follow.entity';
 import {FollowsService} from './follows.service';
 import {FollowsController} from './follows.controller';
@@ -13,6 +14,7 @@ import {FollowsController} from './follows.controller';
     UsersModule,
     StoriesModule,
     NotificationsModule,
+    MutesModule,
   ],
   controllers: [FollowsController],
   providers: [FollowsService],

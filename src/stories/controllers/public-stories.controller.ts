@@ -40,6 +40,7 @@ import {
 } from 'src/comments/dto/comment-response.dto';
 import {ReportStoryDto} from '../dto/report-story.dto';
 import {Role} from 'src/users/enums/role';
+import {MutesService} from 'src/mutes/mutes.service';
 
 // Reads are public (anonymous allowed, throttled); mutations require a session
 @Controller('stories')
@@ -48,7 +49,8 @@ export class PublicStoriesController {
     private readonly storiesService: StoriesService,
 
     @Inject(forwardRef(() => CommentsService))
-    private readonly commentsService: CommentsService
+    private readonly commentsService: CommentsService,
+    private readonly mutesService: MutesService
   ) {}
 
   private _serialize(
@@ -79,12 +81,24 @@ export class PublicStoriesController {
   @Get()
   @Throttle(PUBLIC_READ_THROTTLE)
   @UseGuards(OptionalSessionAuthGuard)
-  async findAll(@Query() query: StoryQueryDto) {
+  async findAll(@Query() query: StoryQueryDto, @Req() req: Request) {
     const {page, limit, cursor, ...filters} = query;
 
     if (page === undefined) {
+      // Only the keyset-paged infinite feed honors muted authors — the
+      // offset branch below backs the tag/author shelves, destinations a
+      // reader navigates to on purpose (same reasoning already applied to
+      // tags: visiting a muted author's profile directly still shows their
+      // work).
+      const mutedIds = req.session.userId
+        ? await this.mutesService.mutedAuthorIds(req.session.userId)
+        : [];
       const {data, nextCursor, total} =
-        await this.storiesService.findApprovedFeed({cursor, limit, filters});
+        await this.storiesService.findApprovedFeed({
+          cursor,
+          limit,
+          filters: {...filters, excludeAuthorIds: mutedIds},
+        });
       return {
         message: 'Success',
         data: this._serializePreviews(data),

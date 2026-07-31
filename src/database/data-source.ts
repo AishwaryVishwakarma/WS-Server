@@ -16,6 +16,7 @@ import {StoryLike} from 'src/likes/entities/story-like.entity';
 import {Series} from 'src/series/entities/series.entity';
 import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {ScareVote} from 'src/scare-ratings/entities/scare-vote.entity';
+import {MutedAuthor} from 'src/mutes/entities/muted-author.entity';
 import {migrations} from './migrations';
 
 // CLI-facing DataSource for the typeorm binary (migration:generate/run/
@@ -46,6 +47,7 @@ export default new DataSource({
     Series,
     ReadingProgress,
     ScareVote,
+    MutedAuthor,
   ],
   migrations,
 });

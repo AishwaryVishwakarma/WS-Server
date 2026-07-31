@@ -13,6 +13,7 @@ import {AdminStoriesController} from './controllers/admin-stories.controller';
 import {TagsModule} from 'src/tags/tags.module';
 import {CommentsModule} from 'src/comments/comments.module';
 import {SeriesModule} from 'src/series/series.module';
+import {MutesModule} from 'src/mutes/mutes.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import {SeriesModule} from 'src/series/series.module';
     TagsModule,
     forwardRef(() => CommentsModule),
     forwardRef(() => SeriesModule),
+    MutesModule,
   ],
   controllers: [PublicStoriesController, AdminStoriesController],
   providers: [StoriesService],

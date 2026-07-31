@@ -5,6 +5,7 @@ import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from 'src/users/users.service';
 import {NotificationsService} from 'src/notifications/notifications.service';
+import {MutesService} from 'src/mutes/mutes.service';
 import {Follow} from './entities/follow.entity';
 
 @Injectable()
@@ -14,7 +15,8 @@ export class FollowsService {
     private readonly followsRepository: Repository<Follow>,
     private readonly usersService: UsersService,
     private readonly storiesService: StoriesService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly mutesService: MutesService
   ) {}
 
   // Follow an author. Validates the target exists (findOne 404s otherwise) and
@@ -124,13 +126,22 @@ export class FollowsService {
   }
 
   // The Following feed: approved stories by the authors this member follows,
-  // newest first. Short-circuits when they follow nobody (an empty IN () is
-  // invalid SQL, and there's nothing to fetch anyway).
+  // newest first — minus anyone they've muted (quietly, no signal to either
+  // side; you can mute someone you still follow). Short-circuits when
+  // there's nobody left to fetch (an empty IN () is invalid SQL).
   async feed(userId: string, page = 1, limit = 20) {
-    const authorIds = await this.followingIds(userId);
-    if (authorIds.length === 0) {
+    const [authorIds, mutedIds] = await Promise.all([
+      this.followingIds(userId),
+      this.mutesService.mutedAuthorIds(userId),
+    ]);
+    const visibleAuthorIds = authorIds.filter((id) => !mutedIds.includes(id));
+    if (visibleAuthorIds.length === 0) {
       return getPaginatedResponse([], 0, page, limit);
     }
-    return this.storiesService.findApprovedByAuthorIds(authorIds, page, limit);
+    return this.storiesService.findApprovedByAuthorIds(
+      visibleAuthorIds,
+      page,
+      limit
+    );
   }
 }

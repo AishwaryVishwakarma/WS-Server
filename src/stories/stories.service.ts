@@ -32,6 +32,7 @@ import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {SeriesService} from 'src/series/series.service';
+import {MutesService} from 'src/mutes/mutes.service';
 import type {User} from 'src/users/entities/user.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
@@ -56,8 +57,9 @@ interface StoryFilters {
   forYouTagIds?: string[];
   /** For You feed only: exclude stories the reader has already engaged with. */
   excludeStoryIds?: string[];
-  /** For You feed only: exclude the reader's own stories. */
-  excludeAuthorId?: string;
+  /** For You feed: the reader's own id. Everywhere else (main feed, Following
+   *  feed): muted author ids. Carries both together for the For You feed. */
+  excludeAuthorIds?: string[];
 }
 
 // The slice of session state recordView reads/writes. Structural so the service
@@ -148,7 +150,8 @@ export class StoriesService {
     private readonly usersService: UsersService,
     private readonly tagsService: TagsService,
     @Inject(forwardRef(() => SeriesService))
-    private readonly seriesService: SeriesService
+    private readonly seriesService: SeriesService,
+    private readonly mutesService: MutesService
   ) {}
 
   private async _getStoryIfAuthorized(
@@ -438,7 +441,7 @@ export class StoriesService {
       sort,
       forYouTagIds,
       excludeStoryIds,
-      excludeAuthorId,
+      excludeAuthorIds,
     } = filters;
 
     const qb = this.storiesRepository
@@ -531,13 +534,14 @@ export class StoriesService {
       qb.andWhere('story.id NOT IN (:...excludeStoryIds)', {excludeStoryIds});
     }
 
-    if (excludeAuthorId) {
+    if (excludeAuthorIds && excludeAuthorIds.length > 0) {
       // author is a left join (a soft-deleted author's stories still show,
-      // per the withDeleted scope above) — a plain `!=` would silently drop
-      // those rows too, since SQL's NULL != x is NULL, not true.
-      qb.andWhere('(author.id IS NULL OR author.id != :excludeAuthorId)', {
-        excludeAuthorId,
-      });
+      // per the withDeleted scope above) — a plain `NOT IN` would silently
+      // drop those rows too, since SQL's NULL NOT IN (...) is NULL, not true.
+      qb.andWhere(
+        '(author.id IS NULL OR author.id NOT IN (:...excludeAuthorIds))',
+        {excludeAuthorIds}
+      );
     }
 
     if (forYouTagIds && forYouTagIds.length > 0) {
@@ -891,13 +895,15 @@ export class StoriesService {
       return {data: [], nextCursor: null, total: 0};
     }
 
+    const mutedIds = await this.mutesService.mutedAuthorIds(userId);
+
     return this.findApprovedFeed({
       cursor: params.cursor,
       limit: params.limit,
       filters: {
         forYouTagIds,
         excludeStoryIds: engagedStoryIds,
-        excludeAuthorId: userId,
+        excludeAuthorIds: [userId, ...mutedIds],
       },
     });
   }

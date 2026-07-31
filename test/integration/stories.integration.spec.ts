@@ -949,9 +949,41 @@ describe('Stories (integration)', () => {
     it('rejects more than 5 tags with 400', async () => {
       const {browser} = await setupCatalog();
 
-      await browser
-        .get('/stories?tags=a,b,c,d,e,f')
-        .expect(400);
+      await browser.get('/stories?tags=a,b,c,d,e,f').expect(400);
+    });
+
+    it('excludes a muted author from the keyset feed, but not the offset/tag shelf or the story directly', async () => {
+      const {lighthouse} = await setupCatalog();
+
+      const reader = agent();
+      await registerUser(reader, {email: 'muter@test.com'});
+      const readerToken = await getCsrfToken(reader);
+      const author = await request
+        .agent(testApp.app.getHttpServer())
+        .get(`/stories/${lighthouse.id}`)
+        .expect(200);
+      const authorId = author.body.author.id as string;
+
+      await reader
+        .put(`/users/${authorId}/mute`)
+        .set('x-csrf-token', readerToken)
+        .expect(204);
+
+      // Keyset (no `page`) — the infinite feed — excludes the muted author.
+      const feed = await reader.get('/stories').expect(200);
+      expect((feed.body.data as {id: string}[]).map((s) => s.id)).not.toContain(
+        lighthouse.id
+      );
+
+      // Offset paging (tag shelf) — a destination visited on purpose — still
+      // shows their work.
+      const shelf = await reader.get('/stories?tag=ghosts&page=1').expect(200);
+      expect((shelf.body.data as {id: string}[]).map((s) => s.id)).toContain(
+        lighthouse.id
+      );
+
+      // Direct fetch by id is unaffected either way.
+      await reader.get(`/stories/${lighthouse.id}`).expect(200);
     });
   });
 
@@ -1801,6 +1833,41 @@ describe('Stories (integration)', () => {
       expect(collected).not.toContain(liked.id);
       expect(collected).not.toContain(unrelated.id);
       expect(collected).not.toContain(ownStory.id);
+    });
+
+    it('excludes a muted author sharing an affinity tag', async () => {
+      const admin = await seedAdmin(testApp);
+      const adminToken = await getCsrfToken(admin);
+      const createTag = (name: string) =>
+        admin.post('/admin/tags').set('x-csrf-token', adminToken).send({name});
+
+      const {body: ghosts} = await createTag('ghosts').expect(201);
+
+      const {story: liked} = await createStory(
+        {...STORY_PAYLOAD, title: 'Liked Story', tags: [ghosts.id]},
+        'liked-author2@test.com'
+      );
+      await approveStory(liked.id, admin);
+
+      const {story: mutedAuthorStory, author: mutedAuthor} = await createStory(
+        {...STORY_PAYLOAD, title: 'Muted Author Story', tags: [ghosts.id]},
+        'muted-author@test.com'
+      );
+      await approveStory(mutedAuthorStory.id, admin);
+
+      const reader = agent();
+      await registerUser(reader, {email: 'for-you-muter@test.com'});
+      await likeStory(reader, liked.id);
+
+      const readerToken = await getCsrfToken(reader);
+      await reader
+        .put(`/users/${(mutedAuthor as {id: string}).id}/mute`)
+        .set('x-csrf-token', readerToken)
+        .expect(204);
+
+      const response = await reader.get('/stories/for-you').expect(200);
+      const ids = (response.body.data as {id: string}[]).map((s) => s.id);
+      expect(ids).not.toContain(mutedAuthorStory.id);
     });
   });
 });

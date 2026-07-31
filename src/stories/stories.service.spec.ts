@@ -9,6 +9,7 @@ import {getRepositoryToken} from '@nestjs/typeorm';
 import {QueryFailedError} from 'typeorm';
 import {TagsService} from 'src/tags/tags.service';
 import {SeriesService} from 'src/series/series.service';
+import {MutesService} from 'src/mutes/mutes.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {Story} from './entities/story.entity';
@@ -62,6 +63,7 @@ describe('StoriesService', () => {
   let usersService: {findOne: jest.Mock; markHasPublishedStory: jest.Mock};
   let tagsService: {findManyByIds: jest.Mock};
   let seriesService: {findOrCreateForAuthor: jest.Mock};
+  let mutesService: {mutedAuthorIds: jest.Mock};
   // Shared by findRandomApprovedId (select/where/orderBy/getOne) and
   // _assignSeries's MAX(seriesPosition) aggregate (select/where/getRawOne).
   let randomQueryBuilder: {
@@ -125,6 +127,7 @@ describe('StoriesService', () => {
     };
     tagsService = {findManyByIds: jest.fn()};
     seriesService = {findOrCreateForAuthor: jest.fn()};
+    mutesService = {mutedAuthorIds: jest.fn().mockResolvedValue([])};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -144,6 +147,7 @@ describe('StoriesService', () => {
         {provide: UsersService, useValue: usersService},
         {provide: TagsService, useValue: tagsService},
         {provide: SeriesService, useValue: seriesService},
+        {provide: MutesService, useValue: mutesService},
       ],
     }).compile();
 
@@ -1111,9 +1115,32 @@ describe('StoriesService', () => {
         filters: {
           forYouTagIds: ['tag-1', 'tag-2'],
           excludeStoryIds: ['story-1', 'story-2'],
-          excludeAuthorId: 'reader-1',
+          excludeAuthorIds: ['reader-1'],
         },
       });
+    });
+
+    it('also excludes muted authors alongside the reader themselves', async () => {
+      storyLikeRepository.find.mockResolvedValue([{story: {id: 'story-1'}}]);
+      repository.find.mockResolvedValue([
+        {id: 'story-1', tags: [{id: 'tag-1'}]},
+      ]);
+      mutesService.mutedAuthorIds.mockResolvedValue(['muted-1', 'muted-2']);
+
+      const feedResult = {data: [], nextCursor: null, total: 0};
+      const findApprovedFeedSpy = jest
+        .spyOn(service, 'findApprovedFeed')
+        .mockResolvedValue(feedResult);
+
+      await service.findForYouFeed('reader-1', {});
+
+      expect(findApprovedFeedSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filters: expect.objectContaining({
+            excludeAuthorIds: ['reader-1', 'muted-1', 'muted-2'],
+          }),
+        })
+      );
     });
   });
 });

@@ -31,9 +31,11 @@ import {Bookmark} from './bookmarks/entities/bookmark.entity';
 import {BookmarksModule} from './bookmarks/bookmarks.module';
 import {Follow} from './follows/entities/follow.entity';
 import {FollowsModule} from './follows/follows.module';
+import {MutesModule} from './mutes/mutes.module';
 import {StoryLike} from './likes/entities/story-like.entity';
 import {LikesModule} from './likes/likes.module';
 import {ScareVote} from './scare-ratings/entities/scare-vote.entity';
+import {MutedAuthor} from './mutes/entities/muted-author.entity';
 import {ScareRatingsModule} from './scare-ratings/scare-ratings.module';
 import {Series} from './series/entities/series.entity';
 import {SeriesModule} from './series/series.module';
@@ -177,6 +179,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           Series,
           ReadingProgress,
           ScareVote,
+          MutedAuthor,
         ],
         synchronize: false,
         migrations,
@@ -193,6 +196,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     MetricsModule,
     BookmarksModule,
     FollowsModule,
+    MutesModule,
     LikesModule,
     SeriesModule,
     ReadingProgressModule,
