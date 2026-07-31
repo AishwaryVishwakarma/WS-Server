@@ -1,5 +1,7 @@
-import {Type} from 'class-transformer';
+import {Transform, Type} from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsInt,
   IsOptional,
@@ -44,11 +46,26 @@ export class StoryQueryDto extends PaginationDto {
   @MaxLength(200)
   cursor?: string;
 
-  /** Tag slug (see Tag.normalizeName) — filters to stories carrying the tag. */
+  /** Tag slug (see Tag.normalizeName) — filters to stories carrying the tag.
+   *  Single-tag only; used by the /tags/:slug shelf page. */
   @IsOptional()
   @IsString()
   @MaxLength(20)
   tag?: string;
+
+  /** Tag slugs, comma-separated — the /stories feed's multi-select filter.
+   *  AND semantics: a story must carry every one of these, not just any.
+   *  Distinct from `tag` above (that one stays single-slug for the shelf
+   *  page); capped at 5 to match TagPicker's own selection limit. */
+  @IsOptional()
+  @Transform(({value}: {value: unknown}) =>
+    typeof value === 'string' ? value.split(',').filter(Boolean) : value
+  )
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsString({each: true})
+  @MaxLength(20, {each: true})
+  tags?: string[];
 
   /** Case-insensitive substring match against title and excerpt. */
   @IsOptional()

@@ -920,6 +920,39 @@ describe('Stories (integration)', () => {
       await browser.get('/stories?scareLevel=9').expect(400);
       await browser.get('/stories?sort=spookiest').expect(400);
     });
+
+    it('filters by multiple tags with AND semantics', async () => {
+      const {browser, lighthouse} = await setupCatalog();
+
+      // Only the lighthouse carries both ghosts and demons — the walls
+      // story is demons-only, so it must not match.
+      const response = await browser
+        .get('/stories?tags=ghosts,demons')
+        .expect(200);
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].id).toBe(lighthouse.id);
+    });
+
+    it('returns an empty page when no single story carries every tag', async () => {
+      const {browser} = await setupCatalog();
+
+      // ghosts+demons together only matches the lighthouse; adding a tag
+      // slug that exists but was never attached to it excludes it too.
+      const response = await browser
+        .get('/stories?tags=ghosts,demons,vampires')
+        .expect(200);
+
+      expect(response.body.total).toBe(0);
+    });
+
+    it('rejects more than 5 tags with 400', async () => {
+      const {browser} = await setupCatalog();
+
+      await browser
+        .get('/stories?tags=a,b,c,d,e,f')
+        .expect(400);
+    });
   });
 
   describe('GET /users/me/stories filters', () => {
