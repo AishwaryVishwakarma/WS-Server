@@ -10,6 +10,7 @@ import {requestIdMiddleware} from './middlewares/request-id';
 import {createHttpMetricsMiddleware} from './middlewares/http-metrics';
 import {MetricsService} from './metrics/metrics.service';
 import {NotificationsStream} from './notifications/notifications-stream.service';
+import {PresenceService} from './presence/presence.service';
 import {SessionRegistryService} from './session/session-registry.service';
 import {SESSION_MAX_AGE_MS} from './session/session.constants';
 
@@ -59,6 +60,10 @@ export async function setupApp(
   // Same story for the per-user session index (see SessionRegistryService).
   const sessionRegistryService = app.get(SessionRegistryService);
   sessionRegistryService.bindRedis(redisClient);
+
+  // Same story for the story-reader presence counter (see PresenceService).
+  const presenceService = app.get(PresenceService);
+  presenceService.bindRedis(redisClient);
 
   // Wire notification pub/sub: the main client publishes, a dedicated
   // subscriber connection (a client in subscribe mode can't run commands) feeds

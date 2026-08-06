@@ -47,6 +47,7 @@ import {CommentReactionsModule} from './comment-reactions/comment-reactions.modu
 import {DigestModule} from './digest/digest.module';
 import {SiteSettings} from './settings/entities/site-settings.entity';
 import {SettingsModule} from './settings/settings.module';
+import {PresenceModule} from './presence/presence.module';
 import {migrations} from './database/migrations';
 
 // mysql2's own default when no pool size is configured — used as our fallback
@@ -213,6 +214,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     ScheduleModule.forRoot(),
     DigestModule,
     SettingsModule,
+    PresenceModule,
   ],
   controllers: [AppController],
   providers: [
@@ -240,7 +242,14 @@ export class AppModule {
         '/auth/reset-password',
         // Anonymous read-counter ping — anonymous browsers can't hold a CSRF
         // token, and it's a harmless denormalized counter, not a real mutation.
-        {path: 'stories/:id/view', method: RequestMethod.POST}
+        {path: 'stories/:id/view', method: RequestMethod.POST},
+        // Same reasoning — an anonymous browser's very first request to the
+        // site could plausibly be this presence heartbeat.
+        {path: 'stories/:id/presence', method: RequestMethod.PUT},
+        // navigator.sendBeacon (used so this "I'm leaving" ping reliably
+        // fires even during a hard page unload) always POSTs and can't
+        // attach a custom header, so it can never carry a CSRF token.
+        {path: 'stories/:id/presence/leave', method: RequestMethod.POST}
       )
       .forRoutes('*');
   }

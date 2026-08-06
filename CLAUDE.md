@@ -279,6 +279,31 @@ npm run dev:infra:down
   would otherwise match the literal path `random` as that route's `:id`).
   `ORDER BY RAND()` scans the whole approved set to shuffle; fine at today's
   scale, would want an offset/gap-sampling scheme on a much bigger table.
+- **Live presence** (`src/presence/`, `PUT /stories/:id/presence`, public):
+  "someone else is reading this" — no DB table, purely a Redis sorted set
+  (`presence:story:<id>`, member = a client-generated per-tab id, score =
+  expiry). The client heartbeats every 15s; each call upserts the caller,
+  prunes expired members, and returns the count of *others* present. Only
+  tracked/reported for a story that's actually approved and live (mirrors
+  `recordView`'s "don't 404, just don't count" stance) so the count itself
+  can't leak a non-public story's existence/activity. The member TTL (90s) is
+  deliberately generous relative to the 15s heartbeat: a backgrounded browser
+  tab gets its own timers throttled (a hidden Chrome tab can be delayed to
+  roughly once a minute), so a too-short TTL made a genuinely-still-reading
+  tab silently expire from the other tab's count — the web client also
+  heartbeats immediately on `visibilitychange` to recover faster than the
+  TTL window alone would. A wide TTL alone would make a genuine departure
+  decrement slowly, though, so `POST /stories/:id/presence/leave` is a
+  second, explicit "I'm gone" signal fired via `navigator.sendBeacon` on
+  unmount/tab-close (reliable even during a hard page unload, unlike a
+  normal fetch) — it removes the tab from the sorted set immediately. Since
+  `sendBeacon` always POSTs and can never attach a custom header, this route
+  is CSRF-exempt (see `app.module.ts`) for a stronger reason than the
+  heartbeat's own "no token yet" exemption: it's a hard technical
+  requirement, not just a courtesy for a visitor's very first request.
+  `PresenceService` reads the `Story` repository directly (not
+  `StoriesService`) to avoid a module dependency on `StoriesModule`,
+  mirroring `computeBadges`'s own reasoning.
 - **Series** (`src/series/`): an author's own ordered grouping of their
   stories (e.g. serialized fiction posted as "Part 1", "Part 2"). Unmoderated
   and author-owned — no admin gate, unlike tags — because it's just a label,
