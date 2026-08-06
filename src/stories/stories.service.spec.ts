@@ -10,6 +10,7 @@ import {QueryFailedError} from 'typeorm';
 import {TagsService} from 'src/tags/tags.service';
 import {SeriesService} from 'src/series/series.service';
 import {MutesService} from 'src/mutes/mutes.service';
+import {SettingsService} from 'src/settings/settings.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {Story} from './entities/story.entity';
@@ -68,6 +69,7 @@ describe('StoriesService', () => {
   let tagsService: {findManyByIds: jest.Mock};
   let seriesService: {findOrCreateForAuthor: jest.Mock};
   let mutesService: {mutedAuthorIds: jest.Mock};
+  let settingsService: {requiresApproval: jest.Mock};
   // Shared by findRandomApprovedId (select/where/orderBy/getOne) and
   // _assignSeries's MAX(seriesPosition) aggregate (select/where/getRawOne).
   let randomQueryBuilder: {
@@ -133,6 +135,9 @@ describe('StoriesService', () => {
     tagsService = {findManyByIds: jest.fn()};
     seriesService = {findOrCreateForAuthor: jest.fn()};
     mutesService = {mutedAuthorIds: jest.fn().mockResolvedValue([])};
+    // Defaults to true (approval required) so every pre-existing test keeps
+    // asserting today's behavior without needing to know about the setting.
+    settingsService = {requiresApproval: jest.fn().mockResolvedValue(true)};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -153,6 +158,7 @@ describe('StoriesService', () => {
         {provide: TagsService, useValue: tagsService},
         {provide: SeriesService, useValue: seriesService},
         {provide: MutesService, useValue: mutesService},
+        {provide: SettingsService, useValue: settingsService},
       ],
     }).compile();
 
@@ -236,6 +242,73 @@ describe('StoriesService', () => {
 
       expect(seriesService.findOrCreateForAuthor).not.toHaveBeenCalled();
       expect(story.series).toBeUndefined();
+    });
+
+    it('defaults to pending and does not mark the author published', async () => {
+      const story = await service.create(baseDto, 'author-1');
+
+      expect(story.status).toBe(StoryStatus.Pending);
+      expect(usersService.markHasPublishedStory).not.toHaveBeenCalled();
+    });
+
+    it('publishes immediately when the site does not require approval', async () => {
+      settingsService.requiresApproval.mockResolvedValue(false);
+
+      const story = await service.create(baseDto, 'author-1');
+
+      expect(story.status).toBe(StoryStatus.Approved);
+      expect(usersService.markHasPublishedStory).toHaveBeenCalledWith(
+        'author-1'
+      );
+    });
+
+    it('still saves a draft even when approval is not required', async () => {
+      settingsService.requiresApproval.mockResolvedValue(false);
+
+      const story = await service.create({...baseDto, draft: true}, 'author-1');
+
+      expect(story.status).toBe(StoryStatus.Draft);
+      expect(usersService.markHasPublishedStory).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('submitDraft', () => {
+    beforeEach(() => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        status: StoryStatus.Draft,
+        author,
+      });
+    });
+
+    it('moves a draft into the pending queue by default', async () => {
+      const story = await service.submitDraft('story-1', 'author-1', Role.User);
+
+      expect(story.status).toBe(StoryStatus.Pending);
+      expect(usersService.markHasPublishedStory).not.toHaveBeenCalled();
+    });
+
+    it('publishes immediately when the site does not require approval', async () => {
+      settingsService.requiresApproval.mockResolvedValue(false);
+
+      const story = await service.submitDraft('story-1', 'author-1', Role.User);
+
+      expect(story.status).toBe(StoryStatus.Approved);
+      expect(usersService.markHasPublishedStory).toHaveBeenCalledWith(
+        'author-1'
+      );
+    });
+
+    it('rejects submitting a story that is not a draft', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        status: StoryStatus.Pending,
+        author,
+      });
+
+      await expect(
+        service.submitDraft('story-1', 'author-1', Role.User)
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -392,6 +465,47 @@ describe('StoriesService', () => {
 
       expect(story.status).toBe(StoryStatus.Approved);
       expect(revisionsRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update — auto-approve', () => {
+    beforeEach(() => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        status: StoryStatus.Rejected,
+        tags: [],
+        contentWarnings: [],
+      });
+    });
+
+    it('resets an edited, already-moderated story back to pending by default', async () => {
+      const story = await service.update(
+        'story-1',
+        {title: 'New title'},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.status).toBe(StoryStatus.Pending);
+      expect(usersService.markHasPublishedStory).not.toHaveBeenCalled();
+    });
+
+    it('approves an edit outright when the site does not require approval', async () => {
+      settingsService.requiresApproval.mockResolvedValue(false);
+
+      const story = await service.update(
+        'story-1',
+        {title: 'New title'},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.status).toBe(StoryStatus.Approved);
+      expect(usersService.markHasPublishedStory).toHaveBeenCalledWith(
+        'author-1'
+      );
     });
   });
 

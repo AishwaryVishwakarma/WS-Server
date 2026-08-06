@@ -33,6 +33,7 @@ import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {SeriesService} from 'src/series/series.service';
 import {MutesService} from 'src/mutes/mutes.service';
+import {SettingsService} from 'src/settings/settings.service';
 import type {User} from 'src/users/entities/user.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
@@ -152,7 +153,8 @@ export class StoriesService {
     private readonly tagsService: TagsService,
     @Inject(forwardRef(() => SeriesService))
     private readonly seriesService: SeriesService,
-    private readonly mutesService: MutesService
+    private readonly mutesService: MutesService,
+    private readonly settingsService: SettingsService
   ) {}
 
   private async _getStoryIfAuthorized(
@@ -224,10 +226,20 @@ export class StoriesService {
 
     const author = await this.usersService.findOne(userId);
 
+    // Drafts are never in moderation to begin with; a non-draft only skips
+    // the pending queue when the site-wide approval requirement is off.
+    const requireApproval = draft
+      ? true
+      : await this.settingsService.requiresApproval();
+
     const story = this.storiesRepository.create({
       ...rest,
       excerpt: excerpt || rest.content.slice(0, 280) + '...',
-      status: draft ? StoryStatus.Draft : StoryStatus.Pending,
+      status: draft
+        ? StoryStatus.Draft
+        : requireApproval
+          ? StoryStatus.Pending
+          : StoryStatus.Approved,
       scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
       author,
     });
@@ -240,7 +252,17 @@ export class StoriesService {
       await this._assignSeries(story, author, seriesTitle);
     }
 
-    return this.storiesRepository.save(story);
+    const saved = await this.storiesRepository.save(story);
+
+    // Mirrors updateStatus's own latch — without this, an author whose
+    // stories are only ever auto-approved (never manually approved by an
+    // admin) would never trip auto-verification or the Published/Prolific
+    // badges.
+    if (saved.status === StoryStatus.Approved) {
+      await this.usersService.markHasPublishedStory(author.id);
+    }
+
+    return saved;
   }
 
   // Attaches `story` to (creating if needed) `author`'s series named
@@ -1003,19 +1025,32 @@ export class StoriesService {
     }
 
     // A non-admin editing an already-moderated story sends it back to pending
-    // so content changes can't bypass review. Drafts stay drafts — they were
-    // never in moderation.
+    // so content changes can't bypass review — unless the site-wide approval
+    // requirement is off, in which case it stays (or returns to) approved
+    // instead, consistent with moderation being fully bypassed. Drafts stay
+    // drafts — they were never in moderation.
+    let justAutoApproved = false;
     if (
       contentChanged &&
       role !== Role.Admin &&
       story.status !== StoryStatus.Pending &&
       story.status !== StoryStatus.Draft
     ) {
-      story.status = StoryStatus.Pending;
+      const requireApproval = await this.settingsService.requiresApproval();
+      story.status = requireApproval
+        ? StoryStatus.Pending
+        : StoryStatus.Approved;
       story.isFlagged = false;
+      justAutoApproved = !requireApproval;
     }
 
-    return await this.storiesRepository.save(story);
+    const saved = await this.storiesRepository.save(story);
+
+    if (justAutoApproved) {
+      await this.usersService.markHasPublishedStory(story.author.id);
+    }
+
+    return saved;
   }
 
   // Owner-or-admin only — this is edit history, not public content. Newest
@@ -1039,9 +1074,16 @@ export class StoriesService {
 
     await this._assertWithinPublishLimit(userId);
 
-    story.status = StoryStatus.Pending;
+    const requireApproval = await this.settingsService.requiresApproval();
+    story.status = requireApproval ? StoryStatus.Pending : StoryStatus.Approved;
 
-    return await this.storiesRepository.save(story);
+    const saved = await this.storiesRepository.save(story);
+
+    if (saved.status === StoryStatus.Approved) {
+      await this.usersService.markHasPublishedStory(story.author.id);
+    }
+
+    return saved;
   }
 
   async updateStatus(

@@ -14,6 +14,7 @@ import {TagsModule} from 'src/tags/tags.module';
 import {CommentsModule} from 'src/comments/comments.module';
 import {SeriesModule} from 'src/series/series.module';
 import {MutesModule} from 'src/mutes/mutes.module';
+import {SettingsModule} from 'src/settings/settings.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import {MutesModule} from 'src/mutes/mutes.module';
     forwardRef(() => CommentsModule),
     forwardRef(() => SeriesModule),
     MutesModule,
+    SettingsModule,
   ],
   controllers: [PublicStoriesController, AdminStoriesController],
   providers: [StoriesService],

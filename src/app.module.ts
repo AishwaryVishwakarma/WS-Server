@@ -45,6 +45,8 @@ import {ReadingProgressModule} from './reading-progress/reading-progress.module'
 import {CommentReaction} from './comment-reactions/entities/comment-reaction.entity';
 import {CommentReactionsModule} from './comment-reactions/comment-reactions.module';
 import {DigestModule} from './digest/digest.module';
+import {SiteSettings} from './settings/entities/site-settings.entity';
+import {SettingsModule} from './settings/settings.module';
 import {migrations} from './database/migrations';
 
 // mysql2's own default when no pool size is configured — used as our fallback
@@ -185,6 +187,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           ScareVote,
           MutedAuthor,
           CommentReaction,
+          SiteSettings,
         ],
         synchronize: false,
         migrations,
@@ -209,6 +212,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     CommentReactionsModule,
     ScheduleModule.forRoot(),
     DigestModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [

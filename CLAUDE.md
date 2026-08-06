@@ -242,6 +242,19 @@ npm run dev:infra:down
   `PATCH /admin/stories/:id/status`. `StoriesService.findOneVisible()` gates
   non-approved reads to author/admin. A non-admin editing a moderated story
   resets it to `pending`. `isFlagged` mirrors `status === flagged`.
+  **Site-wide approval toggle** (`src/settings/`): a single-row `SiteSettings`
+  table (`requireStoryApproval`, defaults `true`, seeded by its migration) an
+  admin flips via `GET`/`PATCH /admin/settings` (Settings tab on the web
+  admin panel) — meant for a launch period with no moderation capacity yet.
+  When off, `StoriesService.create`/`submitDraft`/`update` all resolve
+  straight to `approved` instead of `pending` (edits skip re-review too, not
+  just initial creation) and call `usersService.markHasPublishedStory` the
+  same way `updateStatus` does on a manual approval, so auto-verification and
+  the Published/Prolific badges keep working without an admin ever touching
+  the queue. `updateStatus`/`bulkUpdateStatus` (the manual approve/reject
+  actions) are unaffected either way. No caching on the read — it's not a hot
+  path, and correctness immediately after a flip matters more than shaving
+  one query.
 - **Story reports** (mirrors comment reports): members flag a story via
   `POST /stories/:id/report` (gated; one per member via a unique
   `(user, story)` on `story_report`; can't report your own, and only a story

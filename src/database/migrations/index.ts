@@ -36,6 +36,7 @@ import {AddMutedContentWarnings1785484220156} from './1785484220156-AddMutedCont
 import {AddMutedAuthors1785500606343} from './1785500606343-AddMutedAuthors';
 import {AddCommentReactions1785502347045} from './1785502347045-AddCommentReactions';
 import {AddReadingStreaksAndDigest1785510641162} from './1785510641162-AddReadingStreaksAndDigest';
+import {AddSiteSettings1786200000000} from './1786200000000-AddSiteSettings';
 
 export const migrations = [
   Baseline1783883957794,
@@ -69,4 +70,5 @@ export const migrations = [
   AddMutedAuthors1785500606343,
   AddCommentReactions1785502347045,
   AddReadingStreaksAndDigest1785510641162,
+  AddSiteSettings1786200000000,
 ];
