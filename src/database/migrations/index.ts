@@ -37,6 +37,9 @@ import {AddMutedAuthors1785500606343} from './1785500606343-AddMutedAuthors';
 import {AddCommentReactions1785502347045} from './1785502347045-AddCommentReactions';
 import {AddReadingStreaksAndDigest1785510641162} from './1785510641162-AddReadingStreaksAndDigest';
 import {AddSiteSettings1786200000000} from './1786200000000-AddSiteSettings';
+import {AddImageUploadSettings1786300000000} from './1786300000000-AddImageUploadSettings';
+import {AddUserAvatarIcon1786400000000} from './1786400000000-AddUserAvatarIcon';
+import {AddUserAvatarColor1786500000000} from './1786500000000-AddUserAvatarColor';
 
 export const migrations = [
   Baseline1783883957794,
@@ -71,4 +74,7 @@ export const migrations = [
   AddCommentReactions1785502347045,
   AddReadingStreaksAndDigest1785510641162,
   AddSiteSettings1786200000000,
+  AddImageUploadSettings1786300000000,
+  AddUserAvatarIcon1786400000000,
+  AddUserAvatarColor1786500000000,
 ];

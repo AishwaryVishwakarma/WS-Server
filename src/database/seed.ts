@@ -19,6 +19,9 @@ import {Role} from 'src/users/enums/role';
 import {ReportReason} from 'src/users/enums/report-reason.enum';
 import {StoryReportReason} from 'src/stories/enums/story-report-reason.enum';
 import {UsersService} from 'src/users/users.service';
+import {AvatarIcon} from 'src/users/enums/avatar-icon.enum';
+import {AvatarColor} from 'src/users/enums/avatar-color.enum';
+import {SettingsService} from 'src/settings/settings.service';
 
 // The Nest Logger is muted below ({logger: ['error', 'warn']}) to hide
 // bootstrap noise, so the seeder reports via console directly.
@@ -37,17 +40,20 @@ const WRITERS = [
     email: 'alice@whisperingshadows.dev',
     isVerified: true,
     bio: 'Collector of small-town hauntings.',
-    // Deterministic placeholder avatars (DiceBear) so the byline demonstrates
-    // the profile-picture path. Carol is left imageless on purpose to exercise
-    // the initial-letter fallback.
-    profileImageUrl:
-      'https://api.dicebear.com/9.x/thumbs/svg?seed=Alice%20Mortlake',
+    // Demonstrates the curated icon-avatar path, plus an explicit color
+    // override. Carol is left with neither an icon nor a URL on purpose, to
+    // exercise the initial-letter fallback (with its auto name-based color).
+    avatarIcon: AvatarIcon.Ghost,
+    avatarColor: AvatarColor.Spectral,
   },
   {
     name: 'Bob Greaves',
     email: 'bob@whisperingshadows.dev',
     isVerified: true,
     bio: 'I write down what the river tells me.',
+    // Demonstrates the profileImageUrl path (a real photo always outranks a
+    // chosen icon) — seeded with allowProfileImageUpload temporarily on, see
+    // the toggle dance around the seeding calls below.
     profileImageUrl:
       'https://api.dicebear.com/9.x/thumbs/svg?seed=Bob%20Greaves',
   },
@@ -63,6 +69,8 @@ const WRITERS = [
     isVerified: true,
     isBlocked: true,
     bio: 'Currently unavailable.',
+    avatarIcon: AvatarIcon.Skull,
+    avatarColor: AvatarColor.Blood,
   },
 ];
 
@@ -712,6 +720,7 @@ async function seed() {
     const likesService = app.get(LikesService);
     const scareRatingsService = app.get(ScareRatingsService);
     const notificationsService = app.get(NotificationsService);
+    const settingsService = app.get(SettingsService);
 
     const existingAdmin = await dataSource
       .getRepository(User)
@@ -728,6 +737,18 @@ async function seed() {
       log(`Wiping database "${String(dataSource.options.database)}"...`);
       await wipeDatabase(dataSource);
     }
+
+    // Temporarily allow image URLs so the seeded demo data (Bob's avatar,
+    // every story's cover) actually persists through the real create() path
+    // — both default off at launch. Flipped back off once seeding
+    // completes, below, so a freshly-seeded app still reflects the real
+    // launch-default state for anyone testing against it afterward; this
+    // doesn't retroactively touch the rows already written, same as how the
+    // approval toggle never touches existing story statuses.
+    await settingsService.updateSettings({
+      allowProfileImageUpload: true,
+      allowStoryCoverImage: true,
+    });
 
     // Users
     const admin = (await usersService.create({
@@ -930,6 +951,12 @@ async function seed() {
     for (const notification of aliceNotifications) {
       await notificationsService.markRead(notification.id, aliceId);
     }
+
+    // Restore the real launch-default state now that seeding is done.
+    await settingsService.updateSettings({
+      allowProfileImageUpload: false,
+      allowStoryCoverImage: false,
+    });
 
     const statusSummary = [...statusCounts.entries()]
       .map(([status, count]) => `${count} ${status}`)

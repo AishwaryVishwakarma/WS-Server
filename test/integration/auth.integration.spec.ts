@@ -119,6 +119,13 @@ describe('Auth (integration)', () => {
         .expect(400);
     });
 
+    it('rejects a display name over 30 characters with 400', async () => {
+      await agent()
+        .post('/auth/register')
+        .send({...DEFAULT_USER, name: 'x'.repeat(31)})
+        .expect(400);
+    });
+
     it('rejects registration while already logged in', async () => {
       const client = agent();
       await registerUser(client);

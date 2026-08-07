@@ -69,7 +69,10 @@ describe('StoriesService', () => {
   let tagsService: {findManyByIds: jest.Mock};
   let seriesService: {findOrCreateForAuthor: jest.Mock};
   let mutesService: {mutedAuthorIds: jest.Mock};
-  let settingsService: {requiresApproval: jest.Mock};
+  let settingsService: {
+    requiresApproval: jest.Mock;
+    allowsStoryCoverImage: jest.Mock;
+  };
   // Shared by findRandomApprovedId (select/where/orderBy/getOne) and
   // _assignSeries's MAX(seriesPosition) aggregate (select/where/getRawOne).
   let randomQueryBuilder: {
@@ -137,7 +140,12 @@ describe('StoriesService', () => {
     mutesService = {mutedAuthorIds: jest.fn().mockResolvedValue([])};
     // Defaults to true (approval required) so every pre-existing test keeps
     // asserting today's behavior without needing to know about the setting.
-    settingsService = {requiresApproval: jest.fn().mockResolvedValue(true)};
+    settingsService = {
+      requiresApproval: jest.fn().mockResolvedValue(true),
+      // Defaults to true (allowed) so every pre-existing test that sets
+      // coverImageUrl keeps asserting today's behavior unchanged.
+      allowsStoryCoverImage: jest.fn().mockResolvedValue(true),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -182,6 +190,28 @@ describe('StoriesService', () => {
       );
 
       expect(story.excerpt).toBe('Custom excerpt');
+    });
+
+    it('drops coverImageUrl when the site setting disallows it', async () => {
+      settingsService.allowsStoryCoverImage.mockResolvedValue(false);
+
+      const story = await service.create(
+        {...baseDto, coverImageUrl: 'https://example.com/cover.png'},
+        'author-1'
+      );
+
+      expect(story.coverImageUrl).toBeUndefined();
+    });
+
+    it('keeps coverImageUrl when the site setting allows it', async () => {
+      settingsService.allowsStoryCoverImage.mockResolvedValue(true);
+
+      const story = await service.create(
+        {...baseDto, coverImageUrl: 'https://example.com/cover.png'},
+        'author-1'
+      );
+
+      expect(story.coverImageUrl).toBe('https://example.com/cover.png');
     });
 
     it('attaches tags when they all exist', async () => {
@@ -349,6 +379,48 @@ describe('StoriesService', () => {
       await expect(
         service.update('story-1', {title: 'Nope'}, 'someone-else', Role.User)
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('drops a coverImageUrl update when the site setting disallows it', async () => {
+      settingsService.allowsStoryCoverImage.mockResolvedValue(false);
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        tags: [],
+        contentWarnings: [],
+        coverImageUrl: 'https://example.com/old.png',
+      });
+
+      const story = await service.update(
+        'story-1',
+        {coverImageUrl: 'https://example.com/new.png'},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.coverImageUrl).toBe('https://example.com/old.png');
+    });
+
+    it('applies a coverImageUrl update when the site setting allows it', async () => {
+      settingsService.allowsStoryCoverImage.mockResolvedValue(true);
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        author,
+        tags: [],
+        contentWarnings: [],
+        coverImageUrl: 'https://example.com/old.png',
+      });
+
+      const story = await service.update(
+        'story-1',
+        {coverImageUrl: 'https://example.com/new.png'},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.coverImageUrl).toBe('https://example.com/new.png');
     });
   });
 

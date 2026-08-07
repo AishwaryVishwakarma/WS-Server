@@ -12,6 +12,7 @@ import {AdminUsersController} from './controllers/admin-users.controller';
 import {CommentsModule} from 'src/comments/comments.module';
 import {PrivateUsersController} from './controllers/private-users.controller';
 import {StoriesModule} from 'src/stories/stories.module';
+import {SettingsModule} from 'src/settings/settings.module';
 import {UsersService} from './users.service';
 
 @Module({
@@ -32,6 +33,7 @@ import {UsersService} from './users.service';
     ]),
     SessionModule,
     StoriesModule,
+    SettingsModule,
     forwardRef(() => CommentsModule),
   ],
   controllers: [

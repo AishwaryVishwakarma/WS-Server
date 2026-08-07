@@ -27,6 +27,8 @@ export class SettingsService {
       settings ?? {
         id: SETTINGS_ROW_ID,
         requireStoryApproval: true,
+        allowProfileImageUpload: false,
+        allowStoryCoverImage: false,
         updatedAt: new Date(),
       }
     );
@@ -35,6 +37,16 @@ export class SettingsService {
   async requiresApproval(): Promise<boolean> {
     const settings = await this.getSettings();
     return settings.requireStoryApproval;
+  }
+
+  async allowsProfileImageUpload(): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.allowProfileImageUpload;
+  }
+
+  async allowsStoryCoverImage(): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.allowStoryCoverImage;
   }
 
   async updateSettings(dto: UpdateSiteSettingsDto): Promise<SiteSettings> {

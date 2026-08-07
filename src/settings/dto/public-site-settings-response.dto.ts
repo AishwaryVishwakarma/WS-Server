@@ -4,6 +4,8 @@ import {Expose} from 'class-transformer';
 // outside the admin panel).
 export class PublicSiteSettingsResponseDto {
   @Expose() requireStoryApproval: boolean;
+  @Expose() allowProfileImageUpload: boolean;
+  @Expose() allowStoryCoverImage: boolean;
 
   constructor(partial: Partial<PublicSiteSettingsResponseDto>) {
     Object.assign(this, partial);

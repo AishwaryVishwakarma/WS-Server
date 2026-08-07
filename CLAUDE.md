@@ -304,6 +304,25 @@ npm run dev:infra:down
   `PresenceService` reads the `Story` repository directly (not
   `StoriesService`) to avoid a module dependency on `StoriesModule`,
   mirroring `computeBadges`'s own reasoning.
+- **Image-upload toggles** (`SiteSettings.allowProfileImageUpload`/
+  `.allowStoryCoverImage`, both default `false` — no real upload pipeline
+  exists yet, so arbitrary external URLs are off at launch): enforced
+  server-side, not just hidden in the UI — `UsersService._applyUserUpdates`/
+  `.create` and `StoriesService.create`/`.update` each silently drop
+  `profileImageUrl`/`coverImageUrl` from an incoming update when the
+  matching toggle is off, rather than rejecting it, so a stale client with
+  the old URL field doesn't error. `User.avatarIcon` (a curated
+  `AvatarIcon` enum — themed icons a member can pick instead of an initial-
+  letter fallback) and `User.avatarColor` (a curated `AvatarColor` enum — an
+  explicit background-color override, replacing the frontend's default
+  name-based hash; `null` means "auto") have **no** such gate; both are
+  always allowed, since they're curated, not an arbitrary URL.
+  `database/seed.ts` temporarily flips both
+  toggles on for the duration of seeding (so the demo data's images
+  actually persist through the real `create()` paths) and back off once
+  done, leaving a freshly-seeded app in the real launch-default state —
+  same non-retroactive reasoning as the approval toggle: already-written
+  rows are unaffected by the toggle either way.
 - **Series** (`src/series/`): an author's own ordered grouping of their
   stories (e.g. serialized fiction posted as "Part 1", "Part 2"). Unmoderated
   and author-owned — no admin gate, unlike tags — because it's just a label,

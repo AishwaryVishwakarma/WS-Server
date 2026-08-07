@@ -232,6 +232,15 @@ export class StoriesService {
       ? true
       : await this.settingsService.requiresApproval();
 
+    // Silently drop rather than reject — a stale client with the old URL
+    // field shouldn't error, it just doesn't take effect.
+    if (
+      rest.coverImageUrl !== undefined &&
+      !(await this.settingsService.allowsStoryCoverImage())
+    ) {
+      delete rest.coverImageUrl;
+    }
+
     const story = this.storiesRepository.create({
       ...rest,
       excerpt: excerpt || rest.content.slice(0, 280) + '...',
@@ -955,6 +964,15 @@ export class StoriesService {
     const {tags: tagIds, seriesTitle, scheduledFor, ...rest} = updateStoryDto;
     // `draft` only applies at creation; submission goes through submitDraft
     delete rest.draft;
+
+    // Silently drop rather than reject — a stale client with the old URL
+    // field shouldn't error, it just doesn't take effect.
+    if (
+      rest.coverImageUrl !== undefined &&
+      !(await this.settingsService.allowsStoryCoverImage())
+    ) {
+      delete rest.coverImageUrl;
+    }
 
     // A non-admin can't retroactively pull an already-public story back out
     // of sight by scheduling it into the future — that's not what scheduled

@@ -23,6 +23,7 @@ import {paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import {syncReportCount} from 'src/utils/report-count';
 import {computeStreakUpdate} from './streak';
+import {SettingsService} from 'src/settings/settings.service';
 
 // Thresholds for the "Prolific"/"Fan Favorite"/"Conversation Starter"
 // badges. Prolific mirrors StoriesService.FREE_PUBLISH_LIMIT (10) — the
@@ -56,7 +57,8 @@ export class UsersService {
     private readonly bookmarksRepository: Repository<Bookmark>,
     @InjectRepository(Follow)
     private readonly followsRepository: Repository<Follow>,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly settingsService: SettingsService
   ) {}
 
   // Hash the password using bcrypt
@@ -71,6 +73,17 @@ export class UsersService {
   // Update the user entity with the new data
   private async _applyUserUpdates(user: User, updateUserDto: UpdateUserDto) {
     const {password, ...rest} = updateUserDto;
+
+    // Silently drop rather than reject — a stale client with the old URL
+    // field shouldn't error, it just doesn't take effect. avatarIcon has no
+    // such gate: it's always allowed (curated, not an arbitrary URL).
+    if (
+      rest.profileImageUrl !== undefined &&
+      !(await this.settingsService.allowsProfileImageUpload())
+    ) {
+      delete rest.profileImageUrl;
+    }
+
     Object.assign(user, rest);
 
     if (password) {
@@ -87,9 +100,17 @@ export class UsersService {
   // Accepts RegisterUserDto (self-registration) or CreateUserDto (admin, extends it)
   async create(createUserDto: RegisterUserDto) {
     const hashedPassword = await this._generateHash(createUserDto.password);
+    const rest = {...createUserDto};
+
+    if (
+      rest.profileImageUrl !== undefined &&
+      !(await this.settingsService.allowsProfileImageUpload())
+    ) {
+      delete rest.profileImageUrl;
+    }
 
     const user = this.usersRepository.create({
-      ...createUserDto,
+      ...rest,
       password: hashedPassword,
     });
 

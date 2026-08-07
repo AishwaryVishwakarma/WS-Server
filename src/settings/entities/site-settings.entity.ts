@@ -11,6 +11,14 @@ export class SiteSettings {
   @Column({type: 'boolean', default: true})
   requireStoryApproval: boolean;
 
+  // Both default false — arbitrary external image URLs are off at launch
+  // until a real upload pipeline exists; an admin can flip either on later.
+  @Column({type: 'boolean', default: false})
+  allowProfileImageUpload: boolean;
+
+  @Column({type: 'boolean', default: false})
+  allowStoryCoverImage: boolean;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }

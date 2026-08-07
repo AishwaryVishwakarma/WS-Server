@@ -20,6 +20,7 @@ import {Badge} from './enums/badge.enum';
 import {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import type {UpdateUserDto} from './dto/update-user.dto';
 import {UsersService} from './users.service';
+import {SettingsService} from 'src/settings/settings.service';
 
 const duplicateEntryError = () => {
   const error = new QueryFailedError('INSERT', [], new Error('dup'));
@@ -63,6 +64,7 @@ describe('UsersService', () => {
   };
   let bookmarksRepository: {createQueryBuilder: jest.Mock};
   let followsRepository: {countBy: jest.Mock};
+  let settingsService: {allowsProfileImageUpload: jest.Mock};
 
   beforeEach(async () => {
     repository = {
@@ -107,6 +109,11 @@ describe('UsersService', () => {
       createQueryBuilder: jest.fn(() => bookmarksQueryBuilder),
     };
     followsRepository = {countBy: jest.fn().mockResolvedValue(0)};
+    // Defaults to true (allowed) so every pre-existing test that sets
+    // profileImageUrl keeps asserting today's behavior unchanged.
+    settingsService = {
+      allowsProfileImageUpload: jest.fn().mockResolvedValue(true),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -122,6 +129,7 @@ describe('UsersService', () => {
           // Low salt rounds to keep hashing fast in tests
           useValue: {get: jest.fn().mockReturnValue('4')},
         },
+        {provide: SettingsService, useValue: settingsService},
       ],
     }).compile();
 
@@ -387,6 +395,58 @@ describe('UsersService', () => {
         })
       ).rejects.toThrow(ConflictException);
     });
+
+    it('drops profileImageUrl when the site setting disallows it', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+        profileImageUrl: 'https://example.com/me.png',
+      })) as User;
+
+      expect(user.profileImageUrl).toBeUndefined();
+    });
+
+    it('keeps profileImageUrl when the site setting allows it', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(true);
+
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+        profileImageUrl: 'https://example.com/me.png',
+      })) as User;
+
+      expect(user.profileImageUrl).toBe('https://example.com/me.png');
+    });
+
+    it('always keeps avatarIcon regardless of the profile-image setting', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+        avatarIcon: 'ghost' as never,
+      })) as User;
+
+      expect(user.avatarIcon).toBe('ghost');
+    });
+
+    it('always keeps avatarColor regardless of the profile-image setting', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+        avatarColor: 'blood' as never,
+      })) as User;
+
+      expect(user.avatarColor).toBe('blood');
+    });
   });
 
   describe('findOne', () => {
@@ -433,6 +493,66 @@ describe('UsersService', () => {
       const user = (await service.update('user-1', {name: 'New'})) as User;
 
       expect(user.password).toBe('old-hash');
+    });
+
+    it('drops a profileImageUrl update when the site setting disallows it', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old',
+        profileImageUrl: 'https://example.com/old.png',
+      });
+
+      const user = (await service.update('user-1', {
+        profileImageUrl: 'https://example.com/new.png',
+      })) as User;
+
+      expect(user.profileImageUrl).toBe('https://example.com/old.png');
+    });
+
+    it('applies a profileImageUrl update when the site setting allows it', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(true);
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old',
+        profileImageUrl: 'https://example.com/old.png',
+      });
+
+      const user = (await service.update('user-1', {
+        profileImageUrl: 'https://example.com/new.png',
+      })) as User;
+
+      expect(user.profileImageUrl).toBe('https://example.com/new.png');
+    });
+
+    it('always applies an avatarIcon update regardless of the profile-image setting', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old',
+        avatarIcon: null,
+      });
+
+      const user = (await service.update('user-1', {
+        avatarIcon: 'skull' as never,
+      })) as User;
+
+      expect(user.avatarIcon).toBe('skull');
+    });
+
+    it('always applies an avatarColor update regardless of the profile-image setting', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old',
+        avatarColor: null,
+      });
+
+      const user = (await service.update('user-1', {
+        avatarColor: 'ember' as never,
+      })) as User;
+
+      expect(user.avatarColor).toBe('ember');
     });
 
     it('locks verification when an admin explicitly sets isVerified', async () => {

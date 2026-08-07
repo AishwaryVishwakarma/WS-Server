@@ -11,6 +11,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import {Role} from '../enums/role';
+import {AvatarIcon} from '../enums/avatar-icon.enum';
+import {AvatarColor} from '../enums/avatar-color.enum';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {UserReport} from './user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
@@ -74,6 +76,20 @@ export class User {
 
   @Column({length: 500, nullable: true})
   profileImageUrl: string;
+
+  // A chosen themed icon avatar — always available (unlike profileImageUrl,
+  // not gated by allowProfileImageUpload) since it's curated, not an
+  // arbitrary external URL. Avatar's precedence: profileImageUrl > avatarIcon
+  // > initial-letter fallback.
+  @Column({type: 'enum', enum: AvatarIcon, nullable: true})
+  avatarIcon: AvatarIcon | null;
+
+  // An explicit background-color override for the avatar (icon or initial
+  // letter) — null means "auto", the frontend's deterministic name-based
+  // hash. Same always-allowed treatment as avatarIcon: curated, not an
+  // arbitrary value, so no SiteSettings gate.
+  @Column({type: 'enum', enum: AvatarColor, nullable: true})
+  avatarColor: AvatarColor | null;
 
   @Column({length: 500, nullable: true})
   bio: string;
