@@ -43,7 +43,7 @@ const WRITERS = [
     // Demonstrates the curated icon-avatar path, plus an explicit color
     // override. Carol is left with neither an icon nor a URL on purpose, to
     // exercise the initial-letter fallback (with its auto name-based color).
-    avatarIcon: AvatarIcon.Ghost,
+    avatarIcon: AvatarIcon.Moon,
     avatarColor: AvatarColor.Spectral,
   },
   {
