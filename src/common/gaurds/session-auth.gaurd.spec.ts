@@ -4,12 +4,14 @@ import {Role} from 'src/users/enums/role';
 import {AUTO_VERIFY_MIN_ACCOUNT_AGE_MS} from 'src/users/auto-verify';
 import {SessionAuthGuard} from './session-auth.gaurd';
 
-const createContext = (session: Record<string, unknown>) =>
-  ({
+const createContext = (session: Record<string, unknown>) => {
+  session.destroy = jest.fn((cb: () => void) => cb());
+  return {
     switchToHttp: () => ({
       getRequest: () => ({session}),
     }),
-  }) as unknown as ExecutionContext;
+  } as unknown as ExecutionContext;
+};
 
 const oldEnough = new Date(Date.now() - AUTO_VERIFY_MIN_ACCOUNT_AGE_MS - 1000);
 
@@ -61,24 +63,30 @@ describe('SessionAuthGuard', () => {
     expect(findOneBy).not.toHaveBeenCalled();
   });
 
-  it('rejects a user that no longer exists (e.g. soft-deleted)', async () => {
+  it('rejects a user that no longer exists (e.g. soft-deleted) and destroys the stale session', async () => {
     findOneBy.mockResolvedValue(null);
+    const session: Record<string, unknown> = {userId: 'user-1'};
+    const context = createContext(session);
 
-    await expect(
-      guard.canActivate(createContext({userId: 'user-1'}))
-    ).rejects.toThrow(UnauthorizedException);
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      UnauthorizedException
+    );
+    expect(session.destroy).toHaveBeenCalled();
   });
 
-  it('rejects a user who has been blocked', async () => {
+  it('rejects a user who has been blocked and destroys the session', async () => {
     findOneBy.mockResolvedValue({
       id: 'user-1',
       role: Role.User,
       isBlocked: true,
     });
+    const session: Record<string, unknown> = {userId: 'user-1'};
+    const context = createContext(session);
 
-    await expect(
-      guard.canActivate(createContext({userId: 'user-1'}))
-    ).rejects.toThrow(UnauthorizedException);
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      UnauthorizedException
+    );
+    expect(session.destroy).toHaveBeenCalled();
   });
 
   describe('auto-verification', () => {

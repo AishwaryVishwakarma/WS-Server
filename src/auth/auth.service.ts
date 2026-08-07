@@ -122,4 +122,12 @@ export class AuthService {
 
     if (userId) await this.sessionRegistryService.untrack(userId, sid);
   }
+
+  async hasActiveSession(req: Request): Promise<boolean> {
+    const userId = req.session.userId;
+    if (!userId) return false;
+
+    const user = await this.usersRepository.findOneBy({id: userId});
+    return !!user && !user.isBlocked;
+  }
 }

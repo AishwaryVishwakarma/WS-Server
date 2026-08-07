@@ -22,6 +22,7 @@ describe('AuthService', () => {
     where: jest.Mock;
     getOne: jest.Mock;
   };
+  let findOneBy: jest.Mock;
   let usersService: {create: jest.Mock; findOrCreateGoogleUser: jest.Mock};
   let sessionService: {regenerate: jest.Mock; destroy: jest.Mock};
   let sessionRegistryService: {track: jest.Mock; untrack: jest.Mock};
@@ -43,6 +44,7 @@ describe('AuthService', () => {
       where: jest.fn().mockReturnThis(),
       getOne: jest.fn(),
     };
+    findOneBy = jest.fn();
     usersService = {create: jest.fn(), findOrCreateGoogleUser: jest.fn()};
     sessionService = {
       regenerate: jest.fn().mockResolvedValue(undefined),
@@ -59,7 +61,10 @@ describe('AuthService', () => {
         AuthService,
         {
           provide: getRepositoryToken(User),
-          useValue: {createQueryBuilder: jest.fn(() => queryBuilder)},
+          useValue: {
+            createQueryBuilder: jest.fn(() => queryBuilder),
+            findOneBy,
+          },
         },
         {provide: UsersService, useValue: usersService},
         {provide: SessionService, useValue: sessionService},
@@ -281,6 +286,49 @@ describe('AuthService', () => {
       await service.logout(req);
 
       expect(sessionRegistryService.untrack).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('hasActiveSession', () => {
+    it('returns false when the request has no session', async () => {
+      const req = createRequest();
+
+      await expect(service.hasActiveSession(req)).resolves.toBe(false);
+      expect(findOneBy).not.toHaveBeenCalled();
+    });
+
+    it('returns true for a session whose user still exists and is not blocked', async () => {
+      findOneBy.mockResolvedValue({id: 'user-1', isBlocked: false});
+      const req = createRequest();
+      req.session.userId = 'user-1';
+
+      await expect(service.hasActiveSession(req)).resolves.toBe(true);
+    });
+
+    // The scenario this guards against: a dev DB reseed (or an admin
+    // deleting/blocking the account) leaves a browser holding a session
+    // that's present but stale — session.userId no longer resolves to a
+    // real user. It must not destroy the session itself: the caller's own
+    // register/login/googleSignIn regenerates it right after, which needs
+    // req.session to still exist (destroy() would delete it out from under
+    // that call).
+    it('returns false without destroying the session when the user no longer exists', async () => {
+      findOneBy.mockResolvedValue(null);
+      const req = createRequest();
+      req.session.userId = 'user-1';
+
+      await expect(service.hasActiveSession(req)).resolves.toBe(false);
+      expect(sessionService.destroy).not.toHaveBeenCalled();
+      expect(sessionRegistryService.untrack).not.toHaveBeenCalled();
+    });
+
+    it('returns false without destroying the session when the user has been blocked', async () => {
+      findOneBy.mockResolvedValue({id: 'user-1', isBlocked: true});
+      const req = createRequest();
+      req.session.userId = 'user-1';
+
+      await expect(service.hasActiveSession(req)).resolves.toBe(false);
+      expect(sessionService.destroy).not.toHaveBeenCalled();
     });
   });
 });

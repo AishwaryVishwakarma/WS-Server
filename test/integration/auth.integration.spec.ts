@@ -135,6 +135,21 @@ describe('Auth (integration)', () => {
         .send({...DEFAULT_USER, email: 'second@test.com'})
         .expect(400);
     });
+
+    // Simulates a dev DB reseed (or an admin deleting the account): the
+    // browser still holds a session cookie from before, but the user it
+    // points at is gone. That must self-heal — not permanently wedge the
+    // client behind "Already logged in" with no way to sign in again.
+    it("allows registering again once the previous session's user is gone", async () => {
+      const client = agent();
+      await registerUser(client);
+      await userRepository().delete({email: DEFAULT_USER.email});
+
+      await client
+        .post('/auth/register')
+        .send({...DEFAULT_USER, email: 'second@test.com'})
+        .expect(201);
+    });
   });
 
   describe('POST /auth/login', () => {

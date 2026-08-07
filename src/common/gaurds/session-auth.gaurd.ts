@@ -28,6 +28,9 @@ export class SessionAuthGuard implements CanActivate {
     const user = await usersRepository.findOneBy({id: userId});
 
     if (!user || user.isBlocked) {
+      await new Promise<void>((resolve) => {
+        request.session.destroy(() => resolve());
+      });
       throw new UnauthorizedException('Your session is no longer valid');
     }
 

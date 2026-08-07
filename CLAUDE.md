@@ -159,6 +159,19 @@ npm run dev:infra:down
   shrinking it — otherwise a later plain login for the same user could
   truncate the index out from under an still-live remembered session,
   hiding it from a subsequent password-reset logout-everywhere.
+  **Stale sessions self-heal** rather than permanently wedging a client:
+  `register`/`login`/`google` reject a second sign-in via
+  `AuthService.hasActiveSession`, which — unlike a bare `session.userId`
+  truthiness check — reloads that user from the DB and returns `false` if
+  they're gone or blocked (e.g. after a dev DB reseed, where Redis sessions
+  outlive the wiped MySQL rows), letting the sign-in attempt through instead
+  of erroring "Already logged in" forever. It deliberately does **not**
+  destroy the stale session itself — `_establishSession`'s `regenerate()`
+  call right after needs `req.session` to still exist, and express-session's
+  `destroy()` deletes it synchronously, so destroying here would crash the
+  very sign-in it's supposed to allow. `SessionAuthGuard` handles the mirror
+  case (a gated request, not a sign-in) by destroying the session before
+  it 401s, since nothing after that throw needs `req.session` anymore.
 - **Google sign-in** (`POST /auth/google`, CSRF-exempt like login): the web
   sends the Google Identity Services **ID token**; `GoogleAuthService.verify`
   (google-auth-library, audience = `GOOGLE_CLIENT_ID`) checks it, then

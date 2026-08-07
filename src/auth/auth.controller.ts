@@ -58,7 +58,9 @@ export class AuthController {
     @Body() registerUserDto: RegisterUserDto,
     @Req() req: Request
   ) {
-    if (req.session.userId) throw new BadRequestException('Already logged in');
+    if (await this.authService.hasActiveSession(req)) {
+      throw new BadRequestException('Already logged in');
+    }
 
     const user = await this.authService.register(registerUserDto, req);
     return this._serialize(user, req.session.role);
@@ -67,7 +69,9 @@ export class AuthController {
   @Post('login')
   @Throttle(AUTH_THROTTLE)
   async login(@Body() loginInfoDto: LoginInfoDto, @Req() req: Request) {
-    if (req.session.userId) throw new BadRequestException('Already logged in');
+    if (await this.authService.hasActiveSession(req)) {
+      throw new BadRequestException('Already logged in');
+    }
 
     const user = await this.authService.login(loginInfoDto, req);
     return this._serialize(user, req.session.role);
@@ -78,7 +82,9 @@ export class AuthController {
   @Post('google')
   @Throttle(AUTH_THROTTLE)
   async google(@Body() googleSignInDto: GoogleSignInDto, @Req() req: Request) {
-    if (req.session.userId) throw new BadRequestException('Already logged in');
+    if (await this.authService.hasActiveSession(req)) {
+      throw new BadRequestException('Already logged in');
+    }
 
     const user = await this.authService.googleSignIn(
       googleSignInDto.credential,
