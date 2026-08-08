@@ -3,7 +3,7 @@
 // `WHERE (sortKey, id) </> (…)` seek instead of a growing OFFSET. Base64url so
 // it's URL-safe and the client treats it as opaque.
 //
-// The key is always a string: a full-precision `datetime(6)` string for the
+// The key is always a string: a full-precision `timestamp(6)` string for the
 // createdAt sorts (a JS Date would drop the microsecond tail and re-include the
 // boundary row), or the commentCount for most-commented. The service produces
 // and interprets it — this module only encodes and decodes.

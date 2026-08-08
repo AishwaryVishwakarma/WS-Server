@@ -3,6 +3,7 @@ import {DataSource} from 'typeorm';
 import {User} from 'src/users/entities/user.entity';
 import {UserReport} from 'src/users/entities/user-report.entity';
 import {PasswordResetToken} from 'src/auth/entities/password-reset-token.entity';
+import {PendingRegistration} from 'src/auth/entities/pending-registration.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {StoryReport} from 'src/stories/entities/story-report.entity';
 import {StoryRevision} from 'src/stories/entities/story-revision.entity';
@@ -18,15 +19,16 @@ import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.en
 import {ScareVote} from 'src/scare-ratings/entities/scare-vote.entity';
 import {MutedAuthor} from 'src/mutes/entities/muted-author.entity';
 import {CommentReaction} from 'src/comment-reactions/entities/comment-reaction.entity';
+import {SiteSettings} from 'src/settings/entities/site-settings.entity';
 import {migrations} from './migrations';
 
 // CLI-facing DataSource for the typeorm binary (migration:generate/run/
 // revert — see package.json scripts, which run it from dist). The runtime
 // app configures its own connection in app.module.ts; keep the two in sync.
 export default new DataSource({
-  type: 'mysql',
+  type: 'postgres',
   host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '3306', 10),
+  port: parseInt(process.env.DB_PORT || '5432', 10),
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
@@ -45,11 +47,13 @@ export default new DataSource({
     Follow,
     StoryLike,
     PasswordResetToken,
+    PendingRegistration,
     Series,
     ReadingProgress,
     ScareVote,
     MutedAuthor,
     CommentReaction,
+    SiteSettings,
   ],
   migrations,
 });

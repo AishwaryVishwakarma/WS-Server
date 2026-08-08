@@ -3,9 +3,9 @@ import {QueryFailedError} from 'typeorm';
 
 export function handleQueryFailedError(error: unknown, action: string) {
   if (error instanceof QueryFailedError) {
-    // MySQL error code for duplicate entry: 1062
+    // Postgres SQLSTATE for unique_violation
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    if ((error as any).code === 'ER_DUP_ENTRY') {
+    if ((error as any).code === '23505') {
       throw new ConflictException(`${action} failed: Duplicate entry`);
     }
 

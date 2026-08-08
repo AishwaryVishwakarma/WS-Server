@@ -24,7 +24,7 @@ import {SettingsService} from 'src/settings/settings.service';
 
 const duplicateEntryError = () => {
   const error = new QueryFailedError('INSERT', [], new Error('dup'));
-  (error as any).code = 'ER_DUP_ENTRY';
+  (error as any).code = '23505';
   return error;
 };
 
@@ -446,6 +446,43 @@ describe('UsersService', () => {
       })) as User;
 
       expect(user.avatarColor).toBe('blood');
+    });
+  });
+
+  describe('createFromVerifiedRegistration', () => {
+    it('saves a user with the given pre-hashed password, unchanged', async () => {
+      const user = (await service.createFromVerifiedRegistration(
+        {name: 'Test', email: 'a@b.com'},
+        'already-hashed'
+      )) as User;
+
+      expect(user.password).toBe('already-hashed');
+    });
+
+    it('applies the same profile-image-setting gate as create()', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+
+      const user = (await service.createFromVerifiedRegistration(
+        {
+          name: 'Test',
+          email: 'a@b.com',
+          profileImageUrl: 'https://example.com/me.png',
+        },
+        'already-hashed'
+      )) as User;
+
+      expect(user.profileImageUrl).toBeUndefined();
+    });
+
+    it('maps a duplicate email to ConflictException', async () => {
+      repository.save.mockRejectedValue(duplicateEntryError());
+
+      await expect(
+        service.createFromVerifiedRegistration(
+          {name: 'Test', email: 'a@b.com'},
+          'already-hashed'
+        )
+      ).rejects.toThrow(ConflictException);
     });
   });
 

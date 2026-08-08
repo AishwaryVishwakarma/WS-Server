@@ -16,7 +16,7 @@ import {Follow} from 'src/follows/entities/follow.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
-import {Like, MoreThan, Repository, type FindOptionsWhere} from 'typeorm';
+import {ILike, MoreThan, Repository, type FindOptionsWhere} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
@@ -61,8 +61,10 @@ export class UsersService {
     private readonly settingsService: SettingsService
   ) {}
 
-  // Hash the password using bcrypt
-  private _generateHash(password: string) {
+  // Hash the password using bcrypt — public so callers that hash ahead of
+  // creating the User row (e.g. RegistrationOtpService, which hashes at
+  // registration-start time, before the OTP is even confirmed) can reuse it.
+  hashPassword(password: string) {
     const saltRounds = parseInt(
       this.configService.get<string>('SALT_ROUNDS') || '10'
     );
@@ -87,7 +89,7 @@ export class UsersService {
     Object.assign(user, rest);
 
     if (password) {
-      user.password = await this._generateHash(password);
+      user.password = await this.hashPassword(password);
     }
 
     try {
@@ -99,8 +101,26 @@ export class UsersService {
 
   // Accepts RegisterUserDto (self-registration) or CreateUserDto (admin, extends it)
   async create(createUserDto: RegisterUserDto) {
-    const hashedPassword = await this._generateHash(createUserDto.password);
-    const rest = {...createUserDto};
+    const {password, ...rest} = createUserDto;
+    const hashedPassword = await this.hashPassword(password);
+    return this._createUserWithHash(rest, hashedPassword);
+  }
+
+  // Used by registration-OTP confirm, where the password was already hashed
+  // back at registration-start time (before the code was even sent) — the
+  // PendingRegistration row only ever holds the hash, never the plaintext.
+  async createFromVerifiedRegistration(
+    dto: Omit<RegisterUserDto, 'password'>,
+    hashedPassword: string
+  ) {
+    return this._createUserWithHash(dto, hashedPassword);
+  }
+
+  private async _createUserWithHash(
+    dto: Omit<RegisterUserDto, 'password'>,
+    hashedPassword: string
+  ) {
+    const rest = {...dto};
 
     if (
       rest.profileImageUrl !== undefined &&
@@ -134,13 +154,18 @@ export class UsersService {
     name: string;
     picture?: string;
   }): Promise<User> {
+    // User.email is stored lowercased (see User.normalizeEmail) — Google's
+    // own address is realistically already lowercase, but match its
+    // guarantee rather than assume it.
+    const email = profile.email.toLowerCase();
+
     const byGoogleId = await this.usersRepository.findOne({
       where: {googleId: profile.googleId},
     });
     if (byGoogleId) return byGoogleId;
 
     const byEmail = await this.usersRepository.findOne({
-      where: {email: profile.email},
+      where: {email},
     });
     if (byEmail) {
       byEmail.googleId = profile.googleId;
@@ -158,7 +183,7 @@ export class UsersService {
     // shouldn't be able to dodge a ban by re-registering) with a clear message,
     // rather than letting the unique index reject the insert as a raw 409.
     const removed = await this.usersRepository.findOne({
-      where: [{googleId: profile.googleId}, {email: profile.email}],
+      where: [{googleId: profile.googleId}, {email}],
       withDeleted: true,
     });
     if (removed) {
@@ -167,7 +192,7 @@ export class UsersService {
 
     const user = this.usersRepository.create({
       name: profile.name,
-      email: profile.email,
+      email,
       googleId: profile.googleId,
       password: null,
       // Google already verified the address.
@@ -203,7 +228,9 @@ export class UsersService {
       reported ? base : undefined;
 
     if (search) {
-      const like = Like(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      // ILIKE for case-insensitive matching (Postgres's default collation is
+      // case-sensitive, unlike MySQL's).
+      const like = ILike(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
       where = [
         {...base, name: like},
         {...base, email: like},
@@ -412,7 +439,8 @@ export class UsersService {
   // uses it to decide whether to actually mail a link, but must respond to
   // the caller identically either way (no account-enumeration signal).
   async findOneByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOneBy({email});
+    // User.email is stored lowercased (see User.normalizeEmail).
+    return this.usersRepository.findOneBy({email: email.toLowerCase()});
   }
 
   // Sets a new password directly — used by password-reset, where a valid
@@ -420,7 +448,7 @@ export class UsersService {
   // ownership. updatedAt bumps normally; this is a real account change,
   // unlike the report/resolve moderation-metadata updates elsewhere.
   async updatePassword(userId: string, newPassword: string): Promise<void> {
-    const hashedPassword = await this._generateHash(newPassword);
+    const hashedPassword = await this.hashPassword(newPassword);
     await this.usersRepository.update(userId, {password: hashedPassword});
   }
 

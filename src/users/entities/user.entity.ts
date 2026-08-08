@@ -1,6 +1,8 @@
 import {Exclude} from 'class-transformer';
 import {Story} from 'src/stories/entities/story.entity';
 import {
+  BeforeInsert,
+  BeforeUpdate,
   Column,
   CreateDateColumn,
   DeleteDateColumn,
@@ -21,8 +23,8 @@ import type {ContentWarning} from 'src/stories/enums/content-warning.enum';
 
 @Entity()
 // One Google identity maps to at most one account. Named + nullable-unique so
-// password-only accounts (googleId NULL) coexist — MySQL permits many NULLs
-// under a unique index.
+// password-only accounts (googleId NULL) coexist — a unique index permits
+// many NULLs (standard SQL: NULL is never equal to another NULL).
 @Index('IDX_user_googleId', ['googleId'], {unique: true})
 // The admin reported-users queue filters reportCount > 0 and sorts by it —
 // index it so the queue is a range scan, not a table scan.
@@ -96,8 +98,9 @@ export class User {
 
   // A signed-in reader's own persistent "hide stories carrying these"
   // preference — distinct from Story.contentWarnings (what a story carries).
-  // Same transformer as that column: simple-array forces a TEXT column with
-  // no length, and MySQL rejects a literal DEFAULT on TEXT/BLOB.
+  // Same transformer as that column: simple-array forces an unbounded TEXT
+  // column, so this uses a bounded varchar(255) instead for this small fixed
+  // vocabulary.
   @Column({
     type: 'varchar',
     length: 255,
@@ -124,7 +127,7 @@ export class User {
   // (triggered from StoriesService.recordView on any story view). Permanent
   // once earned — longestStreak never decreases, mirroring how every other
   // badge milestone works. lastActiveDate is a plain UTC 'YYYY-MM-DD'
-  // string, not a MySQL DATE column — sidesteps driver timezone conversion
+  // string, not a native date column — sidesteps driver timezone conversion
   // entirely; "yesterday" is just string-date arithmetic (see streak.ts).
   @Column({type: 'int', default: 0})
   currentStreak: number;
@@ -143,7 +146,7 @@ export class User {
 
   // When this user was last sent a digest — the window start for "what's
   // new" in their next one (see DigestService).
-  @Column({type: 'datetime', nullable: true})
+  @Column({type: 'timestamp', nullable: true})
   lastDigestSentAt: Date | null;
 
   @OneToMany(() => Story, (story) => story.author)
@@ -170,4 +173,19 @@ export class User {
 
   @DeleteDateColumn()
   deletedAt: Date;
+
+  // Postgres's default collation is case-sensitive, unlike MySQL's default —
+  // without this, `Foo@x.com` and `foo@x.com` would collide on the unique
+  // index but the wrong one could win, and login-by-different-casing would
+  // silently fail. Mirrors Tag.normalizeName's lowercasing hook. Only fixes
+  // newly-written rows — every email *lookup* site (login, register's
+  // existing-account check, RegistrationOtpService's pending-registration
+  // lookups) must also lowercase its input; see those call sites.
+  @BeforeInsert()
+  @BeforeUpdate()
+  normalizeEmail() {
+    if (this.email) {
+      this.email = this.email.trim().toLowerCase();
+    }
+  }
 }

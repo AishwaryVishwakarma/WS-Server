@@ -8,6 +8,9 @@ import {getPaginatedResponse, paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class TagsService {
   constructor(
@@ -51,14 +54,19 @@ export class TagsService {
     });
   }
 
-  // Public lookup: accepts either the UUID or the URL slug. Safe as a single
-  // OR query because ids are UUIDs and slugs never look like one.
+  // Public lookup: accepts either the UUID or the URL slug. `id` is a native
+  // Postgres `uuid` column, which throws on a non-UUID-shaped comparison
+  // value rather than just failing to match (unlike MySQL's string-typed
+  // id) — so the `id` branch is only included when idOrSlug actually looks
+  // like one, rather than a blind OR across both.
   async findOneByIdOrSlug(idOrSlug: string) {
-    return await this.tagsRepository
-      .findOneOrFail({where: [{id: idOrSlug}, {slug: idOrSlug}]})
-      .catch(() => {
-        throw new NotFoundException(`Tag '${idOrSlug}' not found`);
-      });
+    const where = UUID_PATTERN.test(idOrSlug)
+      ? [{id: idOrSlug}, {slug: idOrSlug}]
+      : {slug: idOrSlug};
+
+    return await this.tagsRepository.findOneOrFail({where}).catch(() => {
+      throw new NotFoundException(`Tag '${idOrSlug}' not found`);
+    });
   }
 
   async findManyByIds(ids: string[]) {

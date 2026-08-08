@@ -1,22 +1,23 @@
-# Local development infrastructure. Runs on alternate ports (MySQL 3310,
-# Redis 6380) so it can coexist with natively installed MySQL/Redis — point
+# Local development infrastructure. Runs on alternate ports (Postgres 3310,
+# Redis 6380) so it can coexist with natively installed Postgres/Redis — point
 # .env at it to use it (see README "Development database").
 services:
-  mysql-dev:
-    image: mysql:8
-    container_name: ws-mysql-dev
+  postgres-dev:
+    image: postgres:16
+    container_name: ws-postgres-dev
     environment:
-      MYSQL_ROOT_PASSWORD: dev
-      MYSQL_DATABASE: ws_dev
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: ws_dev
     ports:
-      - '3310:3306'
+      - '3310:5432'
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-pdev']
+      test: ['CMD', 'pg_isready', '-U', 'root']
       interval: 2s
       timeout: 5s
       retries: 30
     volumes:
-      - ws-mysql-dev-data:/var/lib/mysql
+      - ws-postgres-dev-data:/var/lib/postgresql/data
 
   redis-dev:
     image: redis:7
@@ -30,4 +31,4 @@ services:
       retries: 30
 
 volumes:
-  ws-mysql-dev-data:
+  ws-postgres-dev-data:

@@ -1,6 +1,7 @@
 import {User} from 'src/users/entities/user.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {
+  Check,
   Column,
   Entity,
   Index,
@@ -24,6 +25,9 @@ import {
 @Entity()
 @Unique('IDX_reading_progress_user_story', ['user', 'story'])
 @Index('IDX_reading_progress_user_updatedAt', ['user', 'updatedAt'])
+// Postgres has no unsigned integer types — a CHECK constraint keeps the
+// same "0-100, never negative" guarantee the old tinyint UNSIGNED gave us.
+@Check('"percent" >= 0 AND "percent" <= 100')
 export class ReadingProgress {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -42,7 +46,7 @@ export class ReadingProgress {
   })
   story: Story;
 
-  @Column({type: 'tinyint', unsigned: true})
+  @Column({type: 'smallint'})
   percent: number;
 
   @UpdateDateColumn()

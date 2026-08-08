@@ -13,6 +13,7 @@ import {User} from './users/entities/user.entity';
 import {UserReport} from './users/entities/user-report.entity';
 import {AuthModule} from './auth/auth.module';
 import {PasswordResetToken} from './auth/entities/password-reset-token.entity';
+import {PendingRegistration} from './auth/entities/pending-registration.entity';
 import {CsrfMiddleware} from './middlewares/csrf.middleware';
 import {SessionService} from './session/session.service';
 import {SessionModule} from './session/session.module';
@@ -50,8 +51,7 @@ import {SettingsModule} from './settings/settings.module';
 import {PresenceModule} from './presence/presence.module';
 import {migrations} from './database/migrations';
 
-// mysql2's own default when no pool size is configured — used as our fallback
-// too, so leaving DB_POOL_SIZE unset changes nothing.
+// A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
 
 @Module({
@@ -112,10 +112,10 @@ const DEFAULT_DB_POOL_SIZE = 10;
           );
         }
 
-        // Optional MySQL pool size (defaults to DEFAULT_DB_POOL_SIZE below when
-        // unset — the mysql2 driver default). ws_db_pool_connections{state}
-        // in /metrics tracks live usage; raise this if that gauge sits near
-        // the configured max under load.
+        // Optional Postgres pool size (defaults to DEFAULT_DB_POOL_SIZE below
+        // when unset). ws_db_pool_connections{state} in /metrics tracks live
+        // usage; raise this if that gauge sits near the configured max
+        // under load.
         if (config.DB_POOL_SIZE !== undefined) {
           const poolSize = Number(config.DB_POOL_SIZE);
           if (!Number.isInteger(poolSize) || poolSize < 1) {
@@ -147,24 +147,23 @@ const DEFAULT_DB_POOL_SIZE = 10;
         return config;
       },
     }),
-    // Configure TypeORM with MySQL. The schema is owned by migrations
+    // Configure TypeORM with Postgres. The schema is owned by migrations
     // (src/database/migrations), applied automatically on boot — synchronize
     // stays off everywhere so dev/test/prod all run the same DDL.
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        type: 'mysql',
+        type: 'postgres',
         host: configService.get('DB_HOST'),
-        port: parseInt(configService.get('DB_PORT') || '3306', 10),
+        port: parseInt(configService.get('DB_PORT') || '5432', 10),
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_NAME'),
-        // Maps to the mysql2 pool's connectionLimit (verified in TypeORM's
-        // MysqlDriver — poolSize is passed straight through as
-        // connectionLimit). Watch ws_db_pool_connections{state="free"} in
-        // /metrics: sitting near zero under load means this is the ceiling
-        // to raise.
+        // Maps to the pg Pool's `max` (verified in TypeORM's PostgresDriver —
+        // poolSize is passed straight through as `max`). Watch
+        // ws_db_pool_connections{state="free"} in /metrics: sitting near zero
+        // under load means this is the ceiling to raise.
         poolSize: parseInt(
           configService.get('DB_POOL_SIZE') || String(DEFAULT_DB_POOL_SIZE),
           10
@@ -183,6 +182,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           Follow,
           StoryLike,
           PasswordResetToken,
+          PendingRegistration,
           Series,
           ReadingProgress,
           ScareVote,
@@ -234,6 +234,8 @@ export class AppModule {
         '/auth/login',
         '/auth/logout',
         '/auth/register',
+        '/auth/register/confirm',
+        '/auth/register/resend',
         '/auth/google',
         // No session exists yet at either step of a password reset (the
         // requester may not even be signed in, and consuming the link

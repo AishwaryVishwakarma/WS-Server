@@ -26,7 +26,7 @@ import {StoriesService} from './stories.service';
 
 const duplicateEntryError = () => {
   const error = new QueryFailedError('INSERT', [], new Error('dup'));
-  (error as any).code = 'ER_DUP_ENTRY';
+  (error as any).code = '23505';
   return error;
 };
 
@@ -1233,7 +1233,7 @@ describe('StoriesService', () => {
   });
 
   describe('findRandomApprovedId', () => {
-    it('returns the id of the story RAND() picked', async () => {
+    it('returns the id of the story RANDOM() picked', async () => {
       randomQueryBuilder.getOne.mockResolvedValue({id: 'story-7'});
 
       const id = await service.findRandomApprovedId();
@@ -1243,7 +1243,7 @@ describe('StoriesService', () => {
         'story.status = :status',
         {status: StoryStatus.Approved}
       );
-      expect(randomQueryBuilder.orderBy).toHaveBeenCalledWith('RAND()');
+      expect(randomQueryBuilder.orderBy).toHaveBeenCalledWith('RANDOM()');
     });
 
     it('throws NotFoundException when there are no approved stories', async () => {

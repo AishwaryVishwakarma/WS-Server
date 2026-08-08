@@ -6,7 +6,7 @@ Guidance for working in this repository.
 
 **Whispering Shadows** — backend API for a story-sharing site. Authors publish
 stories, tag them, and comment; an admin moderation layer approves/rejects/flags
-content. NestJS 11 (TypeScript) + TypeORM (MySQL) + Redis-backed sessions.
+content. NestJS 11 (TypeScript) + TypeORM (PostgreSQL) + Redis-backed sessions.
 
 The frontend lives in the sibling repo `../ws-web` (Next.js + SCSS). It proxies
 `/api/*` to this server so the session cookie stays first-party — this API needs
@@ -31,15 +31,19 @@ like the count sorts (a decaying score would drift between fetches and duplicate
 the boundary row). Ordered by the score under a SELECT alias (`trendingScore`),
 never the raw `(story.…)` expression, which TypeORM mis-parses as a join alias.
 The home "Trending" strip reuses this via `sort=trending&page=1`.
-**Feed search** (`?search=`) is a MySQL FULLTEXT match over `story(title,
-excerpt)` (index `IDX_story_fulltext`): `StoriesService` runs `MATCH … AGAINST
-(… IN BOOLEAN MODE)` as a *filter only* (the active sort/keyset ordering is
-untouched). `story-search.ts::toBooleanFulltextQuery` turns the query into
-`+word*` prefix terms (AND), dropping stopwords and sub-3-char tokens; when
+**Feed search** (`?search=`) matches over a generated `story.searchVector`
+(a Postgres `tsvector` `GENERATED ALWAYS AS (...) STORED` column combining
+`title`/`excerpt`, backed by a GIN index — see `Story.searchVector` and the
+baseline migration): `StoriesService` runs `searchVector @@ to_tsquery(...)`
+as a *filter only* (the active sort/keyset ordering is untouched).
+`story-search.ts::toBooleanFulltextQuery` turns the query into `word:*` prefix
+terms joined with `&` (AND), dropping stopwords and sub-3-char tokens; when
 nothing indexable remains (too short / all stopwords) it returns null and the
-service falls back to the escaped substring `LIKE`. This is word/prefix-based,
+service falls back to the escaped substring `ILIKE`. This is word/prefix-based,
 so "host" no longer matches "ghost" — searches match whole words or their
-prefixes. (Admin/`/me` list search still uses `LIKE` — low volume.)
+prefixes. (Admin/`/me` list search also uses `ILIKE` — low volume. `ILIKE`
+throughout, not `LIKE`, since Postgres's default collation is case-sensitive,
+unlike MySQL's.)
 
 ## Commands
 
@@ -58,11 +62,11 @@ npm test                   # unit tests (mocked, no infrastructure needed)
 npm run test:cov           # unit tests + coverage
 
 # Integration tests need Docker running:
-npm run test:infra:up      # start test MySQL (:3311) + Redis (:6381)
+npm run test:infra:up      # start test Postgres (:3311) + Redis (:6381)
 npm run test:integration   # boots the real app against them
 npm run test:infra:down    # tear down + remove volumes
 
-npm run dev:infra:up       # dockerized dev MySQL (:3310) + Redis (:6380)
+npm run dev:infra:up       # dockerized dev Postgres (:3310) + Redis (:6380)
 npm run dev:infra:down
 ```
 
@@ -77,7 +81,7 @@ npm run dev:infra:down
   a few (bookmarks, follows, likes, series) instead use one `@Controller()`
   with no shared prefix and fully-qualified paths per method, mixing public
   and gated `/users/me/*` routes on the same controller.
-- **Likes**: a `StoryLike` (table `story_like` — `like` is a MySQL reserved
+- **Likes**: a `StoryLike` (table `story_like` — `like` is a SQL reserved
   word; unique `(user, story)`, both cascade-delete) is a member liking a
   story. Gated `LikesController`: `PUT`/`DELETE /stories/:id/like` (idempotent;
   like validates visibility) and `GET /users/me/likes/ids` (button state).
@@ -164,7 +168,7 @@ npm run dev:infra:down
   `AuthService.hasActiveSession`, which — unlike a bare `session.userId`
   truthiness check — reloads that user from the DB and returns `false` if
   they're gone or blocked (e.g. after a dev DB reseed, where Redis sessions
-  outlive the wiped MySQL rows), letting the sign-in attempt through instead
+  outlive the wiped Postgres rows), letting the sign-in attempt through instead
   of erroring "Already logged in" forever. It deliberately does **not**
   destroy the stale session itself — `_establishSession`'s `regenerate()`
   call right after needs `req.session` to still exist, and express-session's
@@ -204,6 +208,45 @@ npm run dev:infra:down
   Self-service profile updates can never set `isVerified` in the first place
   (`UpdateProfileDto` has no such field; `ValidationPipe`'s whitelist strips
   it), so the lock only ever engages from a genuine admin action.
+- **Registration is OTP-gated: no `User` row (and no session) is ever created
+  until the emailed code is confirmed.** `POST /auth/register` (still
+  CSRF-exempt, still 10/min-throttled) only validates the input and starts
+  the flow — 409s immediately if the email already belongs to a real account
+  **or an admin-removed (soft-deleted, `withDeleted: true` lookup) one**, since
+  the original email stays locked either way (self-deletion is no obstacle —
+  `deactivateSelf` rewrites the email before soft-deleting, so this lookup
+  finds nothing there); otherwise it responds `204` with no body and no
+  cookie. The submitted fields (name/email/passwordHash — already bcrypt-
+  hashed at this point, the plaintext is never persisted even transiently —
+  plus whatever optional profile fields were sent: profileImageUrl/avatarIcon/
+  avatarColor/bio) live in a standalone `PendingRegistration` row
+  (`src/auth/entities/pending-registration.entity.ts`), keyed by email since
+  no `User` exists yet to hang state on. `RegistrationOtpService` owns its
+  lifecycle: `start` deletes any prior pending row for that email and saves a
+  fresh one with a random 6-digit code (`crypto.randomInt`, zero-padded),
+  storing only its SHA-256 hash (`codeHash`) and a 10-minute `expiresAt` —
+  shorter than password reset's hour, since a code is meant to be read off an
+  email and typed back in one sitting, not clicked later. `POST
+  /auth/register/confirm` (`ConfirmRegistrationDto {email, code}`, also
+  CSRF-exempt) checks the code, wrong guesses increment `attempts` (400
+  "Incorrect code"), and the 5th (`MAX_VERIFY_ATTEMPTS`) deletes the row
+  outright (400 "Too many incorrect attempts") — there is deliberately no
+  recovery from a lockout via resend (see below), only registering again from
+  scratch. On a correct code the row is deleted and
+  `UsersService.createFromVerifiedRegistration` creates the real `User` from
+  the collected fields (reusing `create()`'s post-hash logic via the shared
+  private `_createUserWithHash`, so the same profile-image-setting gate
+  applies), then the normal session-establishing dance runs and a
+  `SessionUser` comes back — the only point in this flow that looks like the
+  old one-step register. `POST /auth/register/resend` is a silent 204 no-op
+  if no pending row exists (anti-enumeration, same stance as
+  forgot-password) — otherwise it re-sends a fresh code and resets
+  `attempts` to 0 on the same row. **This means every `User` row that ever
+  exists is, by construction, already verified** — no `emailVerified` column
+  or enforcement hook needed anywhere else. Google sign-in is untouched: its
+  own ID-token verification already proves the email, so it never touches
+  `PendingRegistration`. Seed data (`database/seed.ts`) and admin-created
+  users are unaffected too — both still call `UsersService.create` directly.
 - **Password reset** (`POST /auth/forgot-password`, `POST /auth/reset-password`,
   both CSRF-exempt like login — no session exists at either step): a reset
   link's token is 256 bits of randomness (`crypto.randomBytes`), only ever
@@ -420,7 +463,7 @@ npm run dev:infra:down
   `forwardRef` already handles elsewhere in this graph).
 - **Shared utils**: `src/utils/pagination.ts` (`paginate`, `getPaginatedResponse`
   — the `{message,data,total,page,limit,totalPages}` envelope),
-  `handle-query-error.ts` (maps MySQL duplicate → 409), and `report-count.ts`
+  `handle-query-error.ts` (maps a Postgres unique-violation → 409), and `report-count.ts`
   (`syncReportCount` — persists a recomputed `reportCount` via a targeted
   update that preserves the entity's existing `updatedAt`; used by all three
   report/resolve pairs — stories, comments, users — so none of them can
@@ -437,10 +480,10 @@ npm run dev:infra:down
 - **Config is fail-closed.** `ConfigModule.validate` in `app.module.ts` requires
   `DB_*`, `SESSION_SECRET` (≥16 chars, known example values rejected when
   `NODE_ENV=production`), and `REDIS_URL`; validates `NODE_ENV`. No silent
-  fallbacks — add new required env vars here. `DB_POOL_SIZE` (optional, mysql2
-  `connectionLimit`, default 10) is validated the same way but stays optional —
-  raise it only once `ws_db_pool_connections{state="free"}` in `/metrics` shows
-  the pool actually running dry under load, not preemptively.
+  fallbacks — add new required env vars here. `DB_POOL_SIZE` (optional, the
+  `pg` driver's pool `max`, default 10) is validated the same way but stays
+  optional — raise it only once `ws_db_pool_connections{state="free"}` in
+  `/metrics` shows the pool actually running dry under load, not preemptively.
 - **Migrations own the schema** (`synchronize` is off everywhere). They live in
   `src/database/migrations/` and run automatically on boot (`migrationsRun`).
   After changing an entity: `npm run migration:generate -- src/database/migrations/<Name>`
@@ -448,10 +491,28 @@ npm run dev:infra:down
   `src/database/migrations/index.ts`** — the registry is an explicit array so
   ts-jest and dist builds load identically. The CLI uses the compiled
   `dist/database/data-source.ts`; keep its options in sync with
-  `app.module.ts`. Don't write raw SQL that hardcodes table/column names in
+  `app.module.ts` — including the `entities` array, which has drifted out of
+  sync before (a missing entity there means `migration:generate` silently
+  omits its table). Don't write raw SQL that hardcodes table/column names in
   app code, and seed **through the services** (`src/database/seed.ts`) so
   hashing, entity hooks (tag normalization/slugs, word counts), and moderation
   stay correct.
+- **Migrated from MySQL to Postgres** (single baseline migration — the old
+  MySQL-flavored history was deleted rather than translated, since there was
+  no production data to preserve at the time). Things a future reader should
+  know rather than re-derive: `User.normalizeEmail` (`@BeforeInsert`/
+  `@BeforeUpdate`, mirrors `Tag.normalizeName`) lowercases `email` on write —
+  Postgres's default collation is case-sensitive, unlike MySQL's, so every
+  email **lookup** site (`AuthService.validateUser`/`.register`,
+  `UsersService.findOneByEmail`/`.findOrCreateGoogleUser`,
+  `RegistrationOtpService`, which has no entity hook of its own) also
+  lowercases its input to match. `@PrimaryGeneratedColumn('uuid')` needs the
+  `uuid-ossp` extension enabled (`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`,
+  in the baseline migration) — `migration:generate` doesn't add this for you.
+  Postgres's default `READ COMMITTED` isolation (vs. MySQL's `REPEATABLE
+  READ`) was checked against both `manager.transaction(...)` call sites
+  (`reorderSeries`, `bulkUpdateStatus`) and is fine — neither relies on
+  repeatable-read snapshot semantics.
 - **Editor vs CLI TypeScript**: VS Code may bundle a newer TS than the project's
   5.9. `tsconfig.json` is written to be valid under both (uses `esModuleInterop`,
   `paths` not `baseUrl`, explicit `strict: false` + `strictNullChecks`). Modules
@@ -462,7 +523,7 @@ npm run dev:infra:down
 
 - **Unit** (`src/**/*.spec.ts`): mocked repositories/services, no infra. Fast.
 - **Integration** (`test/integration/*.integration.spec.ts`): boot the real
-  `AppModule` via `createTestApp()` against dockerized MySQL/Redis. Helpers in
+  `AppModule` via `createTestApp()` against dockerized Postgres/Redis. Helpers in
   `test/integration/test-utils.ts`: `createTestApp`/`closeTestApp`,
   `cleanDatabase` (refuses to run unless the DB name ends in `_test`),
   `registerUser`, `seedAdmin` (admins can't be made via the public API),

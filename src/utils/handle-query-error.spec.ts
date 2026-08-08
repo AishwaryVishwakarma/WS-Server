@@ -5,7 +5,7 @@ import {handleQueryFailedError} from './handle-query-error';
 describe('handleQueryFailedError', () => {
   it('maps duplicate-entry errors to ConflictException', () => {
     const error = new QueryFailedError('INSERT', [], new Error('dup'));
-    (error as any).code = 'ER_DUP_ENTRY';
+    (error as any).code = '23505';
 
     expect(() => handleQueryFailedError(error, 'create')).toThrow(
       ConflictException

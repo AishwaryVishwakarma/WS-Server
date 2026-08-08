@@ -73,7 +73,7 @@ export class MetricsService {
   });
   private readonly dbPool = new Gauge({
     name: 'ws_db_pool_connections',
-    help: 'MySQL driver pool connections, by state (best-effort).',
+    help: 'Postgres driver pool connections, by state (best-effort).',
     labelNames: ['state'],
     registers: [this.registry],
   });
@@ -163,18 +163,17 @@ export class MetricsService {
       this.dbUp.set(0);
     }
 
-    // Best-effort pool stats from the mysql2 driver — guarded because it reads
-    // library internals that are not part of TypeORM's public API.
+    // Best-effort pool stats from the pg driver's Pool (TypeORM's
+    // PostgresDriver stores it as `master`) — guarded because it reads
+    // library internals that are not part of TypeORM's public API. Unlike
+    // mysql2's underscore-prefixed internals, pg.Pool exposes these as
+    // public, documented properties.
     try {
-      const pool = (this.dataSource.driver as {pool?: unknown}).pool as
-        | {
-            _allConnections?: {length: number};
-            _freeConnections?: {length: number};
-          }
-        | undefined;
-      if (pool?._allConnections && pool._freeConnections) {
-        this.dbPool.set({state: 'total'}, pool._allConnections.length);
-        this.dbPool.set({state: 'free'}, pool._freeConnections.length);
+      const pool = (this.dataSource.driver as {master?: unknown}).master as
+        {totalCount?: number; idleCount?: number} | undefined;
+      if (pool?.totalCount !== undefined) {
+        this.dbPool.set({state: 'total'}, pool.totalCount);
+        this.dbPool.set({state: 'free'}, pool.idleCount ?? 0);
       }
     } catch {
       // Pool shape changed — drop the gauge rather than fail the scrape.

@@ -1,4 +1,8 @@
-import {Injectable, UnauthorizedException} from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {User} from 'src/users/entities/user.entity';
 import {Repository} from 'typeorm';
@@ -15,6 +19,7 @@ import {
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {GoogleAuthService} from './google-auth.service';
+import {RegistrationOtpService} from './registration-otp.service';
 
 @Injectable()
 export class AuthService {
@@ -24,7 +29,8 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly sessionService: SessionService,
     private readonly sessionRegistryService: SessionRegistryService,
-    private readonly googleAuthService: GoogleAuthService
+    private readonly googleAuthService: GoogleAuthService,
+    private readonly registrationOtpService: RegistrationOtpService
   ) {}
 
   // Shared by register/login/googleSignIn: regenerate the session id, stamp
@@ -54,7 +60,9 @@ export class AuthService {
       .createQueryBuilder('user')
       .addSelect('user.password') // Ensure password is selected
       .where('user.email = :email', {
-        email: loginInfoDto.email,
+        // User.email is stored lowercased (see User.normalizeEmail) — match
+        // regardless of how the visitor typed it.
+        email: loginInfoDto.email.toLowerCase(),
       })
       .getOne();
 
@@ -76,8 +84,44 @@ export class AuthService {
     throw new UnauthorizedException('Invalid credentials');
   }
 
-  async register(registerUserDto: RegisterUserDto, req: Request) {
-    const user = (await this.usersService.create(registerUserDto)) as User;
+  // Starts the two-step OTP flow — no account (and no session) exists yet.
+  // See confirmRegistration, which actually creates the User. The existing-
+  // email check looks past soft-deletes: an admin-removed account keeps its
+  // original email locked (see UsersService.remove/findOrCreateGoogleUser),
+  // so this must catch that here rather than let a whole OTP round-trip play
+  // out only to fail at confirm with the same conflict. Self-deletion is no
+  // obstacle — deactivateSelf rewrites the email before soft-deleting, so a
+  // withDeleted lookup by the original address finds nothing there.
+  async register(registerUserDto: RegisterUserDto): Promise<void> {
+    const existing = await this.usersRepository.findOne({
+      where: {email: registerUserDto.email.toLowerCase()},
+      withDeleted: true,
+    });
+    if (existing) throw new ConflictException('Email already registered');
+
+    await this.registrationOtpService.start(registerUserDto);
+  }
+
+  async confirmRegistration(
+    email: string,
+    code: string,
+    req: Request
+  ): Promise<User> {
+    const confirmed = await this.registrationOtpService.confirm(
+      email.toLowerCase(),
+      code
+    );
+    const user = (await this.usersService.createFromVerifiedRegistration(
+      {
+        name: confirmed.name,
+        email: confirmed.email,
+        profileImageUrl: confirmed.profileImageUrl ?? undefined,
+        avatarIcon: confirmed.avatarIcon,
+        avatarColor: confirmed.avatarColor,
+        bio: confirmed.bio ?? undefined,
+      },
+      confirmed.passwordHash
+    )) as User;
 
     await this._establishSession(req, user);
 

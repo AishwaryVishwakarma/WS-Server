@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 
 // A member's like on a story. Named StoryLike (table `story_like`) because
-// `like` is a MySQL reserved word. The unique constraint makes a like
+// `like` is a SQL reserved word. The unique constraint makes a like
 // idempotent (one per member per story); the index serves the "which stories
 // have I liked" id-set. Both sides cascade-delete. The story's likeCount is a
 // denormalized counter maintained by LikesService (like commentCount).

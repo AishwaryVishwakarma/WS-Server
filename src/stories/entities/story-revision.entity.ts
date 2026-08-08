@@ -27,7 +27,7 @@ export class StoryRevision {
   @Column({length: 300})
   excerpt: string;
 
-  @Column('mediumtext')
+  @Column('text')
   content: string;
 
   @Column({type: 'varchar', nullable: true})

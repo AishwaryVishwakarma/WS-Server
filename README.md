@@ -7,7 +7,7 @@ moderation layer approves, rejects, or flags content before it goes public.
 ## Tech stack
 
 - **NestJS 11** (TypeScript) on Express
-- **MySQL** via **TypeORM**
+- **PostgreSQL** via **TypeORM**
 - **Redis**-backed sessions (`express-session` + `connect-redis`)
 - **bcrypt** password hashing, **csurf** CSRF protection, **@nestjs/throttler** rate limiting
 
@@ -24,7 +24,7 @@ moderation layer approves, rejects, or flags content before it goes public.
 ```bash
 npm install
 cp .env.example .env        # defaults target the dockerized dev infra below
-npm run dev:infra:up        # start MySQL + Redis (or use your own — see below)
+npm run dev:infra:up        # start Postgres + Redis (or use your own — see below)
 npm run start:dev
 ```
 
@@ -34,11 +34,11 @@ npm run start:dev
 | ---------------- | :------: | ---------------------------------------------- |
 | `SESSION_SECRET` |    ✔     | Session signing secret (min 16 chars)          |
 | `REDIS_URL`      |    ✔     | Redis connection URL                           |
-| `DB_HOST`        |    ✔     | MySQL host                                     |
-| `DB_PORT`        |    ✔     | MySQL port                                     |
-| `DB_USERNAME`    |    ✔     | MySQL user                                     |
-| `DB_PASSWORD`    |    ✔     | MySQL password                                 |
-| `DB_NAME`        |    ✔     | MySQL database name                            |
+| `DB_HOST`        |    ✔     | Postgres host                                  |
+| `DB_PORT`        |    ✔     | Postgres port                                  |
+| `DB_USERNAME`    |    ✔     | Postgres user                                  |
+| `DB_PASSWORD`    |    ✔     | Postgres password                              |
+| `DB_NAME`        |    ✔     | Postgres database name                         |
 | `PORT`           |          | HTTP port (default `8000`)                     |
 | `SALT_ROUNDS`    |          | bcrypt cost (default `10`)                     |
 | `NODE_ENV`       |          | `development` \| `test` \| `production`        |
@@ -48,19 +48,19 @@ is weak.
 
 ## Development database
 
-The app needs MySQL and Redis. The `.env.example` defaults point at the
-dockerized dev infrastructure, which runs on alternate ports (MySQL `3310`,
+The app needs Postgres and Redis. The `.env.example` defaults point at the
+dockerized dev infrastructure, which runs on alternate ports (Postgres `3310`,
 Redis `6380`) so it coexists with any natively installed instances:
 
 ```bash
-# start dev MySQL + Redis (data persists in a named volume)
+# start dev Postgres + Redis (data persists in a named volume)
 npm run dev:infra:up
 
 # stop them (add `docker compose -f docker-compose.dev.yml down -v` for a full reset)
 npm run dev:infra:down
 ```
 
-To use your own MySQL/Redis instead, edit the `DB_*` / `REDIS_URL` values in
+To use your own Postgres/Redis instead, edit the `DB_*` / `REDIS_URL` values in
 `.env`.
 
 ### Seed data
@@ -95,13 +95,13 @@ npm run test:cov
 
 ### Integration tests
 
-Integration tests boot the real application against a dedicated MySQL and
+Integration tests boot the real application against a dedicated Postgres and
 Redis, provisioned via Docker Compose (requires [Docker Desktop](https://www.docker.com/products/docker-desktop/)).
-They run on separate ports (MySQL `3311`, Redis `6381`), so they never touch
+They run on separate ports (Postgres `3311`, Redis `6381`), so they never touch
 your dev databases. Configuration lives in `.env.test`.
 
 ```bash
-npm run test:infra:up      # start the test MySQL + Redis containers
+npm run test:infra:up      # start the test Postgres + Redis containers
 npm run test:integration   # run the integration suite
 npm run test:infra:down    # stop the containers and remove their volumes
 ```

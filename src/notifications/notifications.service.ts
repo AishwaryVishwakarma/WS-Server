@@ -94,8 +94,8 @@ export class NotificationsService {
   async markRead(id: string, userId: string) {
     // Scope the lookup to the caller so a missing id and someone else's
     // notification are indistinguishable — both 404 rather than silently
-    // "succeeding". A row UPDATE can't tell these apart from an idempotent
-    // re-read (MySQL reports 0 changed rows for both), so check existence.
+    // "succeeding". Find-then-conditionally-save also skips a pointless
+    // write when the notification is already read.
     const notification = await this.notificationsRepository.findOne({
       where: {id, recipient: {id: userId}},
     });

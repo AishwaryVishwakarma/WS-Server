@@ -1,5 +1,6 @@
 import * as bcrypt from 'bcrypt';
 import request from 'supertest';
+import {MailService} from 'src/mail/mail.service';
 import {Role} from 'src/users/enums/role';
 import {User} from 'src/users/entities/user.entity';
 import {UsersService} from 'src/users/users.service';
@@ -51,7 +52,32 @@ describe('Auth (integration)', () => {
   };
 
   describe('POST /auth/register', () => {
-    it('creates the user, hashes the password, and starts a session', async () => {
+    // registerUser (test-utils) drives the full two-step flow end to end —
+    // see registration-otp.integration.spec.ts for the OTP-specific behavior
+    // (wrong code, expiry, lockout, resend). These cover what's specific to
+    // the /auth/register endpoint itself: it starts the flow and nothing
+    // more, so no account/session exists until confirm.
+    it('does not create a session — no SessionUser back, and no cookie yet', async () => {
+      const response = await agent()
+        .post('/auth/register')
+        .send(DEFAULT_USER)
+        .expect(204);
+
+      expect(response.body).toEqual({});
+      const setCookie = response.headers['set-cookie'] as unknown as
+        string[] | undefined;
+      expect(setCookie?.some((c) => c.startsWith('connect.sid='))).toBeFalsy();
+    });
+
+    it('creates no User row until the code is confirmed', async () => {
+      await agent().post('/auth/register').send(DEFAULT_USER).expect(204);
+
+      await expect(
+        userRepository().findOneBy({email: DEFAULT_USER.email})
+      ).resolves.toBeNull();
+    });
+
+    it('completing the flow hashes the password and starts a session', async () => {
       const client = agent();
       const {body} = await registerUser(client);
 
@@ -70,14 +96,30 @@ describe('Auth (integration)', () => {
         await bcrypt.compare(DEFAULT_USER.password, dbUser!.password!)
       ).toBe(true);
 
-      // The session cookie from registration authenticates follow-up requests
+      // The session cookie from confirming authenticates follow-up requests
       await client.get('/users/me').expect(200);
     });
 
     it('ignores privileged fields in the payload (privilege escalation regression)', async () => {
-      await agent()
+      const client = agent();
+      const mailService = testApp.app.get(MailService);
+      const sendSpy = jest
+        .spyOn(mailService, 'send')
+        .mockResolvedValue(undefined);
+
+      await client
         .post('/auth/register')
         .send({...DEFAULT_USER, role: 'admin', isVerified: true})
+        .expect(204);
+
+      const code = /code is (\d{6})/.exec(sendSpy.mock.calls[0][2])?.[1];
+      sendSpy.mockRestore();
+      if (!code)
+        throw new Error('No verification code found in the mailed body');
+
+      await client
+        .post('/auth/register/confirm')
+        .send({email: DEFAULT_USER.email, code})
         .expect(201);
 
       const dbUser = await userRepository().findOneByOrFail({
@@ -88,10 +130,17 @@ describe('Auth (integration)', () => {
       expect(dbUser.isVerified).toBe(false);
     });
 
-    it('rejects a duplicate email with 409 (real unique constraint)', async () => {
+    it('rejects a duplicate email with 409 (real unique constraint), before any mail is sent', async () => {
       await registerUser(agent());
+      const mailService = testApp.app.get(MailService);
+      const sendSpy = jest
+        .spyOn(mailService, 'send')
+        .mockResolvedValue(undefined);
 
       await agent().post('/auth/register').send(DEFAULT_USER).expect(409);
+
+      expect(sendSpy).not.toHaveBeenCalled();
+      sendSpy.mockRestore();
     });
 
     it('rejects a registration that fills the honeypot (bot) with 400', async () => {
@@ -148,7 +197,7 @@ describe('Auth (integration)', () => {
       await client
         .post('/auth/register')
         .send({...DEFAULT_USER, email: 'second@test.com'})
-        .expect(201);
+        .expect(204);
     });
   });
 

@@ -23,8 +23,10 @@ export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // Recipient. Their notifications are removed when the account is deleted
-  // (MySQL indexes the FK column, so per-user queries are cheap).
+  // Recipient. Their notifications are removed when the account is deleted;
+  // the two composite indexes below both lead with `recipient`, so per-user
+  // queries (and this cascade delete) stay index-backed without a bare
+  // single-column index too.
   @ManyToOne(() => User, {onDelete: 'CASCADE', nullable: false})
   recipient: User;
 
@@ -39,11 +41,10 @@ export class Notification {
 
   // The actor's id, so the client can link to their profile. Nullable only for
   // legacy rows created before it was added; new notifications always set it.
-  // `type: 'varchar', length: 36` (not the 'uuid' type shorthand) matches every
-  // UUID column in the schema — MySQL has no native uuid type, so TypeORM
-  // normalizes 'uuid' to varchar anyway, but the shorthand's overload doesn't
-  // accept a `length` and would default to 255, drifting from the varchar(36)
-  // the migrations actually use.
+  // Deliberately `varchar(36)`, not the 'uuid' type or a real FK — these are
+  // denormalized point-in-time references (see the comment above the class),
+  // so a later delete of the actor/story/comment must never cascade into or
+  // invalidate this row.
   @Column({type: 'varchar', length: 36, nullable: true})
   actorId: string | null;
 

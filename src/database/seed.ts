@@ -680,21 +680,24 @@ const BOOKMARKS: {reader: string; story: string}[] = [
 
 async function wipeDatabase(dataSource: DataSource) {
   const tables: {table_name: string}[] = await dataSource.query(
-    'SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = DATABASE()'
+    'SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = current_schema()'
   );
 
-  await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
-  try {
-    for (const {table_name} of tables) {
-      // Preserve the migrations ledger — truncating it makes the next app boot
-      // (migrationsRun) re-run migrations against tables that still exist and
-      // fail. Mirrors cleanDatabase in the integration test helpers.
-      if (table_name === 'migrations') continue;
-
-      await dataSource.query(`TRUNCATE TABLE \`${table_name}\``);
+  for (const {table_name} of tables) {
+    // Preserve the migrations ledger — truncating it makes the next app boot
+    // (migrationsRun) re-run migrations against tables that still exist and
+    // fail. Also preserve typeorm_metadata (records the searchVector
+    // generated-column expression) so a later migration:generate doesn't see
+    // it as missing and propose a spurious change. Mirrors cleanDatabase in
+    // the integration test helpers.
+    if (table_name === 'migrations' || table_name === 'typeorm_metadata') {
+      continue;
     }
-  } finally {
-    await dataSource.query('SET FOREIGN_KEY_CHECKS = 1');
+
+    // CASCADE truncates dependent tables transitively — Postgres has no
+    // MySQL-style FK-check toggle, and truncating an already-cascaded table
+    // later in this same loop is a harmless no-op.
+    await dataSource.query(`TRUNCATE TABLE "${table_name}" CASCADE`);
   }
 }
 

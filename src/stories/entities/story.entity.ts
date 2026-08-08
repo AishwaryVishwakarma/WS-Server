@@ -33,10 +33,12 @@ import {Series} from 'src/series/entities/series.entity';
 // independent of status — index it so the queue is a range scan, not a table
 // scan.
 @Index('IDX_story_reportCount', ['reportCount'])
-// Backs the public feed's word/prefix search (MATCH … AGAINST) over the title
-// and excerpt; see StoriesService and story-search.ts. Column order here must
-// match the MATCH() column list.
-@Index('IDX_story_fulltext', ['title', 'excerpt'], {fulltext: true})
+// Backs the public feed's word/prefix search over the title and excerpt; see
+// StoriesService and story-search.ts. Postgres has no FULLTEXT index type —
+// this pairs with the `searchVector` generated column below, indexed with a
+// hand-patched `USING GIN` in the migration (TypeORM's @Index has no
+// first-class GIN option, so double-check the generated migration).
+@Index('IDX_story_fulltext', ['searchVector'])
 export class Story {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -47,8 +49,21 @@ export class Story {
   @Column({length: 300})
   excerpt: string;
 
-  @Column('mediumtext')
+  @Column('text')
   content: string;
+
+  // Auto-maintained by Postgres on every insert/update (STORED generated
+  // column) — no app-side sync code needed, same as the MySQL FULLTEXT index
+  // it replaces. Title is weighted 'A' (highest) so title matches rank above
+  // excerpt-only matches; see StoriesService's search query.
+  @Column({
+    type: 'tsvector',
+    asExpression:
+      `setweight(to_tsvector('english', coalesce(title, '')), 'A') || ` +
+      `setweight(to_tsvector('english', coalesce(excerpt, '')), 'B')`,
+    generatedType: 'STORED',
+  })
+  searchVector: string;
 
   @Column({nullable: true})
   coverImageUrl: string;
@@ -60,17 +75,18 @@ export class Story {
   // from `tags` (open-ended, admin-curated topics). Stored as a plain
   // comma-joined varchar rather than a join table; a custom transformer (not
   // TypeORM's `simple-array`, which is always `text` and can't take a
-  // `length`) keeps the column a `varchar(255)` — MySQL rejects a literal
-  // DEFAULT on TEXT/BLOB columns.
+  // `length`) keeps the column a bounded `varchar(255)` for this small fixed
+  // vocabulary.
   @Column({
     type: 'varchar',
     length: 255,
     default: '',
     transformer: {
       to: (value: ContentWarning[] = []) => value.join(','),
-      // On insert, MySQL has no RETURNING clause, so TypeORM re-hydrates the
-      // entity from the value it already had in memory rather than a
-      // round-tripped DB string — `from` can see either shape.
+      // On insert, TypeORM may re-hydrate the entity from the in-memory
+      // value it already had rather than a round-tripped DB string
+      // (depends on whether the driver's insert used RETURNING) — `from`
+      // has to handle either shape.
       from: (value: string | ContentWarning[]): ContentWarning[] => {
         if (Array.isArray(value)) return value;
         return value ? (value.split(',') as ContentWarning[]) : [];
@@ -94,7 +110,7 @@ export class Story {
   // approved, stays invisible to everyone but its author/an admin until
   // this moment passes (checked at read time; see StoriesService's
   // findOneVisible/_buildApprovedQuery — no scheduler/cron involved).
-  @Column({type: 'datetime', nullable: true})
+  @Column({type: 'timestamp', nullable: true})
   scheduledFor: Date | null;
 
   /** Kept in sync by the hook below; powers reading-time estimates. */
@@ -113,6 +129,21 @@ export class Story {
   /** Denormalized like counter, maintained by LikesService (like/unlike). */
   @Column({type: 'int', default: 0})
   likeCount: number;
+
+  // "Trending" (see StoriesService) engagement blend, generated so it can be
+  // ordered/keyset-paged as a genuine `story.trendingScore` column reference
+  // rather than a raw computed SQL expression — a real column is what lets
+  // TypeORM's join+pagination machinery (which builds two separate queries
+  // under the hood, each resolving order-by criteria differently) treat it
+  // consistently; a raw expression aliased only in the SELECT list broke one
+  // of the two. Comments weigh most (most effortful engagement), then likes,
+  // then views — see TRENDING_WINDOW_DAYS for the recency half of "trending".
+  @Column({
+    type: 'int',
+    asExpression: '"likeCount" * 3 + "commentCount" * 4 + "viewCount"',
+    generatedType: 'STORED',
+  })
+  trendingScore: number;
 
   /** Sum of all reader scare-vote values; paired with scareRatingCount to
    *  derive the average at the DTO layer (see StoryPreviewResponseDto).

@@ -12,6 +12,9 @@ import {
 import {AuthService} from './auth.service';
 import {LoginInfoDto} from './dto/login-info.dto';
 import {GoogleSignInDto} from './dto/google-sign-in.dto';
+import {ConfirmRegistrationDto} from './dto/confirm-registration.dto';
+import {ResendRegistrationDto} from './dto/resend-registration.dto';
+import {RegistrationOtpService} from './registration-otp.service';
 import type {Request, Response} from 'express';
 import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {User} from 'src/users/entities/user.entity';
@@ -28,7 +31,10 @@ import {Role} from 'src/users/enums/role';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly registrationOtpService: RegistrationOtpService
+  ) {}
 
   private _serialize(user: User, role: Role = Role.User) {
     return plainToInstance(
@@ -51,9 +57,11 @@ export class AuthController {
     }
   }
 
+  // Starts the OTP flow — no account or session is created here. See
+  // confirm below, which is what actually returns a SessionUser.
   @Post('register')
   @Throttle(AUTH_THROTTLE)
-  @HttpCode(201)
+  @HttpCode(204)
   async register(
     @Body() registerUserDto: RegisterUserDto,
     @Req() req: Request
@@ -62,8 +70,34 @@ export class AuthController {
       throw new BadRequestException('Already logged in');
     }
 
-    const user = await this.authService.register(registerUserDto, req);
+    await this.authService.register(registerUserDto);
+  }
+
+  @Post('register/confirm')
+  @Throttle(AUTH_THROTTLE)
+  async confirmRegistration(
+    @Body() confirmRegistrationDto: ConfirmRegistrationDto,
+    @Req() req: Request
+  ) {
+    if (await this.authService.hasActiveSession(req)) {
+      throw new BadRequestException('Already logged in');
+    }
+
+    const user = await this.authService.confirmRegistration(
+      confirmRegistrationDto.email,
+      confirmRegistrationDto.code,
+      req
+    );
     return this._serialize(user, req.session.role);
+  }
+
+  @Post('register/resend')
+  @Throttle(AUTH_THROTTLE)
+  @HttpCode(204)
+  async resendRegistration(
+    @Body() resendRegistrationDto: ResendRegistrationDto
+  ) {
+    await this.registrationOtpService.resend(resendRegistrationDto.email);
   }
 
   @Post('login')

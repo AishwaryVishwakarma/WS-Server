@@ -16,10 +16,10 @@ import {StoryLike} from 'src/likes/entities/story-like.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {
+  ILike,
   In,
   IsNull,
   LessThanOrEqual,
-  Like,
   MoreThan,
   Not,
   Repository,
@@ -93,8 +93,6 @@ const COUNT_SORT_COLUMN: Partial<
 // also keeps the (status, createdAt) index in play to bound the sort. Comments
 // weigh most (the most effortful engagement), then likes, then views.
 export const TRENDING_WINDOW_DAYS = 14;
-const TRENDING_SCORE_SQL =
-  '(story.likeCount * 3 + story.commentCount * 4 + story.viewCount)';
 
 // Free accounts can have up to this many stories in the publication pipeline
 // (submitted, live, or flagged) at once. Drafts and rejected stories don't
@@ -319,7 +317,9 @@ export class StoriesService {
     let where: FindOptionsWhere<Story> | FindOptionsWhere<Story>[] = base;
 
     if (search) {
-      const like = Like(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      // ILIKE for case-insensitive matching (Postgres's default collation is
+      // case-sensitive, unlike MySQL's).
+      const like = ILike(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
       where = [
         {...base, title: like},
         {...base, excerpt: like},
@@ -381,7 +381,9 @@ export class StoriesService {
     let where: FindOptionsWhere<Story> | FindOptionsWhere<Story>[] = base;
 
     if (search) {
-      const like = Like(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
+      // ILIKE for case-insensitive matching (Postgres's default collation is
+      // case-sensitive, unlike MySQL's).
+      const like = ILike(`%${search.replace(/[\\%_]/g, '\\$&')}%`);
       where = [
         {...base, title: like},
         {...base, excerpt: like},
@@ -400,15 +402,16 @@ export class StoriesService {
     return getPaginatedResponse<Story>(stories, total, page, limit);
   }
 
-  // Picks one random approved story's id. ORDER BY RAND() shuffles the whole
-  // filtered set to pick — fine at the story counts this app runs at today;
-  // a much larger table would want an offset/gap-sampling scheme instead.
+  // Picks one random approved story's id. ORDER BY RANDOM() shuffles the
+  // whole filtered set to pick — fine at the story counts this app runs at
+  // today; a much larger table would want an offset/gap-sampling scheme
+  // instead.
   async findRandomApprovedId(): Promise<string> {
     const story = await this.storiesRepository
       .createQueryBuilder('story')
       .select('story.id')
       .where('story.status = :status', {status: StoryStatus.Approved})
-      .orderBy('RAND()')
+      .orderBy('RANDOM()')
       .getOne();
 
     if (!story) {
@@ -493,16 +496,14 @@ export class StoriesService {
     const countColumn = sort ? COUNT_SORT_COLUMN[sort] : undefined;
     if (sort === 'trending') {
       // Recent window (bounds the filesort via the status+createdAt index),
-      // then the engagement blend, id-tiebroken like the count sorts. Order by
-      // the *aliased* score, not the raw expression: TypeORM splits a raw
-      // `orderBy` on the first dot to find the join alias, so a leading
-      // `(story.likeCount …)` is mis-read as an alias — an aliased select is the
-      // supported path for ordering (and keyset-paging) on a computed column.
-      qb.andWhere(
-        `story.createdAt >= (NOW() - INTERVAL ${TRENDING_WINDOW_DAYS} DAY)`
-      )
-        .addSelect(TRENDING_SCORE_SQL, 'trendingScore')
-        .orderBy('trendingScore', 'DESC')
+      // then the engagement blend (Story.trendingScore, a generated column —
+      // see its own comment for why a real column instead of a raw computed
+      // expression), id-tiebroken like the count sorts.
+      qb.andWhere('story.createdAt >= (NOW() - :trendingWindow::interval)', {
+        trendingWindow: `${TRENDING_WINDOW_DAYS} days`,
+      })
+        .addSelect('story.trendingScore')
+        .orderBy('story.trendingScore', 'DESC')
         .addOrderBy('story.id', 'DESC');
     } else if (countColumn) {
       qb.orderBy(`story.${countColumn}`, 'DESC').addOrderBy('story.id', 'DESC');
@@ -545,19 +546,24 @@ export class StoriesService {
     if (search) {
       const booleanQuery = toBooleanFulltextQuery(search);
       if (booleanQuery) {
-        // Indexed word/prefix match over (title, excerpt). Used purely as a
-        // filter — the sort/keyset ordering above is untouched.
+        // Indexed word/prefix match over the generated searchVector (title +
+        // excerpt — see Story.searchVector). Used purely as a filter — the
+        // sort/keyset ordering above is untouched.
         qb.andWhere(
-          'MATCH(story.title, story.excerpt) AGAINST (:ftQuery IN BOOLEAN MODE)',
-          {ftQuery: booleanQuery}
+          'story."searchVector" @@ to_tsquery(\'english\', :ftQuery)',
+          {
+            ftQuery: booleanQuery,
+          }
         );
       } else {
-        // Too short or all stopwords for FULLTEXT — fall back to a substring
-        // LIKE (unindexed, but such queries are rare and cheap to scan). Escape
-        // LIKE wildcards so a literal % / _ can't act as a match-all.
+        // Too short or all stopwords for a tsquery — fall back to a
+        // substring ILIKE (unindexed, but such queries are rare and cheap to
+        // scan). Escape LIKE wildcards so a literal % / _ can't act as a
+        // match-all. ILIKE for case-insensitive matching (Postgres's default
+        // collation is case-sensitive, unlike MySQL's).
         const escaped = search.replace(/[\\%_]/g, '\\$&');
         qb.andWhere(
-          '(story.title LIKE :search OR story.excerpt LIKE :search)',
+          '(story.title ILIKE :search OR story.excerpt ILIKE :search)',
           {search: `%${escaped}%`}
         );
       }
@@ -729,18 +735,15 @@ export class StoriesService {
     const total =
       cursor === undefined ? await qb.clone().getCount() : undefined;
 
-    // createdAt is datetime(6), but a JS Date carries only milliseconds — so
+    // createdAt is timestamp(6), but a JS Date carries only milliseconds — so
     // reading it off the entity would drop the microsecond tail and let the
     // boundary row reappear on the next page. Pull it at full precision as a
     // string for the cursor. It's in the SELECT only, never the WHERE, so the
     // (status, createdAt) index still drives the keyset seek.
     qb.addSelect(
-      "DATE_FORMAT(story.createdAt, '%Y-%m-%d %H:%i:%s.%f')",
+      `to_char(story."createdAt", 'YYYY-MM-DD HH24:MI:SS.US')`,
       'story_created_raw'
     );
-
-    // The trending score rides the projection as `trendingScore` (added in
-    // _buildApprovedQuery); that raw value is what the cursor carries.
 
     const decoded = cursor ? decodeStoryCursor(cursor) : null;
     if (decoded) {
@@ -771,7 +774,7 @@ export class StoriesService {
   ): Promise<{counted: boolean; viewCount: number}> {
     const story = await this.storiesRepository.findOne({
       where: {id: storyId},
-      // Narrow projection — never load the mediumtext content on a view ping.
+      // Narrow projection — never load the full text content on a view ping.
       select: {id: true, status: true, viewCount: true, author: {id: true}},
       relations: {author: true},
     });
@@ -814,10 +817,10 @@ export class StoriesService {
     // trusting positional alignment with `entities`.
     const row = raw.find((r) => r.story_id === last.id);
 
-    // Trending orders by the computed blend, carried in the raw projection
-    // under the `trendingScore` select alias. Raw values are string|number.
+    // Trending orders by the generated trendingScore column — read straight
+    // off the hydrated entity, same as the count-sort columns below.
     if (sort === 'trending') {
-      return String((row?.trendingScore as string | number | null) ?? 0);
+      return String(last.trendingScore);
     }
 
     const countColumn = COUNT_SORT_COLUMN[sort];
@@ -840,24 +843,28 @@ export class StoriesService {
     const ascending = sort === 'oldest';
     const cmp = ascending ? '>' : '<';
     const countColumn = COUNT_SORT_COLUMN[sort];
-    // Trending compares on the same blend expression it orders by; count sorts
-    // on their column (both numeric); createdAt on the datetime(6) string MySQL
-    // parses back to full precision.
+    // Trending compares on the same generated column it orders by; count
+    // sorts on their column (both numeric); createdAt on the timestamp(6)
+    // string encoded at full precision (see _cursorKey) — pg binds a string
+    // param as text, and Postgres won't implicitly compare text to
+    // timestamp, so this branch alone needs an explicit ::timestamp cast.
     let column: string;
+    let placeholder = ':ck';
     let key: string | number;
     if (sort === 'trending') {
-      column = TRENDING_SCORE_SQL;
+      column = 'story.trendingScore';
       key = Number(cursor.k);
     } else if (countColumn) {
       column = `story.${countColumn}`;
       key = Number(cursor.k);
     } else {
       column = 'story.createdAt';
+      placeholder = ':ck::timestamp';
       key = cursor.k;
     }
 
     qb.andWhere(
-      `(${column} ${cmp} :ck OR (${column} = :ck AND story.id ${cmp} :cid))`,
+      `(${column} ${cmp} ${placeholder} OR (${column} = ${placeholder} AND story.id ${cmp} :cid))`,
       {ck: key, cid: cursor.id}
     );
   }

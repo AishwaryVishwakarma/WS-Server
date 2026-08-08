@@ -10,6 +10,7 @@ import {CreateUserDto} from 'src/users/dto/create-user.dto';
 import {UserPreviewResponseDto} from 'src/users/dto/user-response.dto';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
+import {MailService} from 'src/mail/mail.service';
 
 export type Agent = ReturnType<typeof request.agent>;
 
@@ -40,6 +41,15 @@ export const ADMIN_USER = {
   password: 'Adm1n!S3cret',
 };
 
+// registerUser needs the app's MailService instance to pull the emailed OTP
+// code back out (see below) but only receives an `agent`, not the TestApp —
+// changing its signature would touch every one of its ~140 call sites across
+// the suite. Each spec file creates exactly one TestApp in its own
+// `beforeAll`, so stashing it here (module state is per-test-file, since Jest
+// gives each spec file its own module registry) is a self-contained shortcut
+// rather than a real cross-test global.
+let currentTestApp: TestApp | undefined;
+
 // Boots the real AppModule with the same pipes/filters/session middleware
 // as production (via setupApp), against the docker-compose test services.
 export async function createTestApp(): Promise<TestApp> {
@@ -51,7 +61,8 @@ export async function createTestApp(): Promise<TestApp> {
   const redisClient = await setupApp(app);
   await app.init();
 
-  return {app, dataSource: app.get(DataSource), redisClient};
+  currentTestApp = {app, dataSource: app.get(DataSource), redisClient};
+  return currentTestApp;
 }
 
 export async function closeTestApp({app, redisClient}: TestApp) {
@@ -71,31 +82,56 @@ export async function cleanDatabase(dataSource: DataSource) {
   }
 
   const tables: {table_name: string}[] = await dataSource.query(
-    'SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = DATABASE()'
+    'SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = current_schema()'
   );
 
-  await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
-  try {
-    for (const {table_name} of tables) {
-      // The migrations ledger must survive cleaning — truncating it would
-      // make the next app boot re-run migrations against existing tables
-      if (table_name === 'migrations') continue;
-
-      await dataSource.query(`TRUNCATE TABLE \`${table_name}\``);
+  for (const {table_name} of tables) {
+    // The migrations ledger must survive cleaning — truncating it would make
+    // the next app boot re-run migrations against existing tables. Also
+    // preserve typeorm_metadata (records the searchVector generated-column
+    // expression) so a later migration:generate doesn't see it as missing
+    // and propose a spurious change.
+    if (table_name === 'migrations' || table_name === 'typeorm_metadata') {
+      continue;
     }
-  } finally {
-    await dataSource.query('SET FOREIGN_KEY_CHECKS = 1');
+
+    // CASCADE truncates dependent tables transitively — Postgres has no
+    // MySQL-style FK-check toggle, and truncating an already-cascaded table
+    // later in this same loop is a harmless no-op.
+    await dataSource.query(`TRUNCATE TABLE "${table_name}" CASCADE`);
   }
 }
 
-// Registers a user through the real endpoint; the agent keeps the session
-// cookie so subsequent requests on it are authenticated.
+// Registers a user through the real two-step OTP endpoints (start, then
+// confirm with the mailed code) so the agent ends up with a real session
+// cookie, exactly like the old one-call register used to. Spies on the app's
+// MailService for just long enough to pull the code back out of the body —
+// mirrors password-reset.integration.spec.ts's own spyOnMail/token-extraction
+// helper, restoring itself immediately so it never leaks into a test's own
+// later spy on the same singleton (e.g. requesting a password reset next).
 export async function registerUser(
   agent: Agent,
   overrides: Partial<typeof DEFAULT_USER> = {}
 ) {
+  if (!currentTestApp) {
+    throw new Error('registerUser called before createTestApp');
+  }
   const payload = {...DEFAULT_USER, ...overrides};
-  const response = await agent.post('/auth/register').send(payload).expect(201);
+
+  const mailService = currentTestApp.app.get(MailService);
+  const sendSpy = jest.spyOn(mailService, 'send').mockResolvedValue(undefined);
+
+  await agent.post('/auth/register').send(payload).expect(204);
+
+  const call = sendSpy.mock.calls.at(-1);
+  sendSpy.mockRestore();
+  const code = call && /code is (\d{6})/.exec(call[2])?.[1];
+  if (!code) throw new Error('No verification code found in the mailed body');
+
+  const response = await agent
+    .post('/auth/register/confirm')
+    .send({email: payload.email, code})
+    .expect(201);
 
   return {payload, body: response.body as UserPreviewResponseDto};
 }

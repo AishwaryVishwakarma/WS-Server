@@ -159,17 +159,11 @@ describe('Settings (integration)', () => {
     it('drops profileImageUrl on registration by default', async () => {
       const client = agent();
 
-      const response = await client
-        .post('/auth/register')
-        .send({
-          name: 'Test User',
-          email: 'user@test.com',
-          password: 'S3cret!Password',
-          profileImageUrl: 'https://example.com/me.png',
-        })
-        .expect(201);
+      const {body} = await registerUser(client, {
+        profileImageUrl: 'https://example.com/me.png',
+      } as Record<string, unknown>);
 
-      expect(response.body.profileImageUrl).toBeNull();
+      expect(body.profileImageUrl).toBeNull();
     });
 
     it('keeps profileImageUrl on registration once the setting is on', async () => {
@@ -177,33 +171,21 @@ describe('Settings (integration)', () => {
       await setImageSettings(admin, {allowProfileImageUpload: true});
 
       const client = agent();
-      const response = await client
-        .post('/auth/register')
-        .send({
-          name: 'Test User',
-          email: 'user@test.com',
-          password: 'S3cret!Password',
-          profileImageUrl: 'https://example.com/me.png',
-        })
-        .expect(201);
+      const {body} = await registerUser(client, {
+        profileImageUrl: 'https://example.com/me.png',
+      } as Record<string, unknown>);
 
-      expect(response.body.profileImageUrl).toBe('https://example.com/me.png');
+      expect(body.profileImageUrl).toBe('https://example.com/me.png');
     });
 
     it('always accepts avatarIcon regardless of the setting', async () => {
       const client = agent();
 
-      const response = await client
-        .post('/auth/register')
-        .send({
-          name: 'Test User',
-          email: 'user@test.com',
-          password: 'S3cret!Password',
-          avatarIcon: 'ghost',
-        })
-        .expect(201);
+      const {body} = await registerUser(client, {
+        avatarIcon: 'ghost',
+      } as Record<string, unknown>);
 
-      expect(response.body.avatarIcon).toBe('ghost');
+      expect(body.avatarIcon).toBe('ghost');
     });
 
     it('rejects an avatarIcon value outside the curated set', async () => {
@@ -223,17 +205,11 @@ describe('Settings (integration)', () => {
     it('always accepts avatarColor regardless of the setting', async () => {
       const client = agent();
 
-      const response = await client
-        .post('/auth/register')
-        .send({
-          name: 'Test User',
-          email: 'user@test.com',
-          password: 'S3cret!Password',
-          avatarColor: 'blood',
-        })
-        .expect(201);
+      const {body} = await registerUser(client, {
+        avatarColor: 'blood',
+      } as Record<string, unknown>);
 
-      expect(response.body.avatarColor).toBe('blood');
+      expect(body.avatarColor).toBe('blood');
     });
 
     it('rejects an avatarColor value outside the curated set', async () => {

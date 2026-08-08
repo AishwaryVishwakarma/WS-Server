@@ -1,4 +1,4 @@
-import {UnauthorizedException} from '@nestjs/common';
+import {ConflictException, UnauthorizedException} from '@nestjs/common';
 import {Test} from '@nestjs/testing';
 import {getRepositoryToken} from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
@@ -14,6 +14,7 @@ import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {AuthService} from './auth.service';
 import {GoogleAuthService} from './google-auth.service';
+import {RegistrationOtpService} from './registration-otp.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -23,10 +24,16 @@ describe('AuthService', () => {
     getOne: jest.Mock;
   };
   let findOneBy: jest.Mock;
-  let usersService: {create: jest.Mock; findOrCreateGoogleUser: jest.Mock};
+  let findOne: jest.Mock;
+  let usersService: {
+    create: jest.Mock;
+    findOrCreateGoogleUser: jest.Mock;
+    createFromVerifiedRegistration: jest.Mock;
+  };
   let sessionService: {regenerate: jest.Mock; destroy: jest.Mock};
   let sessionRegistryService: {track: jest.Mock; untrack: jest.Mock};
   let googleAuthService: {verify: jest.Mock};
+  let registrationOtpService: {start: jest.Mock; confirm: jest.Mock};
 
   const password = 'S3cret!Password';
   let hashedPassword: string;
@@ -45,7 +52,12 @@ describe('AuthService', () => {
       getOne: jest.fn(),
     };
     findOneBy = jest.fn();
-    usersService = {create: jest.fn(), findOrCreateGoogleUser: jest.fn()};
+    findOne = jest.fn();
+    usersService = {
+      create: jest.fn(),
+      findOrCreateGoogleUser: jest.fn(),
+      createFromVerifiedRegistration: jest.fn(),
+    };
     sessionService = {
       regenerate: jest.fn().mockResolvedValue(undefined),
       destroy: jest.fn().mockResolvedValue(undefined),
@@ -55,6 +67,7 @@ describe('AuthService', () => {
       untrack: jest.fn().mockResolvedValue(undefined),
     };
     googleAuthService = {verify: jest.fn()};
+    registrationOtpService = {start: jest.fn(), confirm: jest.fn()};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -64,12 +77,14 @@ describe('AuthService', () => {
           useValue: {
             createQueryBuilder: jest.fn(() => queryBuilder),
             findOneBy,
+            findOne,
           },
         },
         {provide: UsersService, useValue: usersService},
         {provide: SessionService, useValue: sessionService},
         {provide: SessionRegistryService, useValue: sessionRegistryService},
         {provide: GoogleAuthService, useValue: googleAuthService},
+        {provide: RegistrationOtpService, useValue: registrationOtpService},
       ],
     }).compile();
 
@@ -126,20 +141,64 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('creates the user, regenerates the session, and stores id and role', async () => {
-      usersService.create.mockResolvedValue({id: 'user-1', role: Role.User});
-      const req = createRequest();
+    it('starts the OTP flow for a new email, without touching the session', async () => {
+      findOne.mockResolvedValue(null);
 
-      const user = await service.register(
-        {name: 'Test', email: 'a@b.com', password},
-        req
-      );
+      await service.register({name: 'Test', email: 'a@b.com', password});
 
-      expect(usersService.create).toHaveBeenCalledWith({
+      expect(registrationOtpService.start).toHaveBeenCalledWith({
         name: 'Test',
         email: 'a@b.com',
         password,
       });
+      expect(sessionService.regenerate).not.toHaveBeenCalled();
+    });
+
+    it('rejects an email that already belongs to a real account', async () => {
+      findOne.mockResolvedValue({id: 'user-1'});
+
+      await expect(
+        service.register({name: 'Test', email: 'a@b.com', password})
+      ).rejects.toThrow(ConflictException);
+      expect(registrationOtpService.start).not.toHaveBeenCalled();
+    });
+
+    it('also rejects an email still locked by an admin-removed (soft-deleted) account', async () => {
+      findOne.mockResolvedValue({id: 'old-user', deletedAt: new Date()});
+
+      await expect(
+        service.register({name: 'Test', email: 'a@b.com', password})
+      ).rejects.toThrow(ConflictException);
+      expect(findOne).toHaveBeenCalledWith(
+        expect.objectContaining({withDeleted: true})
+      );
+      expect(registrationOtpService.start).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('confirmRegistration', () => {
+    it('confirms the code, creates the user from the pending data, and opens the session', async () => {
+      registrationOtpService.confirm.mockResolvedValue({
+        name: 'Test',
+        email: 'a@b.com',
+        passwordHash: hashedPassword,
+      });
+      usersService.createFromVerifiedRegistration.mockResolvedValue({
+        id: 'user-1',
+        role: Role.User,
+      });
+      const req = createRequest();
+
+      const user = await service.confirmRegistration('a@b.com', '123456', req);
+
+      expect(registrationOtpService.confirm).toHaveBeenCalledWith(
+        'a@b.com',
+        '123456'
+      );
+      expect(usersService.createFromVerifiedRegistration).toHaveBeenCalledWith(
+        {name: 'Test', email: 'a@b.com'},
+        hashedPassword
+      );
       expect(sessionService.regenerate).toHaveBeenCalledWith(req);
       expect(req.session.userId).toBe('user-1');
       expect(req.session.role).toBe(Role.User);
