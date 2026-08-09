@@ -18,7 +18,7 @@ export class MailService {
     const host = this.configService.get<string>('SMTP_HOST');
     this.from =
       this.configService.get<string>('SMTP_FROM') ??
-      'no-reply@whisperingshadows.dev';
+      'no-reply@whisperingshadows.net';
 
     const user = this.configService.get<string>('SMTP_USER');
     this.transporter = host
