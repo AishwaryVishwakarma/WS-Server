@@ -134,14 +134,19 @@ probe above as the deploy healthcheck).
    | `GOOGLE_CLIENT_ID` | same value as the web's `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, if Google sign-in is enabled |
    | `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM` | Resend credentials, if outgoing email is enabled |
 
-   `PORT` needs no manual entry — Railway injects it, and `main.ts` already
-   reads `process.env.PORT`.
+   `PORT` needs no manual entry — Railway injects its own (`8080`), and
+   `main.ts` already reads `process.env.PORT` rather than the Dockerfile's
+   `EXPOSE 8000`.
 3. **Migrations run automatically on boot** (`migrationsRun` in
    `app.module.ts`), so a fresh Postgres plugin gets its schema on the app's
    first deploy with no separate migration step.
 4. Once the app service has a public domain (Railway assigns one, or attach
    `api.whisperingshadows.net` under the service's Settings → Networking),
-   point the web deployment's `API_URL` at it.
+   point the web deployment's `API_URL` at it. **Set that domain's Target
+   Port to `8080`, not `8000`** — Railway's injected `PORT` wins over the
+   Dockerfile's `EXPOSE`, so the app actually listens on `8080`; a Target
+   Port of `8000` looks reasonable but produces a `502 Application failed to
+   respond` since nothing is listening there.
 
 ## API overview
 
