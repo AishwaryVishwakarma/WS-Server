@@ -1,4 +1,4 @@
-import {buildDigestText} from './digest-content';
+import {buildDigestText, buildDigestHtml} from './digest-content';
 
 const BASE = {
   siteUrl: 'https://example.test',
@@ -52,5 +52,44 @@ describe('buildDigestText', () => {
         'You have 5 unread notifications.',
       ].join('\n')
     );
+  });
+});
+
+describe('buildDigestHtml', () => {
+  it('returns null when there is nothing to report (mirrors buildDigestText)', () => {
+    expect(buildDigestHtml(BASE)).toBeNull();
+  });
+
+  it('reports a streak on its own', () => {
+    const html = buildDigestHtml({...BASE, currentStreak: 4});
+    expect(html).toContain('4-day');
+    expect(html).toContain('Keep it going.');
+  });
+
+  it('reports an unread count with correct singular/plural wording', () => {
+    expect(buildDigestHtml({...BASE, unreadCount: 1})).toContain(
+      'unread notification.'
+    );
+    expect(buildDigestHtml({...BASE, unreadCount: 3})).toContain(
+      'unread notifications.'
+    );
+  });
+
+  it('links to each new story and escapes user-authored title/author text', () => {
+    const html = buildDigestHtml({
+      ...BASE,
+      newStories: [
+        {
+          id: 'story-1',
+          title: '<script>alert(1)</script>',
+          authorName: 'Mara & Co',
+        },
+      ],
+    });
+
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('Mara &amp; Co');
+    expect(html).toContain('href="https://example.test/stories/story-1"');
   });
 });

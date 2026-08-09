@@ -83,6 +83,7 @@ describe('PasswordResetService', () => {
       expect(mailService.send).toHaveBeenCalledWith(
         user.email,
         expect.any(String),
+        expect.stringContaining('/reset-password?token='),
         expect.stringContaining('/reset-password?token=')
       );
     });

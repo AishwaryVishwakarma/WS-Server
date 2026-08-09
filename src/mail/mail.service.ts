@@ -37,7 +37,12 @@ export class MailService {
     return this.transporter !== null;
   }
 
-  async send(to: string, subject: string, text: string): Promise<void> {
+  async send(
+    to: string,
+    subject: string,
+    text: string,
+    html?: string
+  ): Promise<void> {
     if (!this.transporter) {
       this.logger.warn(
         `SMTP not configured — logging instead of sending.\nTo: ${to}\nSubject: ${subject}\n${text}`
@@ -45,6 +50,6 @@ export class MailService {
       return;
     }
 
-    await this.transporter.sendMail({from: this.from, to, subject, text});
+    await this.transporter.sendMail({from: this.from, to, subject, text, html});
   }
 }

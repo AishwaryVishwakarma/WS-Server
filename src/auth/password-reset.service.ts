@@ -6,6 +6,7 @@ import {Repository} from 'typeorm';
 import {PasswordResetToken} from './entities/password-reset-token.entity';
 import {UsersService} from 'src/users/users.service';
 import {MailService} from 'src/mail/mail.service';
+import {renderEmailHtml} from 'src/mail/email-template';
 import {SessionRegistryService} from 'src/session/session-registry.service';
 
 // A link is valid for an hour and can only ever be used once.
@@ -55,7 +56,18 @@ export class PasswordResetService {
       'Reset your Whispering Shadows password',
       `Someone (hopefully you) asked to reset your password. This link ` +
         `expires in an hour and works only once:\n\n${resetUrl}\n\n` +
-        `If you didn't request this, you can safely ignore this email.`
+        `If you didn't request this, you can safely ignore this email.`,
+      renderEmailHtml({
+        preheader: 'Reset your password — this link expires in an hour.',
+        heading: 'Reset your password',
+        bodyHtml:
+          '<p style="margin:0;">Someone (hopefully you) asked to reset your ' +
+          'Whispering Shadows password. This link expires in an hour and ' +
+          'works only once.</p>',
+        cta: {label: 'Reset password', url: resetUrl},
+        footnote:
+          "If you didn't request this, you can safely ignore this email.",
+      })
     );
   }
 

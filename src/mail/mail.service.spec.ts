@@ -48,7 +48,25 @@ describe('MailService', () => {
         to: 'reader@test.com',
         subject: 'Subject',
         text: 'Body',
+        html: undefined,
       });
+    });
+
+    it('passes an optional html part through alongside the text one', async () => {
+      const service = new MailService(
+        makeConfigService({
+          SMTP_HOST: 'smtp.test.com',
+          SMTP_USER: 'user',
+          SMTP_PASSWORD: 'pass',
+          SMTP_FROM: 'shadows@test.com',
+        })
+      );
+
+      await service.send('reader@test.com', 'Subject', 'Body', '<p>Body</p>');
+
+      expect(sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({html: '<p>Body</p>'})
+      );
     });
 
     it('omits auth when no SMTP_USER is set', () => {

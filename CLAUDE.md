@@ -263,6 +263,16 @@ npm run dev:infra:down
   sending it, so the flow is fully exercisable in dev/CI (grab the link from
   the console) without real mail credentials. `FRONTEND_URL` (optional,
   defaults to `http://localhost:3000`) builds the link the email points at.
+  Every outgoing email (this, the registration OTP code, and the weekly
+  digest) sends a branded HTML part alongside its plain-text body —
+  `renderEmailHtml` (`src/mail/email-template.ts`) is a single inline-styled,
+  table-based template shell (no external CSS/fonts/images, since mail
+  clients handle those inconsistently) shared by all three; `MailService.send`
+  takes the HTML as an optional 4th argument and passes both parts to
+  nodemailer, which lets the recipient's client pick whichever it renders.
+  Anything user-authored gets interpolated into a caller's HTML through
+  `escapeHtml` first — the weekly digest is the one email of the three that
+  embeds user content (story titles, author names).
   Consuming a link also **logs out every active session for the account** via
   `SessionRegistryService` (`src/session/session-registry.service.ts`): a
   Redis SET `user-sessions:<userId>` of session ids, updated alongside

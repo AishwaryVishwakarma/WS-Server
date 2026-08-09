@@ -9,7 +9,8 @@ import {MutesService} from 'src/mutes/mutes.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {NotificationsService} from 'src/notifications/notifications.service';
 import {MailService} from 'src/mail/mail.service';
-import {buildDigestText} from './digest-content';
+import {buildDigestText, buildDigestHtml} from './digest-content';
+import {renderEmailHtml} from 'src/mail/email-template';
 
 const DIGEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -75,15 +76,22 @@ export class DigestService {
 
     const siteUrl =
       this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
-    const body = buildDigestText({
+    const digestInput = {
       siteUrl,
       currentStreak: user.currentStreak,
       newStories,
       unreadCount,
-    });
+    };
+    const body = buildDigestText(digestInput);
     if (!body) return false;
 
-    await this.mailService.send(user.email, 'Your weekly whispers', body);
+    const html = renderEmailHtml({
+      preheader: 'Your weekly whispers are ready.',
+      heading: 'Your weekly whispers',
+      bodyHtml: buildDigestHtml(digestInput) ?? '',
+    });
+
+    await this.mailService.send(user.email, 'Your weekly whispers', body, html);
     await this.usersRepository.update(user.id, {lastDigestSentAt: new Date()});
     return true;
   }

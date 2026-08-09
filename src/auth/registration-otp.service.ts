@@ -6,6 +6,7 @@ import {PendingRegistration} from './entities/pending-registration.entity';
 import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {UsersService} from 'src/users/users.service';
 import {MailService} from 'src/mail/mail.service';
+import {EMAIL_ACCENT_COLOR, renderEmailHtml} from 'src/mail/email-template';
 import {AvatarIcon} from 'src/users/enums/avatar-icon.enum';
 import {AvatarColor} from 'src/users/enums/avatar-color.enum';
 
@@ -56,7 +57,17 @@ export class RegistrationOtpService {
       pending.email,
       'Verify your Whispering Shadows email',
       `Your verification code is ${code}. It expires in 10 minutes.\n\n` +
-        `If you didn't try to create an account, you can safely ignore this email.`
+        `If you didn't try to create an account, you can safely ignore this email.`,
+      renderEmailHtml({
+        preheader: `Your verification code is ${code}.`,
+        heading: 'Verify your email',
+        bodyHtml:
+          '<p style="margin:0 0 20px;">Enter this code to finish creating ' +
+          'your account. It expires in 10 minutes.</p>' +
+          `<p style="margin:0; text-align:center; font-size:32px; font-weight:700; letter-spacing:.3em; color:${EMAIL_ACCENT_COLOR}; font-family:'SFMono-Regular',Consolas,monospace;">${code}</p>`,
+        footnote:
+          "If you didn't try to create an account, you can safely ignore this email.",
+      })
     );
 
     return {codeHash, expiresAt};
