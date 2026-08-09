@@ -8,7 +8,7 @@
 const EMBER = '#ff7a3d';
 
 const BRAND = {
-  bg: '#101013',
+  bg: '#f4f4f5',
   surface: '#1c1c22',
   border: '#2e2e35',
   text: '#ededf0',
