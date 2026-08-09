@@ -1,49 +1,65 @@
 import {ConfigService} from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
 import {MailService} from './mail.service';
-
-jest.mock('nodemailer');
 
 function makeConfigService(values: Record<string, string>): ConfigService {
   return {get: (key: string) => values[key]} as unknown as ConfigService;
 }
 
-describe('MailService', () => {
-  afterEach(() => jest.clearAllMocks());
+function mockFetchResponse(ok: boolean, status = 200, body = '{}') {
+  return jest.fn().mockResolvedValue({
+    ok,
+    status,
+    text: jest.fn().mockResolvedValue(body),
+  });
+}
 
-  describe('when SMTP is not configured', () => {
+describe('MailService', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.clearAllMocks();
+  });
+
+  describe('when RESEND_API_KEY is not configured', () => {
     it('is disabled and logs instead of sending', async () => {
+      global.fetch = jest.fn();
       const service = new MailService(makeConfigService({}));
 
       expect(service.enabled).toBe(false);
       await service.send('reader@test.com', 'Subject', 'Body');
 
-      expect(nodemailer.createTransport).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 
-  describe('when SMTP is configured', () => {
-    const sendMail = jest.fn().mockResolvedValue(undefined);
+  describe('when RESEND_API_KEY is configured', () => {
+    it('is enabled and posts to the Resend API', async () => {
+      const fetchMock = mockFetchResponse(true);
+      global.fetch = fetchMock;
 
-    beforeEach(() => {
-      (nodemailer.createTransport as jest.Mock).mockReturnValue({sendMail});
-    });
-
-    it('is enabled and sends through the configured transport', async () => {
       const service = new MailService(
         makeConfigService({
-          SMTP_HOST: 'smtp.test.com',
-          SMTP_PORT: '2525',
-          SMTP_USER: 'user',
-          SMTP_PASSWORD: 'pass',
-          SMTP_FROM: 'shadows@test.com',
+          RESEND_API_KEY: 're_test_key',
+          MAIL_FROM: 'shadows@test.com',
         })
       );
 
       expect(service.enabled).toBe(true);
       await service.send('reader@test.com', 'Subject', 'Body');
 
-      expect(sendMail).toHaveBeenCalledWith({
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.resend.com/emails',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer re_test_key',
+            'Content-Type': 'application/json',
+          },
+        })
+      );
+      const [, options] = fetchMock.mock.calls[0] as [string, {body: string}];
+      expect(JSON.parse(options.body)).toEqual({
         from: 'shadows@test.com',
         to: 'reader@test.com',
         subject: 'Subject',
@@ -53,28 +69,46 @@ describe('MailService', () => {
     });
 
     it('passes an optional html part through alongside the text one', async () => {
+      const fetchMock = mockFetchResponse(true);
+      global.fetch = fetchMock;
+
       const service = new MailService(
-        makeConfigService({
-          SMTP_HOST: 'smtp.test.com',
-          SMTP_USER: 'user',
-          SMTP_PASSWORD: 'pass',
-          SMTP_FROM: 'shadows@test.com',
-        })
+        makeConfigService({RESEND_API_KEY: 're_test_key'})
       );
 
       await service.send('reader@test.com', 'Subject', 'Body', '<p>Body</p>');
 
-      expect(sendMail).toHaveBeenCalledWith(
+      const [, options] = fetchMock.mock.calls[0] as [string, {body: string}];
+      expect(JSON.parse(options.body)).toEqual(
         expect.objectContaining({html: '<p>Body</p>'})
       );
     });
 
-    it('omits auth when no SMTP_USER is set', () => {
-      new MailService(makeConfigService({SMTP_HOST: 'smtp.test.com'}));
+    it('falls back to the default From address when MAIL_FROM is unset', async () => {
+      const fetchMock = mockFetchResponse(true);
+      global.fetch = fetchMock;
 
-      expect(nodemailer.createTransport).toHaveBeenCalledWith(
-        expect.objectContaining({auth: undefined})
+      const service = new MailService(
+        makeConfigService({RESEND_API_KEY: 're_test_key'})
       );
+      await service.send('reader@test.com', 'Subject', 'Body');
+
+      const [, options] = fetchMock.mock.calls[0] as [string, {body: string}];
+      expect(JSON.parse(options.body).from).toBe(
+        'no-reply@whisperingshadows.net'
+      );
+    });
+
+    it('throws with the response body when the Resend API rejects the request', async () => {
+      global.fetch = mockFetchResponse(false, 422, '{"message":"bad from"}');
+
+      const service = new MailService(
+        makeConfigService({RESEND_API_KEY: 're_test_key'})
+      );
+
+      await expect(
+        service.send('reader@test.com', 'Subject', 'Body')
+      ).rejects.toThrow('Resend API request failed (422)');
     });
   });
 });

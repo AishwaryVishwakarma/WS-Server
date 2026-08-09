@@ -259,19 +259,24 @@ npm run dev:infra:down
   not the email is registered — a differing response would let an attacker
   enumerate accounts. Delivery goes through `MailService`
   (`src/mail/mail.service.ts`), optional like Google sign-in: unset
-  `SMTP_HOST` doesn't fail anything, it just logs the message instead of
+  `RESEND_API_KEY` doesn't fail anything, it just logs the message instead of
   sending it, so the flow is fully exercisable in dev/CI (grab the link from
-  the console) without real mail credentials. `FRONTEND_URL` (optional,
-  defaults to `http://localhost:3000`) builds the link the email points at.
-  Every outgoing email (this, the registration OTP code, and the weekly
-  digest) sends a branded HTML part alongside its plain-text body —
-  `renderEmailHtml` (`src/mail/email-template.ts`) is a single inline-styled,
-  table-based template shell (no external CSS/fonts/images, since mail
-  clients handle those inconsistently) shared by all three; `MailService.send`
-  takes the HTML as an optional 4th argument and passes both parts to
-  nodemailer, which lets the recipient's client pick whichever it renders.
-  Anything user-authored gets interpolated into a caller's HTML through
-  `escapeHtml` first — the weekly digest is the one email of the three that
+  the console) without a real API key. It posts to Resend's HTTPS API
+  (`https://api.resend.com/emails`) rather than SMTP — the original SMTP
+  design was provider-agnostic (any host worked via env vars), but Railway
+  (and other PaaS hosts) silently drop outbound SMTP connections, so `send()`
+  would hang for minutes before failing; HTTPS on 443 is always reachable.
+  `FRONTEND_URL` (optional, defaults to `http://localhost:3000`) builds the
+  link the email points at. Every outgoing email (this, the registration OTP
+  code, and the weekly digest) sends a branded HTML part alongside its
+  plain-text body — `renderEmailHtml` (`src/mail/email-template.ts`) is a
+  single inline-styled, table-based template shell (no external CSS/fonts/
+  images, since mail clients handle those inconsistently) shared by all
+  three; `MailService.send` takes the HTML as an optional 4th argument and
+  includes both parts in the Resend request, which lets the recipient's
+  client pick whichever it renders. Anything user-authored gets interpolated
+  into a caller's HTML through `escapeHtml` first — the weekly digest is the
+  one email of the three that
   embeds user content (story titles, author names).
   Consuming a link also **logs out every active session for the account** via
   `SessionRegistryService` (`src/session/session-registry.service.ts`): a

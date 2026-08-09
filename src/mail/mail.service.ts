@@ -1,40 +1,33 @@
 import {Injectable, Logger} from '@nestjs/common';
 import {ConfigService} from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
 
-// Optional, like Google sign-in (see GoogleAuthService): unset SMTP_HOST
-// disables real delivery rather than failing app boot. Unlike Google
-// sign-in, callers never need to branch on `enabled` — send() always
-// succeeds from the caller's perspective, falling back to logging the
-// message so dev/CI can still exercise a full email-driven flow (e.g.
-// grab a password-reset link from the console) without real credentials.
+const RESEND_API_URL = 'https://api.resend.com/emails';
+
+// Sends via Resend's HTTPS API rather than raw SMTP. SMTP was the original
+// design (provider-agnostic — any SMTP host worked via env vars alone), but
+// Railway (and many PaaS platforms) silently drops outbound SMTP
+// connections: send() would hang for minutes before ever failing, since
+// nothing on the wire actively refuses the connection. HTTPS on 443 is
+// always reachable, so this trades that provider-agnosticism for actually
+// working on the platform this app runs on. Optional, like Google sign-in:
+// unset RESEND_API_KEY disables real delivery rather than failing app boot,
+// falling back to logging so dev/CI can still exercise a full email-driven
+// flow (grab the link/code from the console) without real credentials.
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
+  private readonly apiKey: string | undefined;
   private readonly from: string;
-  private readonly transporter: nodemailer.Transporter | null;
 
   constructor(private readonly configService: ConfigService) {
-    const host = this.configService.get<string>('SMTP_HOST');
+    this.apiKey = this.configService.get<string>('RESEND_API_KEY');
     this.from =
-      this.configService.get<string>('SMTP_FROM') ??
+      this.configService.get<string>('MAIL_FROM') ??
       'no-reply@whisperingshadows.net';
-
-    const user = this.configService.get<string>('SMTP_USER');
-    this.transporter = host
-      ? nodemailer.createTransport({
-          host,
-          port: parseInt(this.configService.get('SMTP_PORT') || '587', 10),
-          secure: this.configService.get('SMTP_SECURE') === 'true',
-          auth: user
-            ? {user, pass: this.configService.get<string>('SMTP_PASSWORD')}
-            : undefined,
-        })
-      : null;
   }
 
   get enabled(): boolean {
-    return this.transporter !== null;
+    return !!this.apiKey;
   }
 
   async send(
@@ -43,13 +36,27 @@ export class MailService {
     text: string,
     html?: string
   ): Promise<void> {
-    if (!this.transporter) {
+    if (!this.apiKey) {
       this.logger.warn(
-        `SMTP not configured — logging instead of sending.\nTo: ${to}\nSubject: ${subject}\n${text}`
+        `RESEND_API_KEY not configured — logging instead of sending.\nTo: ${to}\nSubject: ${subject}\n${text}`
       );
       return;
     }
 
-    await this.transporter.sendMail({from: this.from, to, subject, text, html});
+    const response = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({from: this.from, to, subject, text, html}),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `Resend API request failed (${response.status}): ${body}`
+      );
+    }
   }
 }

@@ -132,7 +132,7 @@ probe above as the deploy healthcheck).
    | `METRICS_TOKEN` | a unique random string (required in production — `/metrics` fail-closes without it) |
    | `FRONTEND_URL` | `https://whisperingshadows.net` |
    | `GOOGLE_CLIENT_ID` | same value as the web's `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, if Google sign-in is enabled |
-   | `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM` | Resend credentials, if outgoing email is enabled |
+   | `RESEND_API_KEY`/`MAIL_FROM` | Resend API key + From address, if outgoing email is enabled — sent over HTTPS, not SMTP (Railway silently drops outbound SMTP connections) |
 
    `PORT` needs no manual entry — Railway injects its own (`8080`), and
    `main.ts` already reads `process.env.PORT` rather than the Dockerfile's
