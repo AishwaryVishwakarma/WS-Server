@@ -30,15 +30,16 @@ jobs:
     runs-on: ubuntu-latest
     # Same images/ports/credentials as docker-compose.test.yml + .env.test
     services:
-      mysql:
-        image: mysql:8
+      postgres:
+        image: postgres:16
         env:
-          MYSQL_ROOT_PASSWORD: test
-          MYSQL_DATABASE: ws_test
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: ws_test
         ports:
-          - 3311:3306
+          - 3311:5432
         options: >-
-          --health-cmd "mysqladmin ping -h localhost -ptest"
+          --health-cmd "pg_isready -U root"
           --health-interval 2s
           --health-timeout 5s
           --health-retries 30
