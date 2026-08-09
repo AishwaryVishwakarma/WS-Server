@@ -106,6 +106,43 @@ npm run test:integration   # run the integration suite
 npm run test:infra:down    # stop the containers and remove their volumes
 ```
 
+## Deployment
+
+Deploys to [Railway](https://railway.app) from the existing production
+`Dockerfile` (`railway.json` points Railway at it and configures the `/health`
+probe above as the deploy healthcheck).
+
+1. **Create the project and add two plugins**: Postgres and Redis (Railway's
+   own managed offerings — "New" → "Database" → pick each). Then add this repo
+   as a third service ("New" → "GitHub Repo").
+2. **Set the app service's environment variables.** Reference the plugins'
+   own variables with Railway's `${{ServiceName.VAR}}` syntax rather than
+   copying values by hand — they rotate if a plugin is ever redeployed:
+
+   | Variable | Value |
+   | --- | --- |
+   | `DB_HOST` | `${{Postgres.PGHOST}}` |
+   | `DB_PORT` | `${{Postgres.PGPORT}}` |
+   | `DB_USERNAME` | `${{Postgres.PGUSER}}` |
+   | `DB_PASSWORD` | `${{Postgres.PGPASSWORD}}` |
+   | `DB_NAME` | `${{Postgres.PGDATABASE}}` |
+   | `REDIS_URL` | `${{Redis.REDIS_URL}}` |
+   | `NODE_ENV` | `production` |
+   | `SESSION_SECRET` | a unique random string, ≥16 chars (config fails to boot on a known example value in production) |
+   | `METRICS_TOKEN` | a unique random string (required in production — `/metrics` fail-closes without it) |
+   | `FRONTEND_URL` | `https://whisperingshadows.net` |
+   | `GOOGLE_CLIENT_ID` | same value as the web's `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, if Google sign-in is enabled |
+   | `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM` | Resend credentials, if outgoing email is enabled |
+
+   `PORT` needs no manual entry — Railway injects it, and `main.ts` already
+   reads `process.env.PORT`.
+3. **Migrations run automatically on boot** (`migrationsRun` in
+   `app.module.ts`), so a fresh Postgres plugin gets its schema on the app's
+   first deploy with no separate migration step.
+4. Once the app service has a public domain (Railway assigns one, or attach
+   `api.whisperingshadows.net` under the service's Settings → Networking),
+   point the web deployment's `API_URL` at it.
+
 ## API overview
 
 All routes require an authenticated session except registration and login.
