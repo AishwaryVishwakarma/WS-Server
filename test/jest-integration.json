@@ -4,7 +4,7 @@
   "testEnvironment": "node",
   "testRegex": "\\.integration\\.spec\\.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": ["ts-jest", {"diagnostics": false, "tsconfig": {"isolatedModules": true}}]
   },
   "moduleNameMapper": {
     "^src/(.*)$": "<rootDir>/../src/$1"

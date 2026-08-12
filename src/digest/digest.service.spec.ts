@@ -1,4 +1,5 @@
 import {Test} from '@nestjs/testing';
+import {getQueueToken} from '@nestjs/bullmq';
 import {getRepositoryToken} from '@nestjs/typeorm';
 import {ConfigService} from '@nestjs/config';
 import {User} from 'src/users/entities/user.entity';
@@ -6,10 +7,10 @@ import {FollowsService} from 'src/follows/follows.service';
 import {MutesService} from 'src/mutes/mutes.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {NotificationsService} from 'src/notifications/notifications.service';
-import {MailService} from 'src/mail/mail.service';
+import {MailTransportService} from 'src/mail/mail-transport.service';
 import {SettingsService} from 'src/settings/settings.service';
 import {DigestService} from './digest.service';
-import {DigestLockService} from './digest-lock.service';
+import {DIGEST_QUEUE} from 'src/jobs/queue.constants';
 
 // Only the global on/off gate is unit-tested here — the digest content
 // itself (what a sent email actually contains) is covered by
@@ -19,12 +20,14 @@ describe('DigestService', () => {
   let service: DigestService;
   let usersRepository: {find: jest.Mock};
   let settingsService: {isDigestEmailGloballyEnabled: jest.Mock};
+  let digestQueue: {add: jest.Mock};
 
   beforeEach(async () => {
     usersRepository = {find: jest.fn().mockResolvedValue([])};
     settingsService = {
       isDigestEmailGloballyEnabled: jest.fn().mockResolvedValue(true),
     };
+    digestQueue = {add: jest.fn().mockResolvedValue({id: 'digest-job'})};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -34,13 +37,10 @@ describe('DigestService', () => {
         {provide: MutesService, useValue: {}},
         {provide: StoriesService, useValue: {}},
         {provide: NotificationsService, useValue: {}},
-        {provide: MailService, useValue: {send: jest.fn()}},
+        {provide: MailTransportService, useValue: {deliver: jest.fn()}},
         {provide: ConfigService, useValue: {get: jest.fn()}},
         {provide: SettingsService, useValue: settingsService},
-        {
-          provide: DigestLockService,
-          useValue: {run: jest.fn((work: () => Promise<unknown>) => work())},
-        },
+        {provide: getQueueToken(DIGEST_QUEUE), useValue: digestQueue},
       ],
     }).compile();
 
@@ -68,6 +68,25 @@ describe('DigestService', () => {
         order: {id: 'ASC'},
         take: 100,
       });
+    });
+
+    it('queues one durable weekly job per opted-in user', async () => {
+      usersRepository.find
+        .mockResolvedValueOnce([{id: 'user-1'}, {id: 'user-2'}])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.sendWeeklyDigests();
+
+      expect(result).toEqual({sent: 2});
+      expect(digestQueue.add).toHaveBeenCalledTimes(2);
+      expect(digestQueue.add).toHaveBeenCalledWith(
+        'weekly',
+        {userId: 'user-1'},
+        expect.objectContaining({
+          attempts: 5,
+          jobId: expect.stringMatching(/^weekly-\d{4}-\d{2}-\d{2}-user-1$/),
+        })
+      );
     });
   });
 });

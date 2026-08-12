@@ -52,6 +52,7 @@ import {PresenceModule} from './presence/presence.module';
 import {migrations} from './database/migrations';
 import {RedisThrottlerStorage} from './common/redis-throttler.storage';
 import {RateLimitModule} from './common/rate-limit.module';
+import {JobsModule} from './jobs/jobs.module';
 
 // A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
@@ -61,6 +62,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     // Per-user (or per-IP) rate limiting — see SessionThrottlerGuard and
     // src/common/constants/throttle.ts for the tiers.
     RateLimitModule,
+    JobsModule,
     ThrottlerModule.forRootAsync({
       imports: [RateLimitModule],
       inject: [RedisThrottlerStorage],

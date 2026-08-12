@@ -1,5 +1,8 @@
 import request from 'supertest';
-import {MailService} from 'src/mail/mail.service';
+import {getQueueToken} from '@nestjs/bullmq';
+import type {Queue} from 'bullmq';
+import {MailTransportService} from 'src/mail/mail-transport.service';
+import {DIGEST_QUEUE} from 'src/jobs/queue.constants';
 import {User} from 'src/users/entities/user.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import {
@@ -44,8 +47,21 @@ describe('Weekly digest (integration)', () => {
   const userRepository = () => testApp.dataSource.getRepository(User);
 
   const spyOnMail = () => {
-    const mailService = testApp.app.get(MailService);
-    return jest.spyOn(mailService, 'send').mockResolvedValue(undefined);
+    const transport = testApp.app.get(MailTransportService);
+    return jest.spyOn(transport, 'deliver').mockResolvedValue(undefined);
+  };
+
+  const waitForDigestQueue = async () => {
+    const queue = testApp.app.get<Queue>(getQueueToken(DIGEST_QUEUE));
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const counts = await queue.getJobCounts('active', 'waiting', 'delayed');
+      if (counts.active === 0 && counts.waiting === 0 && counts.delayed === 0) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error('Digest queue did not become idle');
   };
 
   // The site-wide digest toggle defaults off and cleanDatabase truncates the
@@ -96,12 +112,16 @@ describe('Weekly digest (integration)', () => {
       .set('x-csrf-token', adminToken)
       .expect(201);
 
+    await waitForDigestQueue();
+
     expect(result.body.sent).toBeGreaterThanOrEqual(1);
     expect(sendMail).toHaveBeenCalledWith(
-      'reader@test.com',
-      'Your weekly whispers',
-      expect.stringContaining(STORY_PAYLOAD.title),
-      expect.any(String)
+      expect.objectContaining({
+        to: 'reader@test.com',
+        subject: 'Your weekly whispers',
+        text: expect.stringContaining(STORY_PAYLOAD.title),
+        html: expect.any(String),
+      })
     );
 
     const updatedReader = await userRepository().findOneByOrFail({
@@ -126,10 +146,10 @@ describe('Weekly digest (integration)', () => {
       .set('x-csrf-token', adminToken)
       .expect(201);
 
+    await waitForDigestQueue();
+
     expect(sendMail).not.toHaveBeenCalledWith(
-      'lonely@test.com',
-      expect.anything(),
-      expect.anything()
+      expect.objectContaining({to: 'lonely@test.com'})
     );
     const updatedReader = await userRepository().findOneByOrFail({
       id: readerBody.id,
@@ -177,10 +197,10 @@ describe('Weekly digest (integration)', () => {
       .set('x-csrf-token', adminToken)
       .expect(201);
 
+    await waitForDigestQueue();
+
     expect(sendMail).not.toHaveBeenCalledWith(
-      'optedout@test.com',
-      expect.anything(),
-      expect.anything()
+      expect.objectContaining({to: 'optedout@test.com'})
     );
   });
 

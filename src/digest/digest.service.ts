@@ -1,25 +1,27 @@
-import {Injectable, Logger} from '@nestjs/common';
+import {Injectable} from '@nestjs/common';
+import {InjectQueue} from '@nestjs/bullmq';
 import {Cron} from '@nestjs/schedule';
 import {InjectRepository} from '@nestjs/typeorm';
 import {MoreThan, Repository} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
+import type {Queue} from 'bullmq';
 import {User} from 'src/users/entities/user.entity';
 import {FollowsService} from 'src/follows/follows.service';
 import {MutesService} from 'src/mutes/mutes.service';
 import {StoriesService} from 'src/stories/stories.service';
 import {NotificationsService} from 'src/notifications/notifications.service';
-import {MailService} from 'src/mail/mail.service';
+import {MailTransportService} from 'src/mail/mail-transport.service';
 import {buildDigestText, buildDigestHtml} from './digest-content';
 import {renderEmailHtml} from 'src/mail/email-template';
 import {SettingsService} from 'src/settings/settings.service';
-import {DigestLockService} from './digest-lock.service';
+import {DIGEST_QUEUE} from 'src/jobs/queue.constants';
+import {DURABLE_JOB_OPTIONS} from 'src/jobs/queue.options';
 
 const DIGEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const DIGEST_BATCH_SIZE = 100;
 
 @Injectable()
 export class DigestService {
-  private readonly logger = new Logger(DigestService.name);
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
@@ -27,10 +29,10 @@ export class DigestService {
     private readonly mutesService: MutesService,
     private readonly storiesService: StoriesService,
     private readonly notificationsService: NotificationsService,
-    private readonly mailService: MailService,
+    private readonly mailTransport: MailTransportService,
     private readonly configService: ConfigService,
     private readonly settingsService: SettingsService,
-    private readonly lockService: DigestLockService
+    @InjectQueue(DIGEST_QUEUE) private readonly digestQueue: Queue
   ) {}
 
   // Mondays 14:00 UTC. Also reachable manually via POST /admin/digest/send
@@ -43,40 +45,42 @@ export class DigestService {
       return {sent: 0};
     }
 
-    const result = await this.lockService.run(async () => {
-      let sent = 0;
-      let cursor: string | undefined;
+    let queued = 0;
+    let cursor: string | undefined;
+    const week = this._digestWeekKey(new Date());
 
-      while (true) {
-        const users = await this.usersRepository.find({
-          where: {
-            digestEmailEnabled: true,
-            ...(cursor ? {id: MoreThan(cursor)} : {}),
-          },
-          order: {id: 'ASC'},
-          take: DIGEST_BATCH_SIZE,
-        });
-        if (users.length === 0) break;
+    while (true) {
+      const users = await this.usersRepository.find({
+        where: {
+          digestEmailEnabled: true,
+          ...(cursor ? {id: MoreThan(cursor)} : {}),
+        },
+        order: {id: 'ASC'},
+        take: DIGEST_BATCH_SIZE,
+      });
+      if (users.length === 0) break;
 
-        for (const user of users) {
-          try {
-            if (await this._sendDigestForUser(user)) sent++;
-          } catch (error) {
-            this.logger.error(
-              `Failed to send weekly digest for user ${user.id}`,
-              error instanceof Error ? error.stack : undefined
-            );
-          }
-        }
-        cursor = users.at(-1)!.id;
+      for (const user of users) {
+        await this.digestQueue.add(
+          'weekly',
+          {userId: user.id},
+          {...DURABLE_JOB_OPTIONS, jobId: `weekly-${week}-${user.id}`}
+        );
+        queued++;
       }
-      return {sent};
-    });
+      cursor = users.at(-1)!.id;
+    }
 
-    return result ?? {sent: 0};
+    return {sent: queued};
   }
 
-  private async _sendDigestForUser(user: User): Promise<boolean> {
+  async processUser(userId: string): Promise<boolean> {
+    const user = await this.usersRepository.findOne({where: {id: userId}});
+    if (!user || !user.digestEmailEnabled) return false;
+    if (!(await this.settingsService.isDigestEmailGloballyEnabled())) {
+      return false;
+    }
+
     const since =
       user.lastDigestSentAt ?? new Date(Date.now() - DIGEST_WINDOW_MS);
 
@@ -124,8 +128,22 @@ export class DigestService {
       bodyHtml: buildDigestHtml(digestInput) ?? '',
     });
 
-    await this.mailService.send(user.email, 'Your weekly whispers', body, html);
+    await this.mailTransport.deliver({
+      to: user.email,
+      subject: 'Your weekly whispers',
+      text: body,
+      html,
+    });
     await this.usersRepository.update(user.id, {lastDigestSentAt: new Date()});
     return true;
+  }
+
+  private _digestWeekKey(date: Date): string {
+    const utc = new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+    );
+    const daysSinceMonday = (utc.getUTCDay() + 6) % 7;
+    utc.setUTCDate(utc.getUTCDate() - daysSinceMonday);
+    return utc.toISOString().slice(0, 10);
   }
 }
