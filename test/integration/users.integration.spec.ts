@@ -241,6 +241,60 @@ describe('Users (integration)', () => {
     });
   });
 
+  describe('session management', () => {
+    it('lists sessions and remotely logs out another device', async () => {
+      const currentClient = agent();
+      await registerUser(currentClient);
+      const currentToken = await getCsrfToken(currentClient);
+
+      const otherClient = agent();
+      await otherClient
+        .post('/auth/login')
+        .set('user-agent', 'Mozilla/5.0 (iPhone) Mobile Safari/605.1.15')
+        .send({email: DEFAULT_USER.email, password: DEFAULT_USER.password})
+        .expect(201);
+
+      const response = await currentClient
+        .get('/users/me/sessions')
+        .expect(200);
+      expect(response.body).toHaveLength(2);
+      expect(
+        response.body.filter((session: {current: boolean}) => session.current)
+      ).toHaveLength(1);
+
+      const otherSession = response.body.find(
+        (session: {current: boolean}) => !session.current
+      );
+      expect(otherSession).toMatchObject({
+        device: 'Mobile',
+        browser: 'Safari',
+        current: false,
+      });
+      expect(otherSession.id).not.toContain('connect.sid');
+
+      await currentClient
+        .delete(`/users/me/sessions/${otherSession.id}`)
+        .set('x-csrf-token', currentToken)
+        .expect(204);
+
+      await otherClient.get('/users/me').expect(401);
+      await currentClient.get('/users/me').expect(200);
+    });
+
+    it('does not remotely revoke the current session', async () => {
+      const client = agent();
+      await registerUser(client);
+      const token = await getCsrfToken(client);
+      const response = await client.get('/users/me/sessions').expect(200);
+
+      await client
+        .delete(`/users/me/sessions/${response.body[0].id}`)
+        .set('x-csrf-token', token)
+        .expect(404);
+      await client.get('/users/me').expect(200);
+    });
+  });
+
   describe('PATCH /users/me/password', () => {
     const newPassword = 'N3w!LibraryPassword';
 

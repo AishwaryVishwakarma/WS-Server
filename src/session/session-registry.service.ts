@@ -1,11 +1,25 @@
 import {Injectable, Logger} from '@nestjs/common';
 import type {RedisClientType} from 'redis';
+import {createHash} from 'crypto';
 import {SESSION_MAX_AGE_MS} from './session.constants';
+import type {SessionResponseDto} from './dto/session-response.dto';
 
 // connect-redis's RedisStore prefixes every session key with "sess:" unless a
 // `prefix` option is passed — app.setup.ts passes none, so this must match.
 const SESSION_KEY_PREFIX = 'sess:';
 const userSessionsKey = (userId: string) => `user-sessions:${userId}`;
+const publicId = (sid: string) =>
+  createHash('sha256').update(sid).digest('hex').slice(0, 32);
+
+interface StoredSession {
+  cookie?: {expires?: string};
+  metadata?: {
+    device?: string;
+    browser?: string;
+    location?: string;
+    createdAt?: string;
+  };
+}
 
 // Tracks which session ids belong to which user, so a password reset (which
 // has no "current" session to exempt — see PasswordResetService) can log out
@@ -53,6 +67,67 @@ export class SessionRegistryService {
   async untrack(userId: string, sid: string): Promise<void> {
     if (!this.redisClient) return;
     await this.redisClient.sRem(userSessionsKey(userId), sid);
+  }
+
+  async list(
+    userId: string,
+    currentSid: string
+  ): Promise<SessionResponseDto[]> {
+    if (!this.redisClient) return [];
+    const key = userSessionsKey(userId);
+    const sids = await this.redisClient.sMembers(key);
+    if (sids.length === 0) return [];
+
+    const values = await this.redisClient.mGet(
+      sids.map((sid) => SESSION_KEY_PREFIX + sid)
+    );
+    const staleSids: string[] = [];
+    const sessions = sids.flatMap((sid, index) => {
+      const value = values[index];
+      if (!value) {
+        staleSids.push(sid);
+        return [];
+      }
+
+      try {
+        const stored = JSON.parse(value) as StoredSession;
+        const expiresAt = stored.cookie?.expires;
+        if (!expiresAt) return [];
+        return [
+          {
+            id: publicId(sid),
+            device: stored.metadata?.device ?? 'Unknown device',
+            browser: stored.metadata?.browser ?? 'Unknown browser',
+            location: stored.metadata?.location,
+            createdAt: stored.metadata?.createdAt ?? expiresAt,
+            expiresAt,
+            current: sid === currentSid,
+          },
+        ];
+      } catch {
+        staleSids.push(sid);
+        return [];
+      }
+    });
+
+    if (staleSids.length > 0) await this.redisClient.sRem(key, staleSids);
+    return sessions.sort((a, b) => Number(b.current) - Number(a.current));
+  }
+
+  async invalidate(
+    userId: string,
+    id: string,
+    currentSid: string
+  ): Promise<boolean> {
+    if (!this.redisClient) return false;
+    const key = userSessionsKey(userId);
+    const sids = await this.redisClient.sMembers(key);
+    const sid = sids.find((candidate) => publicId(candidate) === id);
+    if (!sid || sid === currentSid) return false;
+
+    await this.redisClient.del(SESSION_KEY_PREFIX + sid);
+    await this.redisClient.sRem(key, sid);
+    return true;
   }
 
   // Destroys every session on record for a user (e.g. after a password
