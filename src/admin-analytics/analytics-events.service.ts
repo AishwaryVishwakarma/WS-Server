@@ -33,7 +33,7 @@ export class AnalyticsEventsService {
       );
       // View traffic is high-volume; its dashboard count can tolerate the short
       // cache TTL. Moderation changes are rarer and should appear immediately.
-      if (type === AnalyticsEventType.STORY_STATUS_CHANGED)
+      if (type === AnalyticsEventType.StoryStatusChanged)
         void this.cache.invalidate();
     } catch (error) {
       this.logger.warn(
