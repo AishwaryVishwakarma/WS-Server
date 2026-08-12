@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import {BadRequestException, Injectable} from '@nestjs/common';
+import {BadRequestException, Injectable, Logger} from '@nestjs/common';
 import {ConfigService} from '@nestjs/config';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
@@ -14,6 +14,7 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 @Injectable()
 export class PasswordResetService {
+  private readonly logger = new Logger(PasswordResetService.name);
   constructor(
     @InjectRepository(PasswordResetToken)
     private readonly tokensRepository: Repository<PasswordResetToken>,
@@ -51,24 +52,34 @@ export class PasswordResetService {
       this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-    await this.mailService.send(
-      user.email,
-      'Reset your Whispering Shadows password',
-      `Someone (hopefully you) asked to reset your password. This link ` +
-        `expires in an hour and works only once:\n\n${resetUrl}\n\n` +
-        `If you didn't request this, you can safely ignore this email.`,
-      renderEmailHtml({
-        preheader: 'Reset your password — this link expires in an hour.',
-        heading: 'Reset your password',
-        bodyHtml:
-          '<p style="margin:0;">Someone (hopefully you) asked to reset your ' +
-          'Whispering Shadows password. This link expires in an hour and ' +
-          'works only once.</p>',
-        cta: {label: 'Reset password', url: resetUrl},
-        footnote:
-          "If you didn't request this, you can safely ignore this email.",
-      })
-    );
+    // Delivery is intentionally detached from the HTTP response. Known and
+    // unknown addresses now both return after local database work rather than
+    // exposing account existence through a provider-sized timing difference.
+    void this.mailService
+      .send(
+        user.email,
+        'Reset your Whispering Shadows password',
+        `Someone (hopefully you) asked to reset your password. This link ` +
+          `expires in an hour and works only once:\n\n${resetUrl}\n\n` +
+          `If you didn't request this, you can safely ignore this email.`,
+        renderEmailHtml({
+          preheader: 'Reset your password — this link expires in an hour.',
+          heading: 'Reset your password',
+          bodyHtml:
+            '<p style="margin:0;">Someone (hopefully you) asked to reset your ' +
+            'Whispering Shadows password. This link expires in an hour and ' +
+            'works only once.</p>',
+          cta: {label: 'Reset password', url: resetUrl},
+          footnote:
+            "If you didn't request this, you can safely ignore this email.",
+        })
+      )
+      .catch((error: unknown) => {
+        this.logger.error(
+          `Failed to send password-reset email for user ${user.id}`,
+          error instanceof Error ? error.stack : undefined
+        );
+      });
   }
 
   // Consumes a reset link: validates the hashed token and its expiry, sets

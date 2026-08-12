@@ -12,11 +12,13 @@ import {
 import {TagsService} from '../tags.service';
 import {CreateTagDto} from '../dto/create-tag.dto';
 import {UpdateTagDto} from '../dto/update-tag.dto';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
 import {Role} from 'src/users/enums/role';
 
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(Role.Admin)
 @Controller('admin/tags')

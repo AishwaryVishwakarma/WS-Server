@@ -16,12 +16,14 @@ import {
 import {plainToInstance} from 'class-transformer';
 import type {Request} from 'express';
 import {Observable} from 'rxjs';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {SearchPaginationDto} from 'src/common/dto/search-pagination.dto';
 import {NotificationResponseDto} from '../dto/notification-response.dto';
 import {NotificationsService} from '../notifications.service';
 import {NotificationsStream} from '../notifications-stream.service';
 
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
 @Controller('users/me/notifications')
 export class PrivateNotificationsController {

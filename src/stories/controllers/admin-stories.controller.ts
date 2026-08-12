@@ -11,6 +11,7 @@ import {
 import {plainToInstance} from 'class-transformer';
 import {StoriesService} from '../stories.service';
 import {Story} from '../entities/story.entity';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
@@ -20,6 +21,7 @@ import {BulkUpdateStoryStatusDto} from '../dto/bulk-update-story-status.dto';
 import {AdminStoryQueryDto} from '../dto/admin-story-query.dto';
 import {StoryResponseDto} from '../dto/story-response.dto';
 
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(Role.Admin)
 @Controller('admin/stories')

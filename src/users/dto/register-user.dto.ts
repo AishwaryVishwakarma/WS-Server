@@ -32,7 +32,7 @@ export class RegisterUserDto {
   @IsUrl({
     max_allowed_length: 500,
   })
-  profileImageUrl?: string;
+  profileImageUrl?: string | null;
 
   // Always available, unlike profileImageUrl — see SiteSettings.
   @IsOptional()

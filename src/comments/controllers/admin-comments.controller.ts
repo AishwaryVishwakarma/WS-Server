@@ -10,6 +10,7 @@ import {
 import {plainToInstance} from 'class-transformer';
 import {CommentsService} from '../comments.service';
 import {Comment} from '../entities/comment.entity';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
@@ -17,6 +18,7 @@ import {Role} from 'src/users/enums/role';
 import {AdminCommentQueryDto} from '../dto/admin-comment-query.dto';
 import {AdminCommentResponseDto} from '../dto/comment-response.dto';
 
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(Role.Admin)
 @Controller('admin/comments')

@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type {Request} from 'express';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {ScareRatingsService} from './scare-ratings.service';
 import {CastScareVoteDto} from './dto/cast-scare-vote.dto';
@@ -18,6 +19,7 @@ import {CastScareVoteDto} from './dto/cast-scare-vote.dto';
 // Scare votes are gated (a vote belongs to the signed-in member). The public
 // surface is just the aggregate scareRatingAverage/scareRatingCount on the
 // story DTO — no per-user data (mirrors LikesController).
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
 @Controller()
 export class ScareRatingsController {

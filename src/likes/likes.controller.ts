@@ -10,11 +10,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type {Request} from 'express';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {LikesService} from './likes.service';
 
 // Likes are gated (a like belongs to the signed-in member). The public surface
 // is just the aggregate story.likeCount on the story DTO — no per-user data.
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
 @Controller()
 export class LikesController {

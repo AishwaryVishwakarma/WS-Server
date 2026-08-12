@@ -12,6 +12,7 @@ import {
   Req,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import type {Request} from 'express';
 import {User} from '../entities/user.entity';
@@ -26,6 +27,7 @@ import {Roles} from 'src/common/decorators/roles.decorators';
 import {Role} from '../enums/role';
 import {UsersService} from '../users.service';
 
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(Role.Admin)
 @Controller('admin/users')

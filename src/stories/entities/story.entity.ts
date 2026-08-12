@@ -29,6 +29,15 @@ import {Series} from 'src/series/entities/series.entity';
 @Index('IDX_story_status_commentCount', ['status', 'commentCount'])
 @Index('IDX_story_status_viewCount', ['status', 'viewCount'])
 @Index('IDX_story_status_likeCount', ['status', 'likeCount'])
+// Author shelves, following feeds, digest discovery, and author statistics all
+// constrain author + status. Including the stable feed tie-breakers also lets
+// Postgres satisfy newest/oldest author listings from this index.
+@Index('IDX_story_author_status_createdAt_id', [
+  'author',
+  'status',
+  'createdAt',
+  'id',
+])
 // The admin reported-stories queue filters reportCount > 0 and sorts by it,
 // independent of status — index it so the queue is a range scan, not a table
 // scan.

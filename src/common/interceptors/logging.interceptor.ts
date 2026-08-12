@@ -10,8 +10,8 @@ import {Observable} from 'rxjs';
 import {tap} from 'rxjs/operators';
 
 // Logs one line per request: METHOD /url → status (Xms). Health probes are
-// skipped so orchestrator polling doesn't flood the log. Errors are logged by
-// AllExceptionsFilter, so this only records the response status on success.
+// skipped so orchestrator polling and the long-lived notification stream don't
+// flood the log. Errors are still logged by AllExceptionsFilter.
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP', {timestamp: true});
@@ -20,7 +20,9 @@ export class LoggingInterceptor implements NestInterceptor {
     const http = context.switchToHttp();
     const request = http.getRequest<Request>();
 
-    if (request.url === '/health') {
+    const path =
+      request.originalUrl?.split('?')[0] ?? request.url.split('?')[0];
+    if (path === '/health' || path === '/users/me/notifications/stream') {
       return next.handle();
     }
 

@@ -19,11 +19,32 @@ async function bootstrap() {
 
   // OpenAPI docs at /docs. Set up here (not in the shared app.setup) so the
   // integration test harness stays untouched. The @nestjs/swagger CLI plugin
-  // (nest-cli.json) supplies schemas from the DTO types — no manual decorators.
+  // (nest-cli.json) supplies schemas from the DTO types — no manual decorators
+  // for request/response shapes; auth requirements are still hand-annotated
+  // per route with @ApiCookieAuth('session'), since Swagger can't infer that
+  // from a guard.
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Whispering Shadows API')
-    .setDescription('Story-sharing backend — auth, stories, tags, comments.')
+    .setDescription(
+      'Story-sharing backend — auth, stories, tags, comments. ' +
+        'Auth is session-based, not JWT: a 🔒 endpoint requires the ' +
+        '`connect.sid` cookie from a prior login/register, sent automatically ' +
+        'by a browser but not by "Try it out" here. Mutating requests also ' +
+        'need an `x-csrf-token` header (see GET /auth/csrf-token) — endpoints ' +
+        "in `CSRF_EXEMPT_PATHS` (login, register, password reset) don't."
+    )
     .setVersion('1.0')
+    .addCookieAuth(
+      'connect.sid',
+      {
+        type: 'apiKey',
+        in: 'cookie',
+        name: 'connect.sid',
+        description:
+          'Session cookie set by POST /auth/login or /auth/register/confirm.',
+      },
+      'session'
+    )
     .build();
   SwaggerModule.setup(
     'docs',

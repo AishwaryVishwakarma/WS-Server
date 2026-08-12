@@ -17,11 +17,13 @@ import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import type {Request} from 'express';
 import {plainToInstance} from 'class-transformer';
 import {Comment} from '../entities/comment.entity';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {
   CommentModerationPreviewResponseDto,
   CommentPreviewResponseDto,
 } from '../dto/comment-response.dto';
 
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
 @Controller('comments')
 export class PublicCommentsController {

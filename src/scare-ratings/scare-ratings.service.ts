@@ -27,67 +27,64 @@ export class ScareRatingsService {
   ): Promise<void> {
     await this.storiesService.findOneVisible(storyId, userId, role);
 
-    const existing = await this.votesRepository.findOneBy({
-      user: {id: userId},
-      story: {id: storyId},
-    });
-
-    if (existing) {
-      if (existing.value === value) return;
-
-      await this.votesRepository.update(existing.id, {value});
-      await this.votesRepository.manager.increment(
-        Story,
-        {id: storyId},
-        'scareRatingSum',
-        value - existing.value
-      );
-      return;
-    }
-
-    await this.votesRepository.save(
-      this.votesRepository.create({
+    await this.votesRepository.manager.transaction(async (manager) => {
+      // Serialize this user's vote for this story even when no row exists yet.
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `scare-vote:${userId}:${storyId}`,
+      ]);
+      const repository = manager.getRepository(ScareVote);
+      const existing = await repository.findOneBy({
         user: {id: userId},
         story: {id: storyId},
-        value,
-      })
-    );
-    await this.votesRepository.manager.increment(
-      Story,
-      {id: storyId},
-      'scareRatingSum',
-      value
-    );
-    await this.votesRepository.manager.increment(
-      Story,
-      {id: storyId},
-      'scareRatingCount',
-      1
-    );
+      });
+
+      if (existing) {
+        if (existing.value === value) return;
+        await repository.update(existing.id, {value});
+        await manager.increment(
+          Story,
+          {id: storyId},
+          'scareRatingSum',
+          value - existing.value
+        );
+        return;
+      }
+
+      await repository.save(
+        repository.create({
+          user: {id: userId},
+          story: {id: storyId},
+          value,
+        })
+      );
+      await manager.increment(Story, {id: storyId}, 'scareRatingSum', value);
+      await manager.increment(Story, {id: storyId}, 'scareRatingCount', 1);
+    });
   }
 
   // Removes a reader's own vote. No-ops if none exists, mirroring
   // LikesService.unlike's affected-row check.
   async removeVote(userId: string, storyId: string): Promise<void> {
-    const existing = await this.votesRepository.findOneBy({
-      user: {id: userId},
-      story: {id: storyId},
-    });
-    if (!existing) return;
+    await this.votesRepository.manager.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `scare-vote:${userId}:${storyId}`,
+      ]);
+      const repository = manager.getRepository(ScareVote);
+      const existing = await repository.findOneBy({
+        user: {id: userId},
+        story: {id: storyId},
+      });
+      if (!existing) return;
 
-    await this.votesRepository.delete(existing.id);
-    await this.votesRepository.manager.increment(
-      Story,
-      {id: storyId},
-      'scareRatingSum',
-      -existing.value
-    );
-    await this.votesRepository.manager.increment(
-      Story,
-      {id: storyId},
-      'scareRatingCount',
-      -1
-    );
+      await repository.delete(existing.id);
+      await manager.increment(
+        Story,
+        {id: storyId},
+        'scareRatingSum',
+        -existing.value
+      );
+      await manager.increment(Story, {id: storyId}, 'scareRatingCount', -1);
+    });
   }
 
   // The member's own votes, keyed by story id — fetched once so cards/reader

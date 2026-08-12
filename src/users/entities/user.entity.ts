@@ -76,20 +76,21 @@ export class User {
   @Column({default: false})
   isBlocked: boolean;
 
-  @Column({length: 500, nullable: true})
-  profileImageUrl: string;
+  @Column({type: 'varchar', length: 500, nullable: true})
+  profileImageUrl: string | null;
 
   // A chosen themed icon avatar — always available (unlike profileImageUrl,
   // not gated by allowProfileImageUpload) since it's curated, not an
-  // arbitrary external URL. Avatar's precedence: profileImageUrl > avatarIcon
-  // > initial-letter fallback.
+  // arbitrary external URL. Avatar's precedence: profileImageUrl > avatarIcon.
+  // UsersService assigns a random one at creation, but only when the account
+  // has no profileImageUrl to fall back on instead — an account created with
+  // a photo (e.g. Google sign-in) stays null here until/unless its owner
+  // deliberately picks an icon, since the photo already covers rendering.
   @Column({type: 'enum', enum: AvatarIcon, nullable: true})
   avatarIcon: AvatarIcon | null;
 
-  // An explicit background-color override for the avatar (icon or initial
-  // letter) — null means "auto", the frontend's deterministic name-based
-  // hash. Same always-allowed treatment as avatarIcon: curated, not an
-  // arbitrary value, so no SiteSettings gate.
+  // A background-color pairing for the avatar icon — same conditional
+  // random-at-creation, same nullable treatment as avatarIcon.
   @Column({type: 'enum', enum: AvatarColor, nullable: true})
   avatarColor: AvatarColor | null;
 

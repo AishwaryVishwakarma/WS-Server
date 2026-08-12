@@ -12,4 +12,8 @@ export class UpdateSiteSettingsDto {
   @IsOptional()
   @IsBoolean()
   allowStoryCoverImage?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  digestEmailGloballyEnabled?: boolean;
 }

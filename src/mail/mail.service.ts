@@ -1,7 +1,8 @@
-import {Injectable, Logger} from '@nestjs/common';
-import {ConfigService} from '@nestjs/config';
-
-const RESEND_API_URL = 'https://api.resend.com/emails';
+import {Injectable} from '@nestjs/common';
+import {InjectQueue} from '@nestjs/bullmq';
+import type {Queue} from 'bullmq';
+import {EMAIL_QUEUE} from 'src/jobs/queue.constants';
+import {DURABLE_JOB_OPTIONS} from 'src/jobs/queue.options';
 
 // Sends via Resend's HTTPS API rather than raw SMTP. SMTP was the original
 // design (provider-agnostic — any SMTP host worked via env vars alone), but
@@ -15,20 +16,7 @@ const RESEND_API_URL = 'https://api.resend.com/emails';
 // flow (grab the link/code from the console) without real credentials.
 @Injectable()
 export class MailService {
-  private readonly logger = new Logger(MailService.name);
-  private readonly apiKey: string | undefined;
-  private readonly from: string;
-
-  constructor(private readonly configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('RESEND_API_KEY');
-    this.from =
-      this.configService.get<string>('MAIL_FROM') ??
-      'no-reply@whisperingshadows.net';
-  }
-
-  get enabled(): boolean {
-    return !!this.apiKey;
-  }
+  constructor(@InjectQueue(EMAIL_QUEUE) private readonly queue: Queue) {}
 
   async send(
     to: string,
@@ -36,27 +24,10 @@ export class MailService {
     text: string,
     html?: string
   ): Promise<void> {
-    if (!this.apiKey) {
-      this.logger.warn(
-        `RESEND_API_KEY not configured — logging instead of sending.\nTo: ${to}\nSubject: ${subject}\n${text}`
-      );
-      return;
-    }
-
-    const response = await fetch(RESEND_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({from: this.from, to, subject, text, html}),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(
-        `Resend API request failed (${response.status}): ${body}`
-      );
-    }
+    await this.queue.add(
+      'send',
+      {to, subject, text, html},
+      DURABLE_JOB_OPTIONS
+    );
   }
 }

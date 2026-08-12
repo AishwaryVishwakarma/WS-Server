@@ -18,6 +18,7 @@ import {UserPreviewResponseDto} from '../dto/user-response.dto';
 import {ReportUserDto} from '../dto/report-user.dto';
 import {plainToInstance} from 'class-transformer';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {StoriesService} from 'src/stories/stories.service';
 import {StoryPreviewResponseDto} from 'src/stories/dto/story-response.dto';
@@ -50,6 +51,7 @@ export class PublicUsersController {
   // members); one report per reporter — a duplicate is rejected with 409 by
   // the unique constraint — and you can't report yourself (400).
   @Post(':id/report')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
   async report(

@@ -66,7 +66,8 @@ describe('Password reset (integration)', () => {
       expect(sendMail).toHaveBeenCalledWith(
         DEFAULT_USER.email,
         expect.any(String),
-        expect.stringContaining('/reset-password?token=')
+        expect.stringContaining('/reset-password?token='),
+        expect.any(String)
       );
     });
 

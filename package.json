@@ -9,6 +9,11 @@
   },
   "private": true,
   "license": "UNLICENSED",
+  "overrides": {
+    "@nestjs/swagger": {
+      "js-yaml": "^5.2.2"
+    }
+  },
   "scripts": {
     "build": "nest build",
     "start": "nest start",
@@ -32,6 +37,7 @@
     "migration:revert": "nest build && typeorm migration:revert -d dist/database/data-source.js"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.1.28",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.28",
@@ -42,6 +48,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.3",
     "bcrypt": "^6.0.0",
+    "bullmq": "^5.81.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "connect-redis": "^8.1.0",
@@ -52,7 +59,7 @@
     "obscenity": "^0.4.6",
     "pg": "^8.22.0",
     "prom-client": "^15.1.3",
-    "redis": "^4.7.1",
+    "redis": "^5.8.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "typeorm": "^0.3.30"

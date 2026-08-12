@@ -29,6 +29,7 @@ export class SettingsService {
         requireStoryApproval: true,
         allowProfileImageUpload: false,
         allowStoryCoverImage: false,
+        digestEmailGloballyEnabled: false,
         updatedAt: new Date(),
       }
     );
@@ -47,6 +48,11 @@ export class SettingsService {
   async allowsStoryCoverImage(): Promise<boolean> {
     const settings = await this.getSettings();
     return settings.allowStoryCoverImage;
+  }
+
+  async isDigestEmailGloballyEnabled(): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.digestEmailGloballyEnabled;
   }
 
   async updateSettings(dto: UpdateSiteSettingsDto): Promise<SiteSettings> {

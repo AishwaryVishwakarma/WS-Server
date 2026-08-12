@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type {Request} from 'express';
 import {plainToInstance} from 'class-transformer';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {StoryPreviewResponseDto} from 'src/stories/dto/story-response.dto';
@@ -20,6 +21,7 @@ import {BookmarksService} from './bookmarks.service';
 // Reading list — all gated (a bookmark belongs to the signed-in member). The
 // toggle lives on the story (`/stories/:id/bookmark`); the list and the id set
 // live under `/users/me`, matching PrivateUsersController's shelf routes.
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
 @Controller()
 export class BookmarksController {

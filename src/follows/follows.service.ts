@@ -29,18 +29,15 @@ export class FollowsService {
     }
     await this.usersService.findOne(targetId);
 
-    const exists = await this.followsRepository.existsBy({
-      follower: {id: followerId},
-      following: {id: targetId},
-    });
-    if (exists) return;
-
-    await this.followsRepository.save(
-      this.followsRepository.create({
-        follower: {id: followerId},
-        following: {id: targetId},
-      })
-    );
+    const result = await this.followsRepository
+      .createQueryBuilder()
+      .insert()
+      .into(Follow)
+      .values({follower: {id: followerId}, following: {id: targetId}})
+      .orIgnore()
+      .returning('id')
+      .execute();
+    if (!Array.isArray(result.raw) || result.raw.length === 0) return;
 
     // Notify the followed author (best-effort). A follow carries no story/
     // comment — it links to the follower's profile via actorId.

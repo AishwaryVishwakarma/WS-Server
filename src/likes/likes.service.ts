@@ -31,24 +31,22 @@ export class LikesService {
       role
     );
 
-    const exists = await this.likesRepository.existsBy({
-      user: {id: userId},
-      story: {id: storyId},
-    });
-    if (exists) return;
-
-    await this.likesRepository.save(
-      this.likesRepository.create({
-        user: {id: userId},
-        story: {id: storyId},
-      })
+    const inserted = await this.likesRepository.manager.transaction(
+      async (manager) => {
+        const result = await manager
+          .createQueryBuilder()
+          .insert()
+          .into(StoryLike)
+          .values({user: {id: userId}, story: {id: storyId}})
+          .orIgnore()
+          .returning('id')
+          .execute();
+        if (!Array.isArray(result.raw) || result.raw.length === 0) return false;
+        await manager.increment(Story, {id: storyId}, 'likeCount', 1);
+        return true;
+      }
     );
-    await this.likesRepository.manager.increment(
-      Story,
-      {id: storyId},
-      'likeCount',
-      1
-    );
+    if (!inserted) return;
 
     if (story.author && !story.author.deletedAt && story.author.id !== userId) {
       const liker = await this.usersService.findOne(userId);
@@ -66,18 +64,15 @@ export class LikesService {
   // Remove a like. Decrements the counter only when a row was actually deleted,
   // so a repeat unlike is a safe no-op.
   async unlike(userId: string, storyId: string): Promise<void> {
-    const result = await this.likesRepository.delete({
-      user: {id: userId},
-      story: {id: storyId},
+    await this.likesRepository.manager.transaction(async (manager) => {
+      const result = await manager.delete(StoryLike, {
+        user: {id: userId},
+        story: {id: storyId},
+      });
+      if (result.affected) {
+        await manager.decrement(Story, {id: storyId}, 'likeCount', 1);
+      }
     });
-    if (result.affected) {
-      await this.likesRepository.manager.decrement(
-        Story,
-        {id: storyId},
-        'likeCount',
-        1
-      );
-    }
   }
 
   // The ids of stories the member has liked — fetched once so cards/reader can

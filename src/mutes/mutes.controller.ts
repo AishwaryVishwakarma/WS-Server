@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type {Request} from 'express';
 import {plainToInstance} from 'class-transformer';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {UserPreviewResponseDto} from 'src/users/dto/user-response.dto';
@@ -21,6 +22,7 @@ import {MutesService} from './mutes.service';
 // Muting is entirely private — every route here is gated, and there is no
 // public counterpart (unlike Follows' public follower/following counts):
 // nobody but the muter should ever be able to tell an author has been muted.
+@ApiCookieAuth('session')
 @Controller()
 export class MutesController {
   constructor(private readonly mutesService: MutesService) {}

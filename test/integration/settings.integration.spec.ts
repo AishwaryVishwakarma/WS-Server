@@ -54,7 +54,7 @@ describe('Settings (integration)', () => {
       await client.get('/admin/settings').expect(403);
     });
 
-    it('defaults to requiring approval, with image uploads off', async () => {
+    it('defaults to requiring approval, with image uploads and digest off', async () => {
       const admin = await seedAdmin(testApp);
 
       const response = await admin.get('/admin/settings').expect(200);
@@ -62,6 +62,7 @@ describe('Settings (integration)', () => {
       expect(response.body.requireStoryApproval).toBe(true);
       expect(response.body.allowProfileImageUpload).toBe(false);
       expect(response.body.allowStoryCoverImage).toBe(false);
+      expect(response.body.digestEmailGloballyEnabled).toBe(false);
     });
   });
 
@@ -70,6 +71,7 @@ describe('Settings (integration)', () => {
       const response = await agent().get('/settings').expect(200);
 
       expect(response.body.requireStoryApproval).toBe(true);
+      expect(response.body.digestEmailGloballyEnabled).toBe(false);
     });
 
     it('reflects the current value and omits admin-only fields', async () => {
@@ -119,6 +121,22 @@ describe('Settings (integration)', () => {
       expect(response.status).toBe(200);
       expect(response.body.allowProfileImageUpload).toBe(true);
       expect(response.body.allowStoryCoverImage).toBe(true);
+    });
+
+    it('persists the digestEmailGloballyEnabled toggle', async () => {
+      const admin = await seedAdmin(testApp);
+      const token = await getCsrfToken(admin);
+
+      const response = await admin
+        .patch('/admin/settings')
+        .set('x-csrf-token', token)
+        .send({digestEmailGloballyEnabled: true});
+
+      expect(response.status).toBe(200);
+      expect(response.body.digestEmailGloballyEnabled).toBe(true);
+
+      const refetched = await admin.get('/admin/settings').expect(200);
+      expect(refetched.body.digestEmailGloballyEnabled).toBe(true);
     });
   });
 

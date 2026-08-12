@@ -102,7 +102,15 @@ export async function setupApp(
         maxAge: SESSION_MAX_AGE_MS,
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        // 'strict' withholds the cookie on a top-level navigation whose
+        // referrer isn't this site — a link from Messages/WhatsApp/an
+        // in-app browser, a push notification, a home-screen bookmark — so
+        // a mobile visitor's SSR-rendered /login could show the form (no
+        // cookie sent) while their very next same-page login POST (a
+        // same-site AJAX request, cookie sent normally) hit the "already
+        // logged in" guard. CSRF is a separate double-submit token, so
+        // 'lax' loses no real protection here.
+        sameSite: 'lax',
       },
     })
   );

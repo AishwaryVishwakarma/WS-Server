@@ -14,6 +14,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {StoriesService} from '../stories.service';
 import {CreateStoryDto} from '../dto/create-story.dto';
 import {UpdateStoryDto} from '../dto/update-story.dto';
@@ -63,6 +64,7 @@ export class PublicStoriesController {
   }
 
   @Post()
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   @HttpCode(201)
   async create(@Body() createStoryDto: CreateStoryDto, @Req() req: Request) {
@@ -147,6 +149,7 @@ export class PublicStoriesController {
   // member — a duplicate is rejected with 409 by the unique constraint — and
   // you can't report your own (400) or a story you can't see (404).
   @Post(':id/report')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
   async report(
@@ -178,6 +181,7 @@ export class PublicStoriesController {
   // controller's reads): the "for you" set is derived from the caller's own
   // engagement history, not something an anonymous request can produce.
   @Get('for-you')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async findForYou(@Query() query: ForYouQueryDto, @Req() req: Request) {
     const {data, nextCursor, total} = await this.storiesService.findForYouFeed(
@@ -282,6 +286,7 @@ export class PublicStoriesController {
   }
 
   @Patch(':id/submit')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async submitDraft(
     @Param('id', ParseUUIDPipe) id: string,
@@ -296,6 +301,7 @@ export class PublicStoriesController {
   }
 
   @Patch(':id')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -314,6 +320,7 @@ export class PublicStoriesController {
   // The story's own edit history — gated to its author or an admin (not
   // public content). View-only in v1: past snapshots, no restore.
   @Get(':id/revisions')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async findRevisions(
     @Param('id', ParseUUIDPipe) id: string,
@@ -332,6 +339,7 @@ export class PublicStoriesController {
   }
 
   @Delete(':id')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {

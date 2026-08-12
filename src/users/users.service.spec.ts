@@ -17,6 +17,8 @@ import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
 import {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
+import {AvatarIcon} from './enums/avatar-icon.enum';
+import {AvatarColor} from './enums/avatar-color.enum';
 import {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import type {UpdateUserDto} from './dto/update-user.dto';
 import {UsersService} from './users.service';
@@ -189,6 +191,29 @@ describe('UsersService', () => {
         })
       );
       expect(user.id).toBe('user-1');
+    });
+
+    it('does not assign a random avatarIcon/avatarColor when a Google photo is present', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      const user = await service.findOrCreateGoogleUser(profile);
+
+      // A random pick would never render (the photo wins precedence), so
+      // it's skipped entirely rather than wasted.
+      expect(user.avatarIcon).toBeUndefined();
+      expect(user.avatarColor).toBeUndefined();
+    });
+
+    it('assigns a random avatarIcon/avatarColor when the Google profile has no photo', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      const user = await service.findOrCreateGoogleUser({
+        ...profile,
+        picture: undefined,
+      });
+
+      expect(Object.values(AvatarIcon)).toContain(user.avatarIcon);
+      expect(Object.values(AvatarColor)).toContain(user.avatarColor);
     });
 
     it('refuses re-registration when an admin-removed account still holds the identity', async () => {
@@ -447,6 +472,31 @@ describe('UsersService', () => {
 
       expect(user.avatarColor).toBe('blood');
     });
+
+    it('assigns a random avatarIcon/avatarColor when neither is given', async () => {
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+      })) as User;
+
+      expect(Object.values(AvatarIcon)).toContain(user.avatarIcon);
+      expect(Object.values(AvatarColor)).toContain(user.avatarColor);
+    });
+
+    it('does not assign a random avatarIcon/avatarColor when a profile image is given', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(true);
+
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+        profileImageUrl: 'https://example.com/me.png',
+      })) as User;
+
+      expect(user.avatarIcon).toBeUndefined();
+      expect(user.avatarColor).toBeUndefined();
+    });
   });
 
   describe('createFromVerifiedRegistration', () => {
@@ -483,6 +533,16 @@ describe('UsersService', () => {
           'already-hashed'
         )
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('assigns a random avatarIcon/avatarColor when neither is given', async () => {
+      const user = (await service.createFromVerifiedRegistration(
+        {name: 'Test', email: 'a@b.com'},
+        'already-hashed'
+      )) as User;
+
+      expect(Object.values(AvatarIcon)).toContain(user.avatarIcon);
+      expect(Object.values(AvatarColor)).toContain(user.avatarColor);
     });
   });
 
@@ -545,6 +605,36 @@ describe('UsersService', () => {
       })) as User;
 
       expect(user.profileImageUrl).toBe('https://example.com/old.png');
+    });
+
+    it('allows restoring the same profileImageUrl even when the site setting disallows new ones', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old',
+        profileImageUrl: 'https://example.com/google.png',
+      });
+
+      const user = (await service.update('user-1', {
+        profileImageUrl: 'https://example.com/google.png',
+      })) as User;
+
+      expect(user.profileImageUrl).toBe('https://example.com/google.png');
+    });
+
+    it('allows clearing profileImageUrl when the site setting disallows new ones', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old',
+        profileImageUrl: 'https://example.com/google.png',
+      });
+
+      const user = (await service.update('user-1', {
+        profileImageUrl: null,
+      })) as User;
+
+      expect(user.profileImageUrl).toBeNull();
     });
 
     it('applies a profileImageUrl update when the site setting allows it', async () => {

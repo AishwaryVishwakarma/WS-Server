@@ -10,12 +10,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type {Request} from 'express';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {CommentReactionsService} from './comment-reactions.service';
 
 // Reactions are gated (a reaction belongs to the signed-in member). The
 // public surface is just the aggregate comment.reactionCount on the comment
 // DTO — no per-user data. Mirrors LikesController's shape exactly.
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
 @Controller()
 export class CommentReactionsController {
