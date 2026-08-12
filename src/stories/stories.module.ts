@@ -15,6 +15,7 @@ import {CommentsModule} from 'src/comments/comments.module';
 import {SeriesModule} from 'src/series/series.module';
 import {MutesModule} from 'src/mutes/mutes.module';
 import {SettingsModule} from 'src/settings/settings.module';
+import {AdminAnalyticsModule} from 'src/admin-analytics/admin-analytics.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import {SettingsModule} from 'src/settings/settings.module';
     forwardRef(() => SeriesModule),
     MutesModule,
     SettingsModule,
+    AdminAnalyticsModule,
   ],
   controllers: [PublicStoriesController, AdminStoriesController],
   providers: [StoriesService],

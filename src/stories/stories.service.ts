@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Optional,
   NotFoundException,
 } from '@nestjs/common';
 import {CreateStoryDto} from './dto/create-story.dto';
@@ -34,6 +35,8 @@ import {UsersService} from 'src/users/users.service';
 import {SeriesService} from 'src/series/series.service';
 import {MutesService} from 'src/mutes/mutes.service';
 import {SettingsService} from 'src/settings/settings.service';
+import {AnalyticsEventsService} from 'src/admin-analytics/analytics-events.service';
+import {AnalyticsEventType} from 'src/admin-analytics/entities/analytics-event.entity';
 import type {User} from 'src/users/entities/user.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
@@ -152,7 +155,8 @@ export class StoriesService {
     @Inject(forwardRef(() => SeriesService))
     private readonly seriesService: SeriesService,
     private readonly mutesService: MutesService,
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
+    @Optional() private readonly analyticsEvents?: AnalyticsEventsService
   ) {}
 
   private async _getStoryIfAuthorized(
@@ -802,6 +806,10 @@ export class StoriesService {
     session.viewedStoryIds = [...(session.viewedStoryIds ?? []), storyId].slice(
       -MAX_TRACKED_VIEWS
     );
+    await this.analyticsEvents?.record(AnalyticsEventType.StoryViewed, {
+      actorId: viewerId ?? null,
+      storyId,
+    });
 
     return {counted: true, viewCount: story.viewCount + 1};
   }
@@ -1117,6 +1125,7 @@ export class StoriesService {
     rejectionReason?: string
   ) {
     const story = await this.findOne(id);
+    const previousStatus = story.status;
 
     story.status = status;
     story.isFlagged = status === StoryStatus.Flagged;
@@ -1126,6 +1135,10 @@ export class StoriesService {
       status === StoryStatus.Rejected ? (rejectionReason ?? null) : null;
 
     const updated = await this.storiesRepository.save(story);
+    await this.analyticsEvents?.record(AnalyticsEventType.StoryStatusChanged, {
+      storyId: id,
+      metadata: {from: previousStatus, to: status},
+    });
 
     // Latches the author's "ever published" flag the first time any of
     // their stories reaches approved — feeds auto-verification

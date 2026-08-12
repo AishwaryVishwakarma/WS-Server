@@ -1,5 +1,6 @@
 import {DataSource} from 'typeorm';
 import {AdminAnalyticsService} from './admin-analytics.service';
+import {AnalyticsCacheService} from './analytics-cache.service';
 
 describe('AdminAnalyticsService', () => {
   it('normalizes database counts and caches each range briefly', async () => {
@@ -57,13 +58,40 @@ describe('AdminAnalyticsService', () => {
       ])
       .mockResolvedValueOnce([
         {id: 'author', name: 'Author', stories: '2', views: '8', likes: '2'},
+      ])
+      .mockResolvedValueOnce([
+        {
+          periodViews: '3',
+          moderationDecisions: '2',
+          averageReviewHours: '4',
+          oldestPendingHours: '8',
+          cohortUsers: '2',
+          retained7: '1',
+          retained30: '1',
+        },
       ]);
-    const service = new AdminAnalyticsService({query} as unknown as DataSource);
+    let cached: unknown = null;
+    const cacheGet = jest.fn(() => Promise.resolve(cached));
+    const cacheSet = jest.fn((_key: string, value: unknown) => {
+      cached = value;
+      return Promise.resolve();
+    });
+    const cache = {
+      get: cacheGet,
+      set: cacheSet,
+    } as unknown as AnalyticsCacheService;
+    const service = new AdminAnalyticsService(
+      {query} as unknown as DataSource,
+      cache
+    );
 
-    const first = await service.getOverview(30);
-    const second = await service.getOverview(30);
+    const range = {days: 30, end: new Date('2026-08-12T00:00:00.000Z')};
+    const first = await service.getOverview(range);
+    const second = await service.getOverview(range);
 
-    expect(query).toHaveBeenCalledTimes(5);
+    expect(query).toHaveBeenCalledTimes(6);
+    expect(cacheGet).toHaveBeenCalledTimes(2);
+    expect(cacheSet).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
     expect(first).toMatchObject({
       rangeDays: 30,

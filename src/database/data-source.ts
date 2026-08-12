@@ -21,6 +21,7 @@ import {MutedAuthor} from 'src/mutes/entities/muted-author.entity';
 import {CommentReaction} from 'src/comment-reactions/entities/comment-reaction.entity';
 import {SiteSettings} from 'src/settings/entities/site-settings.entity';
 import {migrations} from './migrations';
+import {AnalyticsEvent} from 'src/admin-analytics/entities/analytics-event.entity';
 
 // CLI-facing DataSource for the typeorm binary (migration:generate/run/
 // revert — see package.json scripts, which run it from dist). The runtime
@@ -54,6 +55,7 @@ export default new DataSource({
     MutedAuthor,
     CommentReaction,
     SiteSettings,
+    AnalyticsEvent,
   ],
   migrations,
 });

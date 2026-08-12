@@ -12,9 +12,11 @@
 import {Baseline1786175459406} from './1786175459406-Baseline';
 import {AddDigestEmailGloballyEnabled1786515981348} from './1786515981348-AddDigestEmailGloballyEnabled';
 import {AddStoryAuthorFeedIndex1786530000000} from './1786530000000-AddStoryAuthorFeedIndex';
+import {AddAnalyticsEvents1786540000000} from './1786540000000-AddAnalyticsEvents';
 
 export const migrations = [
   Baseline1786175459406,
   AddDigestEmailGloballyEnabled1786515981348,
   AddStoryAuthorFeedIndex1786530000000,
+  AddAnalyticsEvents1786540000000,
 ];
