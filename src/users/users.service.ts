@@ -100,6 +100,7 @@ export class UsersService {
     // allowed, since nothing is actually being added.
     if (
       rest.profileImageUrl !== undefined &&
+      rest.profileImageUrl !== null &&
       rest.profileImageUrl !== user.profileImageUrl &&
       !(await this.settingsService.allowsProfileImageUpload())
     ) {

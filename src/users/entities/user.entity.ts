@@ -77,7 +77,7 @@ export class User {
   isBlocked: boolean;
 
   @Column({length: 500, nullable: true})
-  profileImageUrl: string;
+  profileImageUrl: string | null;
 
   // A chosen themed icon avatar — always available (unlike profileImageUrl,
   // not gated by allowProfileImageUpload) since it's curated, not an

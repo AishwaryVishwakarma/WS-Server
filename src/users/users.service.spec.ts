@@ -622,6 +622,21 @@ describe('UsersService', () => {
       expect(user.profileImageUrl).toBe('https://example.com/google.png');
     });
 
+    it('allows clearing profileImageUrl when the site setting disallows new ones', async () => {
+      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old',
+        profileImageUrl: 'https://example.com/google.png',
+      });
+
+      const user = (await service.update('user-1', {
+        profileImageUrl: null,
+      })) as User;
+
+      expect(user.profileImageUrl).toBeNull();
+    });
+
     it('applies a profileImageUrl update when the site setting allows it', async () => {
       settingsService.allowsProfileImageUpload.mockResolvedValue(true);
       repository.findOneByOrFail.mockResolvedValue({
