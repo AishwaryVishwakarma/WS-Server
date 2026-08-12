@@ -19,6 +19,7 @@ import type {Request, Response} from 'express';
 import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {User} from 'src/users/entities/user.entity';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {Throttle} from '@nestjs/throttler';
 import {generateCsrfToken} from 'src/middlewares/csrf';
 import {AUTH_THROTTLE} from 'src/common/constants/throttle';
@@ -128,6 +129,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
   async logout(@Req() req: Request, @Res({passthrough: true}) res: Response) {

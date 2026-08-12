@@ -13,6 +13,7 @@ import {
 import type {Request} from 'express';
 import {plainToInstance} from 'class-transformer';
 import {Throttle} from '@nestjs/throttler';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PUBLIC_READ_THROTTLE} from 'src/common/constants/throttle';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
@@ -29,6 +30,7 @@ export class FollowsController {
   constructor(private readonly followsService: FollowsService) {}
 
   @Put('users/:id/follow')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
   async follow(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
@@ -36,6 +38,7 @@ export class FollowsController {
   }
 
   @Delete('users/:id/follow')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   @HttpCode(204)
   async unfollow(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
@@ -43,12 +46,14 @@ export class FollowsController {
   }
 
   @Get('users/me/following/ids')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async followingIds(@Req() req: Request): Promise<string[]> {
     return this.followsService.followingIds(req.session.userId!);
   }
 
   @Get('users/me/feed')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async feed(@Req() req: Request, @Query() query: PaginationDto) {
     const {data, ...rest} = await this.followsService.feed(
@@ -70,6 +75,7 @@ export class FollowsController {
   // Self-only people lists — the detailed graph (names) is private; only the
   // aggregate counts (above) are public.
   @Get('users/me/following')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async following(@Req() req: Request, @Query() query: PaginationDto) {
     const {data, ...rest} = await this.followsService.following(
@@ -81,6 +87,7 @@ export class FollowsController {
   }
 
   @Get('users/me/followers')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async followers(@Req() req: Request, @Query() query: PaginationDto) {
     const {data, ...rest} = await this.followsService.followers(

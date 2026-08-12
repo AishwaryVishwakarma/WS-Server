@@ -492,6 +492,15 @@ npm run dev:infra:down
 - **Directory is misspelled `src/common/gaurds/`** with files `roles.gaurd.ts`,
   `session-auth.gaurd.ts`, and `roles.decorators.ts`. Class names are spelled
   correctly (`RolesGuard`). Match the existing (mis)spelling in import paths.
+- **A new route behind `SessionAuthGuard` needs `@ApiCookieAuth('session')`
+  alongside it** (same site — class-level if the guard is class-level, that
+  method if it's method-level, as in a mixed controller like
+  `PublicStoriesController`). Swagger has no way to infer an auth requirement
+  from a guard, so this is the only thing that keeps `/docs` accurate — every
+  existing gated route already carries it (see `main.ts`'s
+  `.addCookieAuth(..., 'session')`, which registers the scheme the decorator
+  references by name). `OptionalSessionAuthGuard` routes (anonymous allowed)
+  intentionally don't get it.
 - **Config is fail-closed.** `ConfigModule.validate` in `app.module.ts` requires
   `DB_*`, `SESSION_SECRET` (≥16 chars, known example values rejected when
   `NODE_ENV=production`), and `REDIS_URL`; validates `NODE_ENV`. No silent

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import type {Request} from 'express';
 import {plainToInstance} from 'class-transformer';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {StoryPreviewResponseDto} from 'src/stories/dto/story-response.dto';
 import {SetReadingProgressDto} from './dto/set-reading-progress.dto';
@@ -19,6 +20,7 @@ import {ReadingProgressService} from './reading-progress.service';
 // Reading progress — all gated (it belongs to the signed-in member). The
 // write lives on the story (`/stories/:id/reading-progress`); the list lives
 // under `/users/me`, matching BookmarksController's shape.
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
 @Controller()
 export class ReadingProgressController {

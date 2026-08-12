@@ -24,6 +24,7 @@ import {
   StoryPreviewResponseDto,
   StoryWithAuthorPreviewResponseDto,
 } from 'src/stories/dto/story-response.dto';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {PUBLIC_READ_THROTTLE} from 'src/common/constants/throttle';
 
@@ -69,6 +70,7 @@ export class SeriesController {
   // The editor's "you already have" hints — every series this author has
   // used before, regardless of the moderation status of the stories in it.
   @Get('users/me/series')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async findMine(@Req() req: Request) {
     const series = await this.seriesService.findAllByAuthor(
@@ -81,6 +83,7 @@ export class SeriesController {
   // status, so they can see/reorder drafts and pending parts too. Distinct
   // from the public findOne below, which is approved-only.
   @Get('users/me/series/:id')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async findOneMine(
     @Param('id', ParseUUIDPipe) id: string,
@@ -93,6 +96,7 @@ export class SeriesController {
   }
 
   @Patch('users/me/series/:id/reorder')
+  @ApiCookieAuth('session')
   @UseGuards(SessionAuthGuard)
   async reorder(
     @Param('id', ParseUUIDPipe) id: string,

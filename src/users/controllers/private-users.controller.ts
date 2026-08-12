@@ -12,6 +12,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import type {Request, Response} from 'express';
 import {User} from '../entities/user.entity';
@@ -26,6 +27,7 @@ import {MyCommentActivityResponseDto} from 'src/comments/dto/comment-response.dt
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from '../users.service';
 
+@ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
 @Controller('users/me')
 export class PrivateUsersController {
