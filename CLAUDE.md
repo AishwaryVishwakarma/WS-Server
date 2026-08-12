@@ -381,14 +381,22 @@ npm run dev:infra:down
   server-side, not just hidden in the UI — `UsersService._applyUserUpdates`/
   `.create` and `StoriesService.create`/`.update` each silently drop
   `profileImageUrl`/`coverImageUrl` from an incoming update when the
-  matching toggle is off, rather than rejecting it, so a stale client with
-  the old URL field doesn't error. `User.avatarIcon` (a curated
-  `AvatarIcon` enum — themed icons a member can pick instead of an initial-
-  letter fallback) and `User.avatarColor` (a curated `AvatarColor` enum — an
-  explicit background-color override, replacing the frontend's default
-  name-based hash; `null` means "auto") have **no** such gate; both are
-  always allowed, since they're curated, not an arbitrary URL.
-  `database/seed.ts` temporarily flips both
+  matching toggle is off (unless the incoming value is a no-op — restoring
+  the account's own already-stored `profileImageUrl`, e.g. via the profile
+  picker's "use my photo" tile, is always allowed, since nothing new is
+  actually being set), rather than rejecting it, so a stale client with the
+  old URL field doesn't error. `User.avatarIcon` (a curated `AvatarIcon`
+  enum) and `User.avatarColor` (a curated `AvatarColor` enum) have **no**
+  such gate; both are always allowed, since they're curated, not an
+  arbitrary URL. `UsersService._randomAvatarIcon`/`._randomAvatarColor`
+  assign one of each at account creation — but only when the account has no
+  `profileImageUrl` to fall back on instead (a random pick would never
+  actually render otherwise, per the frontend `Avatar` component's
+  image-then-icon precedence), so a Google sign-in with a photo leaves both
+  `null` until its owner deliberately picks an icon later. This replaces the
+  frontend's old per-render name-hashed color/initial-letter look for an
+  unset avatar — that was removed in favor of a real, persisted choice made
+  once. `database/seed.ts` temporarily flips both
   toggles on for the duration of seeding (so the demo data's images
   actually persist through the real `create()` paths) and back off once
   done, leaving a freshly-seeded app in the real launch-default state —

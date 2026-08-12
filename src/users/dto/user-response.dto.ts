@@ -13,8 +13,8 @@ export class UserPreviewResponseDto {
   @Expose() id: string;
   @Expose() name: string;
   @Expose() profileImageUrl?: string;
-  @Expose() avatarIcon?: AvatarIcon | null;
-  @Expose() avatarColor?: AvatarColor | null;
+  @Expose() avatarIcon: AvatarIcon | null;
+  @Expose() avatarColor: AvatarColor | null;
   @Expose() bio?: string;
   @Expose() isVerified: boolean;
   @Expose() createdAt: Date;

@@ -24,6 +24,8 @@ import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import {syncReportCount} from 'src/utils/report-count';
 import {computeStreakUpdate} from './streak';
 import {SettingsService} from 'src/settings/settings.service';
+import {AvatarIcon} from './enums/avatar-icon.enum';
+import {AvatarColor} from './enums/avatar-color.enum';
 
 // Thresholds for the "Prolific"/"Fan Favorite"/"Conversation Starter"
 // badges. Prolific mirrors StoriesService.FREE_PUBLISH_LIMIT (10) — the
@@ -72,15 +74,33 @@ export class UsersService {
     return bcrypt.hash(password, saltRounds);
   }
 
+  // A member can pick a themed icon/color; someone who never does gets a
+  // random one just once, at creation, rather than the UI deriving a
+  // "consistent-per-render" look from their name on every read.
+  private _randomAvatarIcon(): AvatarIcon {
+    const values = Object.values(AvatarIcon);
+    return values[Math.floor(Math.random() * values.length)];
+  }
+
+  private _randomAvatarColor(): AvatarColor {
+    const values = Object.values(AvatarColor);
+    return values[Math.floor(Math.random() * values.length)];
+  }
+
   // Update the user entity with the new data
   private async _applyUserUpdates(user: User, updateUserDto: UpdateUserDto) {
     const {password, ...rest} = updateUserDto;
 
     // Silently drop rather than reject — a stale client with the old URL
     // field shouldn't error, it just doesn't take effect. avatarIcon has no
-    // such gate: it's always allowed (curated, not an arbitrary URL).
+    // such gate: it's always allowed (curated, not an arbitrary URL). Only
+    // gates a genuinely *new* value — restoring the photo the account
+    // already has (e.g. the profile picker's "use my photo" tile, for a
+    // Google-sourced photo that itself bypassed this toggle) is always
+    // allowed, since nothing is actually being added.
     if (
       rest.profileImageUrl !== undefined &&
+      rest.profileImageUrl !== user.profileImageUrl &&
       !(await this.settingsService.allowsProfileImageUpload())
     ) {
       delete rest.profileImageUrl;
@@ -127,6 +147,14 @@ export class UsersService {
       !(await this.settingsService.allowsProfileImageUpload())
     ) {
       delete rest.profileImageUrl;
+    }
+
+    // Only randomize when there's no photo to fall back on instead — a
+    // random pick would never actually render (Avatar's precedence puts a
+    // photo first), so there's no point spending one.
+    if (!rest.profileImageUrl) {
+      rest.avatarIcon = rest.avatarIcon ?? this._randomAvatarIcon();
+      rest.avatarColor = rest.avatarColor ?? this._randomAvatarColor();
     }
 
     const user = this.usersRepository.create({
@@ -197,7 +225,15 @@ export class UsersService {
       password: null,
       // Google already verified the address.
       isVerified: true,
-      ...(profile.picture ? {profileImageUrl: profile.picture} : {}),
+      // Only randomize when there's no Google photo to fall back on — a
+      // random pick would never actually render otherwise (Avatar's
+      // precedence puts a photo first).
+      ...(profile.picture
+        ? {profileImageUrl: profile.picture}
+        : {
+            avatarIcon: this._randomAvatarIcon(),
+            avatarColor: this._randomAvatarColor(),
+          }),
     });
 
     try {
