@@ -21,12 +21,13 @@ npm install
 cp .env.example .env
 npm run dev:infra:up
 npm run migration:run
-npm run seed          # optional demo data
+npm run seed          # reset and load optional demo data
 npm run start:dev
 ```
 
-The API runs at `http://localhost:8000`. Interactive OpenAPI documentation is
-available at [`http://localhost:8000/docs`](http://localhost:8000/docs); use it
+The API runs at `http://localhost:8000`. In non-production environments,
+interactive OpenAPI documentation is available at
+[`http://localhost:8000/docs`](http://localhost:8000/docs); use it
 as the endpoint, payload, authentication, and response reference.
 
 ### Configuration
@@ -55,8 +56,7 @@ npm run typecheck          # TypeScript validation
 npm run lint               # ESLint
 npm test                   # unit tests
 npm run test:cov           # unit tests with coverage
-npm run seed               # seed the configured database
-npm run seed -- --fresh    # reset and reseed
+npm run seed               # wipe and reseed the configured development database
 ```
 
 ### Infrastructure and integration tests
@@ -109,7 +109,7 @@ Operational endpoints:
 
 - `GET /health` — deployment health check
 - `GET /metrics` — Prometheus metrics, protected by `METRICS_TOKEN`
-- `GET /docs` — Swagger UI and OpenAPI reference
+- `GET /docs` — Swagger UI and OpenAPI reference (non-production only)
 
 ## License
 

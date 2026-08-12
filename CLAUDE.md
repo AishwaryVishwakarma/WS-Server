@@ -23,7 +23,7 @@ npm run test:cov           # unit tests with coverage
 
 npm run dev:infra:up       # development PostgreSQL + Redis
 npm run dev:infra:down
-npm run seed               # build and seed; add -- --fresh to reset first
+npm run seed               # wipe and recreate development seed data
 
 npm run test:infra:up      # integration PostgreSQL + Redis
 npm run test:integration   # real app, run serially

@@ -22,6 +22,10 @@ import {UsersService} from 'src/users/users.service';
 import {AvatarIcon} from 'src/users/enums/avatar-icon.enum';
 import {AvatarColor} from 'src/users/enums/avatar-color.enum';
 import {SettingsService} from 'src/settings/settings.service';
+import {
+  AnalyticsEvent,
+  AnalyticsEventType,
+} from 'src/admin-analytics/entities/analytics-event.entity';
 
 // The Nest Logger is muted below ({logger: ['error', 'warn']}) to hide
 // bootstrap noise, so the seeder reports via console directly.
@@ -701,12 +705,81 @@ async function wipeDatabase(dataSource: DataSource) {
   }
 }
 
+const datedTables = [
+  'user',
+  'series',
+  'story',
+  'story_revision',
+  'comment',
+  'comment_report',
+  'story_report',
+  'user_report',
+  'story_like',
+  'bookmark',
+  'follow',
+  'scare_vote',
+  'comment_reaction',
+  'notification',
+] as const;
+
+async function distributeSeedDates(dataSource: DataSource): Promise<void> {
+  for (const table of datedTables) {
+    await dataSource.query(
+      `WITH dated AS (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS position
+        FROM "${table}"
+      )
+      UPDATE "${table}" AS target
+      SET "createdAt" = CURRENT_TIMESTAMP
+        - (((dated.position * 37) % 120)::text || ' days')::interval
+        - (((dated.position * 11) % 20)::text || ' hours')::interval
+      FROM dated
+      WHERE target.id = dated.id`
+    );
+  }
+
+  for (const table of ['user', 'series', 'story', 'comment', 'scare_vote']) {
+    await dataSource.query(
+      `UPDATE "${table}" SET "updatedAt" = "createdAt" + interval '2 hours'`
+    );
+  }
+}
+
+async function seedAnalyticsViews(
+  dataSource: DataSource,
+  stories: string[],
+  actors: string[]
+): Promise<number> {
+  if (!stories.length) return 0;
+  const events: Partial<AnalyticsEvent>[] = [];
+  const now = new Date();
+
+  for (let daysAgo = 89; daysAgo >= 0; daysAgo--) {
+    const viewsForDay = 1 + ((daysAgo * 7) % 6);
+    for (let view = 0; view < viewsForDay; view++) {
+      const createdAt = new Date(now);
+      createdAt.setUTCDate(createdAt.getUTCDate() - daysAgo);
+      createdAt.setUTCHours(8 + ((daysAgo + view * 3) % 14), view * 7, 0, 0);
+      events.push({
+        type: AnalyticsEventType.StoryViewed,
+        storyId: stories[(daysAgo * 3 + view) % stories.length],
+        actorId: actors.length
+          ? actors[(daysAgo + view) % actors.length]
+          : null,
+        metadata: {seeded: true},
+        createdAt,
+      });
+    }
+  }
+
+  await dataSource.getRepository(AnalyticsEvent).insert(events);
+  return events.length;
+}
+
 async function seed() {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Refusing to seed a production environment');
   }
-
-  const fresh = process.argv.includes('--fresh');
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
@@ -725,21 +798,11 @@ async function seed() {
     const notificationsService = app.get(NotificationsService);
     const settingsService = app.get(SettingsService);
 
-    const existingAdmin = await dataSource
-      .getRepository(User)
-      .findOneBy({email: ADMIN_CREDENTIALS.email});
-
-    if (existingAdmin && !fresh) {
-      log(
-        'Database is already seeded — run "npm run seed -- --fresh" to wipe and reseed'
-      );
-      return;
-    }
-
-    if (fresh) {
-      log(`Wiping database "${String(dataSource.options.database)}"...`);
-      await wipeDatabase(dataSource);
-    }
+    // Seed data is a reproducible development fixture, not an incremental
+    // migration. Always rebuild it so changes to fixtures and historical dates
+    // are immediately reflected and duplicate rows can never accumulate.
+    log(`Wiping database "${String(dataSource.options.database)}"...`);
+    await wipeDatabase(dataSource);
 
     // Temporarily allow image URLs so the seeded demo data (Bob's avatar,
     // every story's cover) actually persists through the real create() path
@@ -939,6 +1002,21 @@ async function seed() {
       bookmarks++;
     }
 
+    const approvedStoryIds = await dataSource
+      .getRepository(Story)
+      .find({select: {id: true}, where: {status: StoryStatus.Approved}});
+    const analyticsViews = await seedAnalyticsViews(
+      dataSource,
+      approvedStoryIds.map(({id}) => id),
+      [...usersByEmail.values()].map(({id}) => id)
+    );
+
+    // Service calls above intentionally exercise production behavior first.
+    // Once all relationships and counters are correct, spread their timestamps
+    // deterministically so date filters, trends, cohorts, and comparisons have
+    // meaningful fixtures on every fresh seed.
+    await distributeSeedDates(dataSource);
+
     // Comments/replies/follows/likes above already generate notifications as
     // a side effect of the real services (see e.g. CommentsService.create) —
     // but every one of them starts unread, so the bell never shows a "read"
@@ -971,7 +1049,8 @@ async function seed() {
         `${allComments.length} comments + ${REPLIES.length} replies ` +
         `(${reportedComments} reported), ${reportedStories} reported stories, ` +
         `${reportedUsers} reported users, ${bookmarks} bookmarks, ` +
-        `${follows} follows, ${likes} likes, ${scareVotes} scare votes`
+        `${follows} follows, ${likes} likes, ${scareVotes} scare votes, ` +
+        `${analyticsViews} historical view events`
     );
     log(
       `Admin login:  ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}`
