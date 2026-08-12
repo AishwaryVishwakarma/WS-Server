@@ -74,4 +74,26 @@ export class SessionRegistryService {
     }
     await this.redisClient.del(key);
   }
+
+  // Used after an authenticated password change: revoke every other device
+  // while preserving the session that supplied the current-password proof.
+  async invalidateOthers(userId: string, currentSid: string): Promise<void> {
+    if (!this.redisClient) return;
+    const key = userSessionsKey(userId);
+    const sids = await this.redisClient.sMembers(key);
+    const otherSids = sids.filter((sid) => sid !== currentSid);
+
+    if (otherSids.length > 0) {
+      try {
+        await this.redisClient.del(
+          otherSids.map((sid) => SESSION_KEY_PREFIX + sid)
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to invalidate other sessions for user ${userId}: ${String(error)}`
+        );
+      }
+      await this.redisClient.sRem(key, otherSids);
+    }
+  }
 }

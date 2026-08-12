@@ -29,6 +29,9 @@ describe('SessionRegistryService', () => {
       await expect(service.track('user-1', 'sid-1')).resolves.toBeUndefined();
       await expect(service.untrack('user-1', 'sid-1')).resolves.toBeUndefined();
       await expect(service.invalidateAll('user-1')).resolves.toBeUndefined();
+      await expect(
+        service.invalidateOthers('user-1', 'sid-1')
+      ).resolves.toBeUndefined();
     });
   });
 
@@ -121,6 +124,26 @@ describe('SessionRegistryService', () => {
       await expect(service.invalidateAll('user-1')).resolves.toBeUndefined();
 
       expect(redisClient.del).toHaveBeenCalledWith('user-sessions:user-1');
+    });
+
+    it('invalidateOthers preserves the current session and removes the rest', async () => {
+      redisClient.sMembers.mockResolvedValue(['sid-current', 'sid-other']);
+
+      await service.invalidateOthers('user-1', 'sid-current');
+
+      expect(redisClient.del).toHaveBeenCalledWith(['sess:sid-other']);
+      expect(redisClient.sRem).toHaveBeenCalledWith('user-sessions:user-1', [
+        'sid-other',
+      ]);
+    });
+
+    it('invalidateOthers does nothing when only the current session is tracked', async () => {
+      redisClient.sMembers.mockResolvedValue(['sid-current']);
+
+      await service.invalidateOthers('user-1', 'sid-current');
+
+      expect(redisClient.del).not.toHaveBeenCalled();
+      expect(redisClient.sRem).not.toHaveBeenCalled();
     });
   });
 });

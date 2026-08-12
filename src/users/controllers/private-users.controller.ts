@@ -26,6 +26,8 @@ import {CommentsService} from 'src/comments/comments.service';
 import {MyCommentActivityResponseDto} from 'src/comments/dto/comment-response.dto';
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from '../users.service';
+import {ChangePasswordDto} from '../dto/change-password.dto';
+import {SessionRegistryService} from 'src/session/session-registry.service';
 
 @ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
@@ -34,6 +36,7 @@ export class PrivateUsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly sessionService: SessionService,
+    private readonly sessionRegistryService: SessionRegistryService,
     private readonly storiesService: StoriesService,
 
     @Inject(forwardRef(() => CommentsService))
@@ -100,6 +103,23 @@ export class PrivateUsersController {
       updateProfileDto
     );
     return this._serialize(user as User);
+  }
+
+  @Patch('password')
+  @HttpCode(204)
+  async changePassword(
+    @Body() changePasswordDto: ChangePasswordDto,
+    @Req() req: Request
+  ) {
+    await this.usersService.changePassword(
+      req.session.userId!,
+      changePasswordDto.currentPassword,
+      changePasswordDto.newPassword
+    );
+    await this.sessionRegistryService.invalidateOthers(
+      req.session.userId!,
+      req.sessionID
+    );
   }
 
   @Delete()
