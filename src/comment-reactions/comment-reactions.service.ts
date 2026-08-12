@@ -28,41 +28,33 @@ export class CommentReactionsService {
     const comment = await this.commentsService.findOne(commentId);
     await this.storiesService.findOneVisible(comment.story.id, userId, role);
 
-    const exists = await this.reactionsRepository.existsBy({
-      user: {id: userId},
-      comment: {id: commentId},
+    await this.reactionsRepository.manager.transaction(async (manager) => {
+      const result = await manager
+        .createQueryBuilder()
+        .insert()
+        .into(CommentReaction)
+        .values({user: {id: userId}, comment: {id: commentId}})
+        .orIgnore()
+        .returning('id')
+        .execute();
+      if (Array.isArray(result.raw) && result.raw.length > 0) {
+        await manager.increment(Comment, {id: commentId}, 'reactionCount', 1);
+      }
     });
-    if (exists) return;
-
-    await this.reactionsRepository.save(
-      this.reactionsRepository.create({
-        user: {id: userId},
-        comment: {id: commentId},
-      })
-    );
-    await this.reactionsRepository.manager.increment(
-      Comment,
-      {id: commentId},
-      'reactionCount',
-      1
-    );
   }
 
   // Remove a reaction. Decrements the counter only when a row was actually
   // deleted, so a repeat un-react is a safe no-op.
   async unreact(userId: string, commentId: string): Promise<void> {
-    const result = await this.reactionsRepository.delete({
-      user: {id: userId},
-      comment: {id: commentId},
+    await this.reactionsRepository.manager.transaction(async (manager) => {
+      const result = await manager.delete(CommentReaction, {
+        user: {id: userId},
+        comment: {id: commentId},
+      });
+      if (result.affected) {
+        await manager.decrement(Comment, {id: commentId}, 'reactionCount', 1);
+      }
     });
-    if (result.affected) {
-      await this.reactionsRepository.manager.decrement(
-        Comment,
-        {id: commentId},
-        'reactionCount',
-        1
-      );
-    }
   }
 
   // The ids of comments the member has reacted to — fetched once so comment

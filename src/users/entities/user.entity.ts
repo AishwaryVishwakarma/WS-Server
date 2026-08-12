@@ -76,7 +76,7 @@ export class User {
   @Column({default: false})
   isBlocked: boolean;
 
-  @Column({length: 500, nullable: true})
+  @Column({type: 'varchar', length: 500, nullable: true})
   profileImageUrl: string | null;
 
   // A chosen themed icon avatar — always available (unlike profileImageUrl,

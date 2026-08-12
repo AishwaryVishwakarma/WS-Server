@@ -14,7 +14,7 @@ describe('ScareRatingsService', () => {
     update: jest.Mock;
     delete: jest.Mock;
     createQueryBuilder: jest.Mock;
-    manager: {increment: jest.Mock};
+    manager: {increment: jest.Mock; transaction: jest.Mock};
   };
   let storiesService: {findOneVisible: jest.Mock};
 
@@ -26,8 +26,16 @@ describe('ScareRatingsService', () => {
       update: jest.fn(),
       delete: jest.fn(),
       createQueryBuilder: jest.fn(),
-      manager: {increment: jest.fn()},
+      manager: {increment: jest.fn(), transaction: jest.fn()},
     };
+    votesRepository.manager.transaction.mockImplementation(
+      async (work: (manager: unknown) => Promise<unknown>) =>
+        work({
+          query: jest.fn(),
+          getRepository: () => votesRepository,
+          increment: votesRepository.manager.increment,
+        })
+    );
     storiesService = {findOneVisible: jest.fn().mockResolvedValue({})};
 
     const module = await Test.createTestingModule({

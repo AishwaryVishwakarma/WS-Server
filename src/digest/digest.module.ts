@@ -9,6 +9,7 @@ import {MailModule} from 'src/mail/mail.module';
 import {SettingsModule} from 'src/settings/settings.module';
 import {DigestService} from './digest.service';
 import {DigestController} from './digest.controller';
+import {DigestLockService} from './digest-lock.service';
 
 // Plain imports, no forwardRef — none of these modules import DigestModule
 // back, so there's no cycle to guard against.
@@ -23,7 +24,7 @@ import {DigestController} from './digest.controller';
     SettingsModule,
   ],
   controllers: [DigestController],
-  providers: [DigestService],
-  exports: [DigestService],
+  providers: [DigestService, DigestLockService],
+  exports: [DigestService, DigestLockService],
 })
 export class DigestModule {}

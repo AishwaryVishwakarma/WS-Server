@@ -56,6 +56,7 @@ describe('MailService', () => {
             Authorization: 'Bearer re_test_key',
             'Content-Type': 'application/json',
           },
+          signal: expect.any(AbortSignal),
         })
       );
       const [, options] = fetchMock.mock.calls[0] as [string, {body: string}];
@@ -99,16 +100,18 @@ describe('MailService', () => {
       );
     });
 
-    it('throws with the response body when the Resend API rejects the request', async () => {
+    it('throws without exposing the response body when Resend rejects the request', async () => {
       global.fetch = mockFetchResponse(false, 422, '{"message":"bad from"}');
 
       const service = new MailService(
         makeConfigService({RESEND_API_KEY: 're_test_key'})
       );
 
-      await expect(
+      const result = expect(
         service.send('reader@test.com', 'Subject', 'Body')
-      ).rejects.toThrow('Resend API request failed (422)');
+      ).rejects;
+      await result.toThrow('Resend API request failed (422)');
+      await result.not.toThrow('bad from');
     });
   });
 });

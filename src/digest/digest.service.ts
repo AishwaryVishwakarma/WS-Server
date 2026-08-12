@@ -1,7 +1,7 @@
-import {Injectable} from '@nestjs/common';
+import {Injectable, Logger} from '@nestjs/common';
 import {Cron} from '@nestjs/schedule';
 import {InjectRepository} from '@nestjs/typeorm';
-import {Repository} from 'typeorm';
+import {MoreThan, Repository} from 'typeorm';
 import {ConfigService} from '@nestjs/config';
 import {User} from 'src/users/entities/user.entity';
 import {FollowsService} from 'src/follows/follows.service';
@@ -12,11 +12,14 @@ import {MailService} from 'src/mail/mail.service';
 import {buildDigestText, buildDigestHtml} from './digest-content';
 import {renderEmailHtml} from 'src/mail/email-template';
 import {SettingsService} from 'src/settings/settings.service';
+import {DigestLockService} from './digest-lock.service';
 
 const DIGEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const DIGEST_BATCH_SIZE = 100;
 
 @Injectable()
 export class DigestService {
+  private readonly logger = new Logger(DigestService.name);
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
@@ -26,7 +29,8 @@ export class DigestService {
     private readonly notificationsService: NotificationsService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
+    private readonly lockService: DigestLockService
   ) {}
 
   // Mondays 14:00 UTC. Also reachable manually via POST /admin/digest/send
@@ -39,15 +43,37 @@ export class DigestService {
       return {sent: 0};
     }
 
-    const users = await this.usersRepository.find({
-      where: {digestEmailEnabled: true},
+    const result = await this.lockService.run(async () => {
+      let sent = 0;
+      let cursor: string | undefined;
+
+      while (true) {
+        const users = await this.usersRepository.find({
+          where: {
+            digestEmailEnabled: true,
+            ...(cursor ? {id: MoreThan(cursor)} : {}),
+          },
+          order: {id: 'ASC'},
+          take: DIGEST_BATCH_SIZE,
+        });
+        if (users.length === 0) break;
+
+        for (const user of users) {
+          try {
+            if (await this._sendDigestForUser(user)) sent++;
+          } catch (error) {
+            this.logger.error(
+              `Failed to send weekly digest for user ${user.id}`,
+              error instanceof Error ? error.stack : undefined
+            );
+          }
+        }
+        cursor = users.at(-1)!.id;
+      }
+      return {sent};
     });
 
-    let sent = 0;
-    for (const user of users) {
-      if (await this._sendDigestForUser(user)) sent++;
-    }
-    return {sent};
+    return result ?? {sent: 0};
   }
 
   private async _sendDigestForUser(user: User): Promise<boolean> {

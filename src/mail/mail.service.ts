@@ -2,6 +2,7 @@ import {Injectable, Logger} from '@nestjs/common';
 import {ConfigService} from '@nestjs/config';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
+const MAIL_REQUEST_TIMEOUT_MS = 10_000;
 
 // Sends via Resend's HTTPS API rather than raw SMTP. SMTP was the original
 // design (provider-agnostic — any SMTP host worked via env vars alone), but
@@ -49,14 +50,14 @@ export class MailService {
         Authorization: `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(MAIL_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({from: this.from, to, subject, text, html}),
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(
-        `Resend API request failed (${response.status}): ${body}`
-      );
+      // Do not copy the provider response into application errors: it may
+      // contain request details that should not reach production logs.
+      throw new Error(`Resend API request failed (${response.status})`);
     }
   }
 }

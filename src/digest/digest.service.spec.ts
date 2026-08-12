@@ -9,6 +9,7 @@ import {NotificationsService} from 'src/notifications/notifications.service';
 import {MailService} from 'src/mail/mail.service';
 import {SettingsService} from 'src/settings/settings.service';
 import {DigestService} from './digest.service';
+import {DigestLockService} from './digest-lock.service';
 
 // Only the global on/off gate is unit-tested here — the digest content
 // itself (what a sent email actually contains) is covered by
@@ -36,6 +37,10 @@ describe('DigestService', () => {
         {provide: MailService, useValue: {send: jest.fn()}},
         {provide: ConfigService, useValue: {get: jest.fn()}},
         {provide: SettingsService, useValue: settingsService},
+        {
+          provide: DigestLockService,
+          useValue: {run: jest.fn((work: () => Promise<unknown>) => work())},
+        },
       ],
     }).compile();
 
@@ -60,6 +65,8 @@ describe('DigestService', () => {
       expect(result).toEqual({sent: 0});
       expect(usersRepository.find).toHaveBeenCalledWith({
         where: {digestEmailEnabled: true},
+        order: {id: 'ASC'},
+        take: 100,
       });
     });
   });

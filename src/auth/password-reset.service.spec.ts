@@ -70,6 +70,8 @@ describe('PasswordResetService', () => {
 
       await service.requestReset(user.email);
 
+      await Promise.resolve();
+
       expect(tokensRepository.delete).toHaveBeenCalledWith({
         user: {id: user.id},
       });
@@ -92,6 +94,8 @@ describe('PasswordResetService', () => {
       usersService.findOneByEmail.mockResolvedValue(user);
 
       await service.requestReset(user.email);
+
+      await Promise.resolve();
 
       const [, , body] = mailService.send.mock.calls[0] as [
         string,

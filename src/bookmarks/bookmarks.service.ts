@@ -23,18 +23,13 @@ export class BookmarksService {
   async add(userId: string, storyId: string, role?: Role): Promise<void> {
     await this.storiesService.findOneVisible(storyId, userId, role);
 
-    const exists = await this.bookmarksRepository.existsBy({
-      user: {id: userId},
-      story: {id: storyId},
-    });
-    if (exists) return;
-
-    await this.bookmarksRepository.save(
-      this.bookmarksRepository.create({
-        user: {id: userId},
-        story: {id: storyId},
-      })
-    );
+    await this.bookmarksRepository
+      .createQueryBuilder()
+      .insert()
+      .into(Bookmark)
+      .values({user: {id: userId}, story: {id: storyId}})
+      .orIgnore()
+      .execute();
   }
 
   // Remove a bookmark. A no-op (still 204) when it wasn't bookmarked, so the

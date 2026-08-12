@@ -50,6 +50,8 @@ import {SiteSettings} from './settings/entities/site-settings.entity';
 import {SettingsModule} from './settings/settings.module';
 import {PresenceModule} from './presence/presence.module';
 import {migrations} from './database/migrations';
+import {RedisThrottlerStorage} from './common/redis-throttler.storage';
+import {RateLimitModule} from './common/rate-limit.module';
 
 // A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
@@ -58,15 +60,21 @@ const DEFAULT_DB_POOL_SIZE = 10;
   imports: [
     // Per-user (or per-IP) rate limiting — see SessionThrottlerGuard and
     // src/common/constants/throttle.ts for the tiers.
-    ThrottlerModule.forRoot({
-      throttlers: [DEFAULT_THROTTLE],
-      errorMessage: 'Too many requests, please try again later.',
-      // Rate limiting would fail integration tests after a few requests, and an
-      // e2e run drives many flows from one IP — THROTTLE_DISABLED lets those
-      // opt out (set in .env.test, and by the Playwright backend) without
-      // affecting real deployments. Kept flag-only, not tied to NODE_ENV, so a
-      // dedicated test can boot with it off and exercise the guard.
-      skipIf: () => process.env.THROTTLE_DISABLED === 'true',
+    RateLimitModule,
+    ThrottlerModule.forRootAsync({
+      imports: [RateLimitModule],
+      inject: [RedisThrottlerStorage],
+      useFactory: (storage: RedisThrottlerStorage) => ({
+        throttlers: [DEFAULT_THROTTLE],
+        storage,
+        errorMessage: 'Too many requests, please try again later.',
+        // Rate limiting would fail integration tests after a few requests, and an
+        // e2e run drives many flows from one IP — THROTTLE_DISABLED lets those
+        // opt out (set in .env.test, and by the Playwright backend) without
+        // affecting real deployments. Kept flag-only, not tied to NODE_ENV, so a
+        // dedicated test can boot with it off and exercise the guard.
+        skipIf: () => process.env.THROTTLE_DISABLED === 'true',
+      }),
     }),
     // Load environment variables from .env file
     ConfigModule.forRoot({

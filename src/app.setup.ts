@@ -13,6 +13,7 @@ import {NotificationsStream} from './notifications/notifications-stream.service'
 import {PresenceService} from './presence/presence.service';
 import {SessionRegistryService} from './session/session-registry.service';
 import {SESSION_MAX_AGE_MS} from './session/session.constants';
+import {DigestLockService} from './digest/digest-lock.service';
 
 // Applies the app-level wiring that lives outside the Nest module graph
 // (pipes, filters, Redis-backed session middleware). Shared by main.ts and
@@ -64,6 +65,8 @@ export async function setupApp(
   // Same story for the story-reader presence counter (see PresenceService).
   const presenceService = app.get(PresenceService);
   presenceService.bindRedis(redisClient);
+
+  app.get(DigestLockService).bindRedis(redisClient);
 
   // Wire notification pub/sub: the main client publishes, a dedicated
   // subscriber connection (a client in subscribe mode can't run commands) feeds

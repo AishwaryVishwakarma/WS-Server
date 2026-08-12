@@ -51,23 +51,9 @@ export class ReadingProgressService {
 
     if (percent < MIN_PERCENT) return;
 
-    const existing = await this.readingProgressRepository.findOneBy({
-      user: {id: userId},
-      story: {id: storyId},
-    });
-
-    if (existing) {
-      existing.percent = percent;
-      await this.readingProgressRepository.save(existing);
-      return;
-    }
-
-    await this.readingProgressRepository.save(
-      this.readingProgressRepository.create({
-        user: {id: userId},
-        story: {id: storyId},
-        percent,
-      })
+    await this.readingProgressRepository.upsert(
+      {user: {id: userId}, story: {id: storyId}, percent},
+      {conflictPaths: ['user', 'story']}
     );
   }
 

@@ -23,18 +23,13 @@ export class MutesService {
     }
     await this.usersService.findOne(targetId);
 
-    const exists = await this.mutedAuthorRepository.existsBy({
-      user: {id: userId},
-      mutedAuthor: {id: targetId},
-    });
-    if (exists) return;
-
-    await this.mutedAuthorRepository.save(
-      this.mutedAuthorRepository.create({
-        user: {id: userId},
-        mutedAuthor: {id: targetId},
-      })
-    );
+    await this.mutedAuthorRepository
+      .createQueryBuilder()
+      .insert()
+      .into(MutedAuthor)
+      .values({user: {id: userId}, mutedAuthor: {id: targetId}})
+      .orIgnore()
+      .execute();
   }
 
   // Unmute. A no-op (still 204) when not muted, so the toggle is safe from a
