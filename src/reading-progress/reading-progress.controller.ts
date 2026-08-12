@@ -57,4 +57,18 @@ export class ReadingProgressController {
       updatedAt,
     }));
   }
+
+  @Get('users/me/reading-history')
+  async history(@Req() req: Request) {
+    const rows = await this.readingProgressService.historyForUser(
+      req.session.userId!
+    );
+
+    return rows.map(({story, updatedAt}) => ({
+      story: plainToInstance(StoryPreviewResponseDto, story, {
+        excludeExtraneousValues: true,
+      }),
+      completedAt: updatedAt,
+    }));
+  }
 }

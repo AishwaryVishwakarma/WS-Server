@@ -20,6 +20,7 @@ import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {GoogleAuthService} from './google-auth.service';
 import {RegistrationOtpService} from './registration-otp.service';
+import {sessionMetadataFrom} from 'src/session/session-metadata';
 
 @Injectable()
 export class AuthService {
@@ -48,6 +49,7 @@ export class AuthService {
 
     req.session.userId = user.id;
     req.session.role = user.role || Role.User;
+    req.session.metadata = sessionMetadataFrom(req);
 
     const maxAgeMs = rememberMe ? REMEMBER_ME_MAX_AGE_MS : SESSION_MAX_AGE_MS;
     if (rememberMe) req.session.cookie.maxAge = maxAgeMs;

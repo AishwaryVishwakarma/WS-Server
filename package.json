@@ -34,7 +34,8 @@
     "test:infra:down": "docker compose -f docker-compose.test.yml down -v",
     "migration:generate": "nest build && typeorm migration:generate -d dist/database/data-source.js",
     "migration:run": "nest build && typeorm migration:run -d dist/database/data-source.js",
-    "migration:revert": "nest build && typeorm migration:revert -d dist/database/data-source.js"
+    "migration:revert": "nest build && typeorm migration:revert -d dist/database/data-source.js",
+    "analytics:explain": "nest build && node dist/database/explain-analytics.js"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.5",

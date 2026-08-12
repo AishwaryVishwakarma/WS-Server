@@ -489,6 +489,40 @@ export class UsersService {
     await this.usersRepository.update(userId, {password: hashedPassword});
   }
 
+  // Changes a signed-in member's password only after verifying the existing
+  // one. Password-less OAuth accounts can establish one through the existing
+  // email reset flow, where mailbox ownership replaces this proof.
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :userId', {userId})
+      .getOne();
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+    if (!user.password) {
+      throw new BadRequestException(
+        'This account does not have a password. Use password reset to create one.'
+      );
+    }
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    if (await bcrypt.compare(newPassword, user.password)) {
+      throw new BadRequestException(
+        'New password must be different from the current password'
+      );
+    }
+
+    await this.updatePassword(userId, newPassword);
+  }
+
   // Admin single-user detail (GET /admin/users/:id, e.g. the edit page): the
   // user plus the individual reports against them (reason, optional detail,
   // and who filed it) — the aggregate `reportCount` alone doesn't tell an

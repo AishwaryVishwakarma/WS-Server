@@ -11,8 +11,10 @@ import {
   Query,
   Inject,
   forwardRef,
+  NotFoundException,
+  Param,
 } from '@nestjs/common';
-import {ApiCookieAuth} from '@nestjs/swagger';
+import {ApiCookieAuth, ApiOkResponse} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import type {Request, Response} from 'express';
 import {User} from '../entities/user.entity';
@@ -26,6 +28,9 @@ import {CommentsService} from 'src/comments/comments.service';
 import {MyCommentActivityResponseDto} from 'src/comments/dto/comment-response.dto';
 import {StoriesService} from 'src/stories/stories.service';
 import {UsersService} from '../users.service';
+import {ChangePasswordDto} from '../dto/change-password.dto';
+import {SessionRegistryService} from 'src/session/session-registry.service';
+import {SessionResponseDto} from 'src/session/dto/session-response.dto';
 
 @ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
@@ -34,6 +39,7 @@ export class PrivateUsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly sessionService: SessionService,
+    private readonly sessionRegistryService: SessionRegistryService,
     private readonly storiesService: StoriesService,
 
     @Inject(forwardRef(() => CommentsService))
@@ -79,6 +85,26 @@ export class PrivateUsersController {
     return this.usersService.computeAuthorStats(req.session.userId!);
   }
 
+  @Get('sessions')
+  @ApiOkResponse({type: SessionResponseDto, isArray: true})
+  async sessions(@Req() req: Request) {
+    return this.sessionRegistryService.list(req.session.userId!, req.sessionID);
+  }
+
+  @Delete('sessions/:id')
+  @HttpCode(204)
+  async revokeSession(@Param('id') id: string, @Req() req: Request) {
+    if (
+      !(await this.sessionRegistryService.invalidate(
+        req.session.userId!,
+        id,
+        req.sessionID
+      ))
+    ) {
+      throw new NotFoundException('Session not found');
+    }
+  }
+
   @Get('stories')
   async findMyStories(@Req() req: Request, @Query() query: MyStoriesQueryDto) {
     return await this.storiesService.findAllByUserId(
@@ -100,6 +126,23 @@ export class PrivateUsersController {
       updateProfileDto
     );
     return this._serialize(user as User);
+  }
+
+  @Patch('password')
+  @HttpCode(204)
+  async changePassword(
+    @Body() changePasswordDto: ChangePasswordDto,
+    @Req() req: Request
+  ) {
+    await this.usersService.changePassword(
+      req.session.userId!,
+      changePasswordDto.currentPassword,
+      changePasswordDto.newPassword
+    );
+    await this.sessionRegistryService.invalidateOthers(
+      req.session.userId!,
+      req.sessionID
+    );
   }
 
   @Delete()

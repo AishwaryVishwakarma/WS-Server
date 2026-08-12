@@ -38,8 +38,12 @@ describe('AuthService', () => {
   const password = 'S3cret!Password';
   let hashedPassword: string;
 
-  const createRequest = () =>
-    ({session: {cookie: {}}, sessionID: 'sid-1'}) as unknown as Request;
+  const createRequest = (headers: Record<string, string> = {}) =>
+    ({
+      session: {cookie: {}},
+      sessionID: 'sid-1',
+      get: jest.fn((name: string) => headers[name.toLowerCase()]),
+    }) as unknown as Request;
 
   beforeAll(async () => {
     hashedPassword = await bcrypt.hash(password, 4);
@@ -226,6 +230,12 @@ describe('AuthService', () => {
       expect(sessionService.regenerate).toHaveBeenCalledWith(req);
       expect(req.session.userId).toBe('user-1');
       expect(req.session.role).toBe(Role.Admin);
+      expect(req.session.metadata).toEqual(
+        expect.objectContaining({
+          device: 'Computer',
+          browser: 'Unknown browser',
+        })
+      );
       expect(sessionRegistryService.track).toHaveBeenCalledWith(
         'user-1',
         'sid-1',

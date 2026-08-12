@@ -10,6 +10,7 @@ describe('SessionRegistryService', () => {
     expire: jest.Mock;
     ttl: jest.Mock;
     del: jest.Mock;
+    mGet: jest.Mock;
   };
 
   beforeEach(() => {
@@ -21,6 +22,7 @@ describe('SessionRegistryService', () => {
       expire: jest.fn().mockResolvedValue(true),
       ttl: jest.fn().mockResolvedValue(-2), // key doesn't exist yet, by default
       del: jest.fn().mockResolvedValue(1),
+      mGet: jest.fn().mockResolvedValue([]),
     };
   });
 
@@ -29,6 +31,13 @@ describe('SessionRegistryService', () => {
       await expect(service.track('user-1', 'sid-1')).resolves.toBeUndefined();
       await expect(service.untrack('user-1', 'sid-1')).resolves.toBeUndefined();
       await expect(service.invalidateAll('user-1')).resolves.toBeUndefined();
+      await expect(
+        service.invalidateOthers('user-1', 'sid-1')
+      ).resolves.toBeUndefined();
+      await expect(service.list('user-1', 'sid-1')).resolves.toEqual([]);
+      await expect(
+        service.invalidate('user-1', 'public-id', 'sid-1')
+      ).resolves.toBe(false);
     });
   });
 
@@ -89,6 +98,81 @@ describe('SessionRegistryService', () => {
       );
     });
 
+    it('lists active sessions without exposing their Redis ids', async () => {
+      redisClient.sMembers.mockResolvedValue(['sid-current', 'sid-other']);
+      redisClient.mGet.mockResolvedValue([
+        JSON.stringify({
+          cookie: {expires: '2026-08-13T00:00:00.000Z'},
+          metadata: {
+            device: 'Computer',
+            browser: 'Chrome',
+            location: 'Mumbai, IN',
+            createdAt: '2026-08-12T00:00:00.000Z',
+          },
+        }),
+        JSON.stringify({
+          cookie: {expires: '2026-08-14T00:00:00.000Z'},
+        }),
+      ]);
+
+      const sessions = await service.list('user-1', 'sid-current');
+
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]).toMatchObject({
+        device: 'Computer',
+        browser: 'Chrome',
+        location: 'Mumbai, IN',
+        current: true,
+      });
+      expect(sessions[0].id).not.toContain('sid-current');
+      expect(sessions[1]).toMatchObject({
+        device: 'Unknown device',
+        current: false,
+      });
+    });
+
+    it('cleans stale session ids while listing', async () => {
+      redisClient.sMembers.mockResolvedValue(['sid-stale']);
+      redisClient.mGet.mockResolvedValue([null]);
+
+      await expect(service.list('user-1', 'sid-current')).resolves.toEqual([]);
+      expect(redisClient.sRem).toHaveBeenCalledWith('user-sessions:user-1', [
+        'sid-stale',
+      ]);
+    });
+
+    it('revokes another owned session by its public id', async () => {
+      redisClient.sMembers.mockResolvedValue(['sid-other']);
+      const [session] = await (async () => {
+        redisClient.mGet.mockResolvedValue([
+          JSON.stringify({cookie: {expires: '2026-08-13T00:00:00.000Z'}}),
+        ]);
+        return service.list('user-1', 'sid-current');
+      })();
+
+      await expect(
+        service.invalidate('user-1', session.id, 'sid-current')
+      ).resolves.toBe(true);
+      expect(redisClient.del).toHaveBeenCalledWith('sess:sid-other');
+      expect(redisClient.sRem).toHaveBeenCalledWith(
+        'user-sessions:user-1',
+        'sid-other'
+      );
+    });
+
+    it('does not revoke the current session through remote revocation', async () => {
+      redisClient.sMembers.mockResolvedValue(['sid-current']);
+      redisClient.mGet.mockResolvedValue([
+        JSON.stringify({cookie: {expires: '2026-08-13T00:00:00.000Z'}}),
+      ]);
+      const [session] = await service.list('user-1', 'sid-current');
+
+      await expect(
+        service.invalidate('user-1', session.id, 'sid-current')
+      ).resolves.toBe(false);
+      expect(redisClient.del).not.toHaveBeenCalled();
+    });
+
     it('invalidateAll deletes every tracked session and the index itself', async () => {
       redisClient.sMembers.mockResolvedValue(['sid-1', 'sid-2']);
 
@@ -121,6 +205,26 @@ describe('SessionRegistryService', () => {
       await expect(service.invalidateAll('user-1')).resolves.toBeUndefined();
 
       expect(redisClient.del).toHaveBeenCalledWith('user-sessions:user-1');
+    });
+
+    it('invalidateOthers preserves the current session and removes the rest', async () => {
+      redisClient.sMembers.mockResolvedValue(['sid-current', 'sid-other']);
+
+      await service.invalidateOthers('user-1', 'sid-current');
+
+      expect(redisClient.del).toHaveBeenCalledWith(['sess:sid-other']);
+      expect(redisClient.sRem).toHaveBeenCalledWith('user-sessions:user-1', [
+        'sid-other',
+      ]);
+    });
+
+    it('invalidateOthers does nothing when only the current session is tracked', async () => {
+      redisClient.sMembers.mockResolvedValue(['sid-current']);
+
+      await service.invalidateOthers('user-1', 'sid-current');
+
+      expect(redisClient.del).not.toHaveBeenCalled();
+      expect(redisClient.sRem).not.toHaveBeenCalled();
     });
   });
 });
