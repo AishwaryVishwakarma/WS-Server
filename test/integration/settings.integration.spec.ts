@@ -71,6 +71,7 @@ describe('Settings (integration)', () => {
       const response = await agent().get('/settings').expect(200);
 
       expect(response.body.requireStoryApproval).toBe(true);
+      expect(response.body.digestEmailGloballyEnabled).toBe(false);
     });
 
     it('reflects the current value and omits admin-only fields', async () => {
