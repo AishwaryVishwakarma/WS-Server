@@ -84,6 +84,25 @@ describe('Comment reactions (integration)', () => {
     expect(ids.body).toEqual([comment.id]);
   });
 
+  it('does not mark a comment as edited when its reaction count changes', async () => {
+    const {story, comment} = await approvedStoryWithComment();
+    const {client, token} = await reader();
+
+    await client
+      .put(`/comments/${comment.id}/react`)
+      .set('x-csrf-token', token)
+      .expect(204);
+    let list = await agent().get(`/stories/${story.id}/comments`).expect(200);
+    expect(list.body.data[0].updatedAt).toBe(comment.updatedAt);
+
+    await client
+      .delete(`/comments/${comment.id}/react`)
+      .set('x-csrf-token', token)
+      .expect(204);
+    list = await agent().get(`/stories/${story.id}/comments`).expect(200);
+    expect(list.body.data[0].updatedAt).toBe(comment.updatedAt);
+  });
+
   it('is idempotent — a repeat reaction keeps the count at one', async () => {
     const {story, comment} = await approvedStoryWithComment();
     const {client, token} = await reader();

@@ -3,7 +3,6 @@ import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
 import {StoriesService} from 'src/stories/stories.service';
 import {CommentsService} from 'src/comments/comments.service';
-import {Comment} from 'src/comments/entities/comment.entity';
 import type {Role} from 'src/users/enums/role';
 import {CommentReaction} from './entities/comment-reaction.entity';
 
@@ -38,7 +37,14 @@ export class CommentReactionsService {
         .returning('id')
         .execute();
       if (Array.isArray(result.raw) && result.raw.length > 0) {
-        await manager.increment(Comment, {id: commentId}, 'reactionCount', 1);
+        // reactionCount is engagement metadata, not a content edit. TypeORM's
+        // increment() also advances Comment.updatedAt because it is an
+        // UpdateDateColumn, which makes the UI incorrectly label the comment
+        // "Edited". A narrow SQL counter update preserves that timestamp.
+        await manager.query(
+          'UPDATE "comment" SET "reactionCount" = "reactionCount" + 1 WHERE "id" = $1',
+          [commentId]
+        );
       }
     });
   }
@@ -52,7 +58,10 @@ export class CommentReactionsService {
         comment: {id: commentId},
       });
       if (result.affected) {
-        await manager.decrement(Comment, {id: commentId}, 'reactionCount', 1);
+        await manager.query(
+          'UPDATE "comment" SET "reactionCount" = GREATEST("reactionCount" - 1, 0) WHERE "id" = $1',
+          [commentId]
+        );
       }
     });
   }
