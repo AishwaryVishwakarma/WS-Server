@@ -13,7 +13,8 @@ import {
 } from 'typeorm';
 
 // How far a member has scrolled into a story (0-100), so reopening it can
-// resume near the same spot and /me can list "Continue reading". The unique
+// resume near the same spot, /me can list "Continue reading", and completed
+// rows can provide a lightweight reading history. The unique
 // constraint makes a write idempotent (one row per member per story); the
 // composite index also serves the /users/me/reading-progress listing, which
 // filters by user and orders by updatedAt (most-recently-read first). Both

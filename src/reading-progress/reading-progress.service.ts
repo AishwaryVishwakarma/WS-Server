@@ -11,8 +11,8 @@ import {ReadingProgress} from './entities/reading-progress.entity';
 // wipe an existing row just because the reader briefly scrolled back up to
 // re-read something).
 const MIN_PERCENT = 5;
-// At or above this, the story is effectively finished — nothing to
-// "continue", so the row is dropped instead of sitting at ~100 forever.
+// At or above this, the story is effectively finished. Keep the row as reading
+// history, but exclude it from the "continue reading" query.
 const COMPLETE_PERCENT = 95;
 
 export interface ReadingProgressRow {
@@ -41,18 +41,14 @@ export class ReadingProgressService {
   ): Promise<void> {
     await this.storiesService.findOneVisible(storyId, userId, role);
 
-    if (percent >= COMPLETE_PERCENT) {
-      await this.readingProgressRepository.delete({
-        user: {id: userId},
-        story: {id: storyId},
-      });
-      return;
-    }
-
     if (percent < MIN_PERCENT) return;
 
     await this.readingProgressRepository.upsert(
-      {user: {id: userId}, story: {id: storyId}, percent},
+      {
+        user: {id: userId},
+        story: {id: storyId},
+        percent: percent >= COMPLETE_PERCENT ? 100 : percent,
+      },
       {conflictPaths: ['user', 'story']}
     );
   }
@@ -68,9 +64,35 @@ export class ReadingProgressService {
       .leftJoinAndSelect('story.author', 'author')
       .leftJoinAndSelect('story.tags', 'tags')
       .where('progress.user = :userId', {userId})
+      .andWhere('progress.percent < :completePercent', {
+        completePercent: COMPLETE_PERCENT,
+      })
       .andWhere('story.status = :status', {status: StoryStatus.Approved})
       .orderBy('progress.updatedAt', 'DESC')
       // Keep stories by soft-deleted authors, as the reading list does.
+      .withDeleted()
+      .getMany();
+
+    return rows.map((row) => ({
+      story: row.story,
+      percent: row.percent,
+      updatedAt: row.updatedAt,
+    }));
+  }
+
+  async historyForUser(userId: string): Promise<ReadingProgressRow[]> {
+    const rows = await this.readingProgressRepository
+      .createQueryBuilder('progress')
+      .innerJoinAndSelect('progress.story', 'story')
+      .leftJoinAndSelect('story.author', 'author')
+      .leftJoinAndSelect('story.tags', 'tags')
+      .where('progress.user = :userId', {userId})
+      .andWhere('progress.percent >= :completePercent', {
+        completePercent: COMPLETE_PERCENT,
+      })
+      .andWhere('story.status = :status', {status: StoryStatus.Approved})
+      .orderBy('progress.updatedAt', 'DESC')
+      .take(24)
       .withDeleted()
       .getMany();
 

@@ -126,7 +126,7 @@ describe('Reading progress (integration)', () => {
     expect(list.body[0].percent).toBe(40);
   });
 
-  it('drops the row once the read is effectively finished', async () => {
+  it('moves an effectively finished read into history', async () => {
     const {story} = await approvedStory();
     const {client, token} = await reader();
 
@@ -143,6 +143,11 @@ describe('Reading progress (integration)', () => {
 
     const list = await client.get('/users/me/reading-progress').expect(200);
     expect(list.body).toHaveLength(0);
+
+    const history = await client.get('/users/me/reading-history').expect(200);
+    expect(history.body).toHaveLength(1);
+    expect(history.body[0].story.id).toBe(story.id);
+    expect(history.body[0].completedAt).toBeDefined();
   });
 
   it('upserts — a second write in range updates the same row', async () => {
@@ -245,5 +250,6 @@ describe('Reading progress (integration)', () => {
       .send({percent: 30})
       .expect(403);
     await anon.get('/users/me/reading-progress').expect(401);
+    await anon.get('/users/me/reading-history').expect(401);
   });
 });

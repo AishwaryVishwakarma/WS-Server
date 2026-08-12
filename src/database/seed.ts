@@ -22,6 +22,7 @@ import {UsersService} from 'src/users/users.service';
 import {AvatarIcon} from 'src/users/enums/avatar-icon.enum';
 import {AvatarColor} from 'src/users/enums/avatar-color.enum';
 import {SettingsService} from 'src/settings/settings.service';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {
   AnalyticsEvent,
   AnalyticsEventType,
@@ -1009,6 +1010,27 @@ async function seed() {
       dataSource,
       approvedStoryIds.map(({id}) => id),
       [...usersByEmail.values()].map(({id}) => id)
+    );
+
+    const alice = usersByEmail.get('alice@whisperingshadows.dev')!;
+    const readingFixtures = approvedStoryIds.slice(0, 5).map(({id}, index) =>
+      dataSource.getRepository(ReadingProgress).create({
+        user: alice,
+        story: {id} as Story,
+        percent: index < 3 ? 25 + index * 25 : 100,
+      })
+    );
+    await dataSource.getRepository(ReadingProgress).save(readingFixtures);
+    await dataSource.query(
+      `WITH dated AS (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS position
+        FROM "reading_progress"
+      )
+      UPDATE "reading_progress" AS target
+      SET "updatedAt" = CURRENT_TIMESTAMP
+        - ((dated.position * 3)::text || ' days')::interval
+      FROM dated
+      WHERE target.id = dated.id`
     );
 
     // Service calls above intentionally exercise production behavior first.
