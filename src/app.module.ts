@@ -53,6 +53,7 @@ import {migrations} from './database/migrations';
 import {RedisThrottlerStorage} from './common/redis-throttler.storage';
 import {RateLimitModule} from './common/rate-limit.module';
 import {JobsModule} from './jobs/jobs.module';
+import {AdminAnalyticsModule} from './admin-analytics/admin-analytics.module';
 
 // A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
@@ -225,6 +226,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     DigestModule,
     SettingsModule,
     PresenceModule,
+    AdminAnalyticsModule,
   ],
   controllers: [AppController],
   providers: [
