@@ -10,5 +10,9 @@
 // to preserve across the engine switch.
 
 import {Baseline1786175459406} from './1786175459406-Baseline';
+import {AddDigestEmailGloballyEnabled1786515981348} from './1786515981348-AddDigestEmailGloballyEnabled';
 
-export const migrations = [Baseline1786175459406];
+export const migrations = [
+  Baseline1786175459406,
+  AddDigestEmailGloballyEnabled1786515981348,
+];

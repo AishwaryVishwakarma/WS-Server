@@ -19,6 +19,13 @@ export class SiteSettings {
   @Column({type: 'boolean', default: false})
   allowStoryCoverImage: boolean;
 
+  // Off at launch — the weekly digest cron (see DigestService) is gated by
+  // this before it does anything at all, regardless of any member's own
+  // digestEmailEnabled opt-in/out. POST /admin/digest/send (the manual QA
+  // trigger) respects it too, since it calls the same gated method.
+  @Column({type: 'boolean', default: false})
+  digestEmailGloballyEnabled: boolean;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }

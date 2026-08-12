@@ -11,6 +11,7 @@ import {NotificationsService} from 'src/notifications/notifications.service';
 import {MailService} from 'src/mail/mail.service';
 import {buildDigestText, buildDigestHtml} from './digest-content';
 import {renderEmailHtml} from 'src/mail/email-template';
+import {SettingsService} from 'src/settings/settings.service';
 
 const DIGEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -24,14 +25,20 @@ export class DigestService {
     private readonly storiesService: StoriesService,
     private readonly notificationsService: NotificationsService,
     private readonly mailService: MailService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly settingsService: SettingsService
   ) {}
 
   // Mondays 14:00 UTC. Also reachable manually via POST /admin/digest/send
   // (see DigestController) — for QA, and so an admin isn't purely at the
-  // cron's mercy.
+  // cron's mercy. Both respect the same site-wide off switch: a manual send
+  // while digest is globally disabled should not quietly work anyway.
   @Cron('0 14 * * 1')
   async sendWeeklyDigests(): Promise<{sent: number}> {
+    if (!(await this.settingsService.isDigestEmailGloballyEnabled())) {
+      return {sent: 0};
+    }
+
     const users = await this.usersRepository.find({
       where: {digestEmailEnabled: true},
     });

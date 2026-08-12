@@ -48,6 +48,16 @@ describe('Weekly digest (integration)', () => {
     return jest.spyOn(mailService, 'send').mockResolvedValue(undefined);
   };
 
+  // The site-wide digest toggle defaults off and cleanDatabase truncates the
+  // settings row every test — flip it on wherever a test needs the digest to
+  // actually run, using the same admin session the test already has.
+  const enableDigest = (admin: ReturnType<typeof agent>, adminToken: string) =>
+    admin
+      .patch('/admin/settings')
+      .set('x-csrf-token', adminToken)
+      .send({digestEmailGloballyEnabled: true})
+      .expect(200);
+
   it('emails a reader following an author with a new story, and records the send', async () => {
     const author = agent();
     const {body: authorBody} = await registerUser(author, {
@@ -62,6 +72,7 @@ describe('Weekly digest (integration)', () => {
 
     const admin = await seedAdmin(testApp);
     const adminToken = await getCsrfToken(admin);
+    await enableDigest(admin, adminToken);
     await admin
       .patch(`/admin/stories/${story.id}/status`)
       .set('x-csrf-token', adminToken)
@@ -89,7 +100,8 @@ describe('Weekly digest (integration)', () => {
     expect(sendMail).toHaveBeenCalledWith(
       'reader@test.com',
       'Your weekly whispers',
-      expect.stringContaining(STORY_PAYLOAD.title)
+      expect.stringContaining(STORY_PAYLOAD.title),
+      expect.any(String)
     );
 
     const updatedReader = await userRepository().findOneByOrFail({
@@ -106,6 +118,7 @@ describe('Weekly digest (integration)', () => {
 
     const admin = await seedAdmin(testApp);
     const adminToken = await getCsrfToken(admin);
+    await enableDigest(admin, adminToken);
     const sendMail = spyOnMail();
 
     await admin
@@ -138,6 +151,7 @@ describe('Weekly digest (integration)', () => {
 
     const admin = await seedAdmin(testApp);
     const adminToken = await getCsrfToken(admin);
+    await enableDigest(admin, adminToken);
     await admin
       .patch(`/admin/stories/${story.id}/status`)
       .set('x-csrf-token', adminToken)
@@ -168,6 +182,51 @@ describe('Weekly digest (integration)', () => {
       expect.anything(),
       expect.anything()
     );
+  });
+
+  it('sends nothing when digest is globally disabled, even for an otherwise-eligible reader', async () => {
+    const author = agent();
+    const {body: authorBody} = await registerUser(author, {
+      email: 'author3@test.com',
+    });
+    const authorToken = await getCsrfToken(author);
+    const {body: story} = await author
+      .post('/stories')
+      .set('x-csrf-token', authorToken)
+      .send(STORY_PAYLOAD)
+      .expect(201);
+
+    const admin = await seedAdmin(testApp);
+    const adminToken = await getCsrfToken(admin);
+    // Deliberately not calling enableDigest — the setting defaults off.
+    await admin
+      .patch(`/admin/stories/${story.id}/status`)
+      .set('x-csrf-token', adminToken)
+      .send({status: StoryStatus.Approved})
+      .expect(200);
+
+    const reader = agent();
+    const {body: readerBody} = await registerUser(reader, {
+      email: 'reader3@test.com',
+    });
+    const readerToken = await getCsrfToken(reader);
+    await reader
+      .put(`/users/${authorBody.id}/follow`)
+      .set('x-csrf-token', readerToken)
+      .expect(204);
+
+    const sendMail = spyOnMail();
+    const result = await admin
+      .post('/admin/digest/send')
+      .set('x-csrf-token', adminToken)
+      .expect(201);
+
+    expect(result.body).toEqual({sent: 0});
+    expect(sendMail).not.toHaveBeenCalled();
+    const updatedReader = await userRepository().findOneByOrFail({
+      id: readerBody.id,
+    });
+    expect(updatedReader.lastDigestSentAt).toBeNull();
   });
 
   it('requires admin', async () => {

@@ -6,6 +6,7 @@ import {MutesModule} from 'src/mutes/mutes.module';
 import {StoriesModule} from 'src/stories/stories.module';
 import {NotificationsModule} from 'src/notifications/notifications.module';
 import {MailModule} from 'src/mail/mail.module';
+import {SettingsModule} from 'src/settings/settings.module';
 import {DigestService} from './digest.service';
 import {DigestController} from './digest.controller';
 
@@ -19,6 +20,7 @@ import {DigestController} from './digest.controller';
     StoriesModule,
     NotificationsModule,
     MailModule,
+    SettingsModule,
   ],
   controllers: [DigestController],
   providers: [DigestService],

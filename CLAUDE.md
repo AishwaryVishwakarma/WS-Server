@@ -402,6 +402,10 @@ npm run dev:infra:down
   done, leaving a freshly-seeded app in the real launch-default state —
   same non-retroactive reasoning as the approval toggle: already-written
   rows are unaffected by the toggle either way.
+- **Digest toggle** (`SiteSettings.digestEmailGloballyEnabled`, default
+  `false`): gates `DigestService.sendWeeklyDigests` before it does anything —
+  both the Monday cron and the manual `POST /admin/digest/send` call the
+  same method, so both respect it identically.
 - **Series** (`src/series/`): an author's own ordered grouping of their
   stories (e.g. serialized fiction posted as "Part 1", "Part 2"). Unmoderated
   and author-owned — no admin gate, unlike tags — because it's just a label,

@@ -37,7 +37,7 @@ describe('SettingsService', () => {
       expect(repository.findOne).toHaveBeenCalledWith({where: {id: 1}});
     });
 
-    it('falls back to requiring approval, with image uploads off, when the seed row is missing', async () => {
+    it('falls back to requiring approval, with image uploads and digest off, when the seed row is missing', async () => {
       repository.findOne.mockResolvedValue(null);
 
       const settings = await service.getSettings();
@@ -45,6 +45,7 @@ describe('SettingsService', () => {
       expect(settings.requireStoryApproval).toBe(true);
       expect(settings.allowProfileImageUpload).toBe(false);
       expect(settings.allowStoryCoverImage).toBe(false);
+      expect(settings.digestEmailGloballyEnabled).toBe(false);
     });
   });
 
@@ -81,6 +82,18 @@ describe('SettingsService', () => {
       });
 
       expect(await service.allowsStoryCoverImage()).toBe(true);
+    });
+  });
+
+  describe('isDigestEmailGloballyEnabled', () => {
+    it('reflects the stored value', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        digestEmailGloballyEnabled: true,
+        updatedAt: new Date(),
+      });
+
+      expect(await service.isDigestEmailGloballyEnabled()).toBe(true);
     });
   });
 
