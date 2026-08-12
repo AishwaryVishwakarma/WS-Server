@@ -14,7 +14,8 @@ export const {generateCsrfToken, doubleCsrfProtection} = doubleCsrf({
   // __Host- prefix requires secure + path=/; only valid over HTTPS (prod)
   cookieName: isProduction ? '__Host-ws.x-csrf-token' : 'ws.x-csrf-token',
   cookieOptions: {
-    sameSite: isProduction ? 'strict' : 'lax',
+    // See app.setup.ts's session cookie for why 'strict' is avoided.
+    sameSite: 'lax',
     secure: isProduction,
     httpOnly: true,
     path: '/',
