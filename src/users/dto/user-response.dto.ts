@@ -85,6 +85,8 @@ export class UserReportResponseDto {
 export class UserResponseDto extends UserPrivateResponseDto {
   @Expose() isBlocked: boolean;
   @Expose() deletedAt?: Date;
+  /** How the account was removed; self-deletion releases its identity. */
+  @Expose() deletionKind?: 'self' | 'admin';
   /** Member reports; drives the ?reported=true queue ordering. */
   @Expose() reportCount: number;
 

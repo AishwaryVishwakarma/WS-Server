@@ -38,9 +38,23 @@ export class AdminUsersController {
   ) {}
 
   private _serialize(user: User) {
-    return plainToInstance(UserResponseDto, user, {
-      excludeExtraneousValues: true,
-    });
+    const selfDeleted =
+      Boolean(user.deletedAt) && user.email.endsWith('@deleted.invalid');
+
+    return plainToInstance(
+      UserResponseDto,
+      {
+        ...user,
+        deletionKind: user.deletedAt
+          ? selfDeleted
+            ? 'self'
+            : 'admin'
+          : undefined,
+      },
+      {
+        excludeExtraneousValues: true,
+      }
+    );
   }
 
   @Post()

@@ -603,6 +603,19 @@ export class UsersService {
   }
 
   async restore(id: string) {
+    const user = await this.usersRepository.findOne({
+      where: {id},
+      withDeleted: true,
+    });
+
+    // A self-deleted identity was deliberately released and may already
+    // belong to a new account. Restoring that tombstone would create a broken
+    // account with no usable email/Google identity and misrepresent the
+    // member's deletion choice.
+    if (user?.email.endsWith('@deleted.invalid')) {
+      throw new BadRequestException('Self-deleted accounts cannot be restored');
+    }
+
     const result = await this.usersRepository.restore(id);
 
     if (result.affected === 0) {

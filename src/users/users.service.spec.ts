@@ -802,7 +802,21 @@ describe('UsersService', () => {
   });
 
   describe('restore', () => {
+    it('refuses to restore a self-deleted anonymized account', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'user-1',
+        email: 'deleted-user-1@deleted.invalid',
+        deletedAt: new Date(),
+      });
+
+      await expect(service.restore('user-1')).rejects.toThrow(
+        BadRequestException
+      );
+      expect(repository.restore).not.toHaveBeenCalled();
+    });
+
     it('throws NotFoundException when nothing was restored', async () => {
+      repository.findOne.mockResolvedValue(null);
       repository.restore.mockResolvedValue({affected: 0});
 
       await expect(service.restore('missing')).rejects.toThrow(
