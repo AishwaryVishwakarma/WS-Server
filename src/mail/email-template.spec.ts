@@ -51,6 +51,20 @@ describe('renderEmailHtml', () => {
     });
     expect(withCta).toContain('Click me');
     expect(withCta).toContain('https://example.test/go?a=1&amp;b=2');
+    expect(withCta).toContain('Button not working?');
+  });
+
+  it('uses a self-contained table layout with no remote assets', () => {
+    const html = renderEmailHtml({
+      preheader: 'preview',
+      heading: 'Heading',
+      bodyHtml: '<p>Body</p>',
+    });
+
+    expect(html).toContain('role="presentation"');
+    expect(html).toContain('Whispering<span');
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('<link');
   });
 
   it('omits the footnote block when none is given, includes it when one is', () => {

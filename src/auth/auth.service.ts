@@ -21,6 +21,7 @@ import {UsersService} from 'src/users/users.service';
 import {GoogleAuthService} from './google-auth.service';
 import {RegistrationOtpService} from './registration-otp.service';
 import {sessionMetadataFrom} from 'src/session/session-metadata';
+import {GeoLocationService} from 'src/session/geo-location.service';
 
 @Injectable()
 export class AuthService {
@@ -31,7 +32,8 @@ export class AuthService {
     private readonly sessionService: SessionService,
     private readonly sessionRegistryService: SessionRegistryService,
     private readonly googleAuthService: GoogleAuthService,
-    private readonly registrationOtpService: RegistrationOtpService
+    private readonly registrationOtpService: RegistrationOtpService,
+    private readonly geoLocationService: GeoLocationService
   ) {}
 
   // Shared by register/login/googleSignIn: regenerate the session id, stamp
@@ -49,7 +51,7 @@ export class AuthService {
 
     req.session.userId = user.id;
     req.session.role = user.role || Role.User;
-    req.session.metadata = sessionMetadataFrom(req);
+    req.session.metadata = sessionMetadataFrom(req, this.geoLocationService);
 
     const maxAgeMs = rememberMe ? REMEMBER_ME_MAX_AGE_MS : SESSION_MAX_AGE_MS;
     if (rememberMe) req.session.cookie.maxAge = maxAgeMs;

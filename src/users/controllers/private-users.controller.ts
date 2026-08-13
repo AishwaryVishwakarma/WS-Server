@@ -46,16 +46,23 @@ export class PrivateUsersController {
     private readonly commentsService: CommentsService
   ) {}
 
-  private _serialize(user: User) {
-    return plainToInstance(UserPrivateResponseDto, user, {
-      excludeExtraneousValues: true,
-    });
+  private async _serialize(user: User) {
+    return plainToInstance(
+      UserPrivateResponseDto,
+      {
+        ...user,
+        hasPassword: await this.usersService.hasPassword(user.id),
+      },
+      {
+        excludeExtraneousValues: true,
+      }
+    );
   }
 
   @Get()
   async findMe(@Req() req: Request) {
     const user = await this.usersService.findOne(req.session.userId!);
-    return this._serialize(user);
+    return await this._serialize(user);
   }
 
   @Get('comments')
@@ -125,7 +132,7 @@ export class PrivateUsersController {
       req.session.userId!,
       updateProfileDto
     );
-    return this._serialize(user as User);
+    return await this._serialize(user as User);
   }
 
   @Patch('password')

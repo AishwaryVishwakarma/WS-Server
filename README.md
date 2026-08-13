@@ -105,6 +105,11 @@ and health check. Provide managed PostgreSQL and Redis, set the production
 variables documented in `.env.example`, and point `FRONTEND_URL` at the public
 web origin. Migrations run automatically when the application starts.
 
+Approximate session locations use the local GeoLite2 City database. Set
+`MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in production; the container
+downloads the current database at startup. Local development can instead set
+`GEOIP_DATABASE_PATH` to an existing `GeoLite2-City.mmdb` file.
+
 Operational endpoints:
 
 - `GET /health` — deployment health check

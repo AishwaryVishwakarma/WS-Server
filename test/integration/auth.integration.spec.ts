@@ -92,6 +92,7 @@ describe('Auth (integration)', () => {
 
       expect(dbUser).not.toBeNull();
       expect(dbUser!.password).not.toBe(DEFAULT_USER.password);
+      expect(dbUser!.digestEmailEnabled).toBe(false);
       expect(
         await bcrypt.compare(DEFAULT_USER.password, dbUser!.password!)
       ).toBe(true);

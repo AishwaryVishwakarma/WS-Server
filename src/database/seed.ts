@@ -685,7 +685,9 @@ const BOOKMARKS: {reader: string; story: string}[] = [
 
 async function wipeDatabase(dataSource: DataSource) {
   const tables: {table_name: string}[] = await dataSource.query(
-    'SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = current_schema()'
+    `SELECT tablename AS table_name
+     FROM pg_catalog.pg_tables
+     WHERE schemaname = current_schema()`
   );
 
   for (const {table_name} of tables) {

@@ -64,7 +64,10 @@ export class RegistrationOtpService {
         bodyHtml:
           '<p style="margin:0 0 20px;">Enter this code to finish creating ' +
           'your account. It expires in 10 minutes.</p>' +
-          `<p style="margin:0; text-align:center; font-size:32px; font-weight:700; letter-spacing:.3em; color:${EMAIL_ACCENT_COLOR}; font-family:'SFMono-Regular',Consolas,monospace;">${code}</p>`,
+          `<div style="padding:20px 12px; border:1px solid #34343d; border-radius:10px; background:#222229; text-align:center;">` +
+          `<p style="margin:0; font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#777681;">Verification code</p>` +
+          `<p style="margin:8px 0 0; font-size:34px; line-height:1.2; font-weight:700; letter-spacing:.24em; color:${EMAIL_ACCENT_COLOR}; font-family:'SFMono-Regular',Consolas,'Liberation Mono',monospace;">${code}</p>` +
+          `</div>`,
         footnote:
           "If you didn't try to create an account, you can safely ignore this email.",
       })

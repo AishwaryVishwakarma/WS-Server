@@ -4,6 +4,7 @@ import {sessionMetadataFrom} from './session-metadata';
 const requestWithHeaders = (headers: Record<string, string> = {}) =>
   ({
     get: (name: string) => headers[name.toLowerCase()],
+    ip: headers.ip,
   }) as Request;
 
 describe('sessionMetadataFrom', () => {
@@ -35,5 +36,26 @@ describe('sessionMetadataFrom', () => {
         location: 'Pune, MH, IN',
       })
     );
+  });
+
+  it('falls back to IP geolocation when provider headers are absent', () => {
+    const lookup = jest.fn().mockReturnValue('Pune, Maharashtra, India');
+
+    expect(
+      sessionMetadataFrom(requestWithHeaders({ip: '203.0.113.2'}), {lookup})
+        .location
+    ).toBe('Pune, Maharashtra, India');
+    expect(lookup).toHaveBeenCalledWith('203.0.113.2');
+  });
+
+  it('prefers trusted provider location headers over an IP lookup', () => {
+    const lookup = jest.fn();
+    const metadata = sessionMetadataFrom(
+      requestWithHeaders({'x-vercel-ip-country': 'IN', ip: '203.0.113.2'}),
+      {lookup}
+    );
+
+    expect(metadata.location).toBe('IN');
+    expect(lookup).not.toHaveBeenCalled();
   });
 });

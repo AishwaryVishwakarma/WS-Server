@@ -57,6 +57,7 @@
     "csrf-csrf": "^4.0.3",
     "express-session": "^1.19.0",
     "google-auth-library": "^10.9.1",
+    "maxmind": "^5.0.7",
     "obscenity": "^0.4.6",
     "pg": "^8.22.0",
     "prom-client": "^15.1.3",

@@ -139,10 +139,9 @@ export class User {
   @Column({type: 'varchar', length: 10, nullable: true})
   lastActiveDate: string | null;
 
-  // Self-service opt-out for the weekly digest email. Default true —
-  // mirrors this app's existing lack of granular notification toggles
-  // elsewhere (comment/reply/follow notifications have no on/off switch).
-  @Column({default: true})
+  // Weekly digest delivery is opt-in. New accounts remain unsubscribed until
+  // the member explicitly enables it from settings.
+  @Column({default: false})
   digestEmailEnabled: boolean;
 
   // When this user was last sent a digest — the window start for "what's

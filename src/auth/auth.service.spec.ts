@@ -15,6 +15,7 @@ import {UsersService} from 'src/users/users.service';
 import {AuthService} from './auth.service';
 import {GoogleAuthService} from './google-auth.service';
 import {RegistrationOtpService} from './registration-otp.service';
+import {GeoLocationService} from 'src/session/geo-location.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -89,6 +90,7 @@ describe('AuthService', () => {
         {provide: SessionRegistryService, useValue: sessionRegistryService},
         {provide: GoogleAuthService, useValue: googleAuthService},
         {provide: RegistrationOtpService, useValue: registrationOtpService},
+        {provide: GeoLocationService, useValue: {lookup: jest.fn()}},
       ],
     }).compile();
 
