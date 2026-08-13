@@ -57,28 +57,29 @@ export function buildDigestHtml(input: DigestInput): string | null {
       .map((story) => {
         const url = `${escapeHtml(input.siteUrl)}/stories/${escapeHtml(story.id)}`;
         return (
-          `<li style="margin:0 0 8px;">` +
-          `<a href="${url}" style="color:${EMAIL_ACCENT_COLOR}; text-decoration:none;">` +
-          `"${escapeHtml(story.title)}"</a> by ${escapeHtml(story.authorName)}` +
-          `</li>`
+          `<tr><td style="padding:14px 16px; border-bottom:1px solid #34343d;">` +
+          `<a href="${url}" style="display:block; color:${EMAIL_ACCENT_COLOR}; font-weight:700; text-decoration:none;">` +
+          `${escapeHtml(story.title)}</a>` +
+          `<span style="display:block; margin-top:3px; font-size:13px; color:#a6a5af;">by ${escapeHtml(story.authorName)}</span>` +
+          `</td></tr>`
         );
       })
       .join('');
     sections.push(
-      '<p style="margin:0 0 8px; font-weight:600;">New from authors you follow</p>' +
-        `<ul style="margin:0 0 20px; padding-left:20px;">${items}</ul>`
+      '<p style="margin:0 0 10px; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777681;">New from authors you follow</p>' +
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px; border:1px solid #34343d; border-radius:10px; background:#222229;">${items}</table>`
     );
   }
 
   if (input.currentStreak > 0) {
     sections.push(
-      `<p style="margin:0 0 12px;">You're on a <strong>${input.currentStreak}-day</strong> reading streak. Keep it going.</p>`
+      `<p style="margin:0 0 12px; padding:14px 16px; border-left:3px solid ${EMAIL_ACCENT_COLOR}; background:#222229;">You're on a <strong style="color:#ededf0;">${input.currentStreak}-day reading streak</strong>. Keep it going.</p>`
     );
   }
 
   if (input.unreadCount > 0) {
     sections.push(
-      `<p style="margin:0;">You have <strong>${input.unreadCount}</strong> unread notification${
+      `<p style="margin:0;">You have <strong style="color:#ededf0;">${input.unreadCount}</strong> unread notification${
         input.unreadCount === 1 ? '' : 's'
       }.</p>`
     );

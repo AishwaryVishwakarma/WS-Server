@@ -8,11 +8,13 @@
 const EMBER = '#ff7a3d';
 
 const BRAND = {
-  bg: '#f4f4f5',
-  surface: '#1c1c22',
-  border: '#2e2e35',
+  bg: '#0f0f12',
+  surface: '#19191f',
+  surfaceRaised: '#222229',
+  border: '#34343d',
   text: '#ededf0',
   textSecondary: '#a6a5af',
+  textFaint: '#777681',
   ember: EMBER,
   emberContrast: '#101013',
 };
@@ -57,27 +59,28 @@ export function renderEmailHtml({
     <title>${escapeHtml(heading)}</title>
   </head>
   <body style="margin:0; padding:0; background:${BRAND.bg}; font-family:${FONT_STACK};">
-    <span style="display:none; visibility:hidden; opacity:0; overflow:hidden; height:0; width:0;">${escapeHtml(preheader)}</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.bg};">
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent;">${escapeHtml(preheader)}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; background:${BRAND.bg};">
       <tr>
-        <td align="center" style="padding:40px 16px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; background:${BRAND.surface}; border:1px solid ${BRAND.border}; border-radius:12px;">
+        <td align="center" style="padding:48px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:520px; background:${BRAND.surface}; border:1px solid ${BRAND.border}; border-radius:14px;">
             <tr>
-              <td style="padding:28px 32px 4px; text-align:center;">
-                <span style="font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:${BRAND.ember}; font-weight:600;">Whispering Shadows</span>
+              <td style="padding:30px 32px 22px; text-align:left; border-bottom:1px solid ${BRAND.border};">
+                <span style="font-family:Georgia,'Times New Roman',serif; font-size:20px; line-height:1; color:${BRAND.text}; font-weight:700;">Whispering<span style="color:${BRAND.ember};">Shadows</span></span>
               </td>
             </tr>
             <tr>
-              <td style="padding:16px 32px 8px;">
-                <h1 style="margin:0 0 16px; font-size:20px; line-height:1.3; color:${BRAND.text};">${escapeHtml(heading)}</h1>
+              <td style="padding:30px 32px 12px;">
+                <h1 style="margin:0 0 18px; font-family:Georgia,'Times New Roman',serif; font-size:26px; line-height:1.25; color:${BRAND.text}; font-weight:700;">${escapeHtml(heading)}</h1>
                 <div style="font-size:15px; line-height:1.65; color:${BRAND.textSecondary};">${bodyHtml}</div>
               </td>
             </tr>${
               cta
                 ? `
             <tr>
-              <td style="padding:8px 32px 28px;" align="center">
-                <a href="${escapeHtml(cta.url)}" style="display:inline-block; background:${BRAND.ember}; color:${BRAND.emberContrast}; text-decoration:none; font-weight:600; font-size:15px; padding:12px 28px; border-radius:8px;">${escapeHtml(cta.label)}</a>
+              <td style="padding:10px 32px 30px;">
+                <a href="${escapeHtml(cta.url)}" style="display:inline-block; background:${BRAND.ember}; color:${BRAND.emberContrast}; text-decoration:none; font-weight:700; font-size:15px; line-height:1; padding:14px 22px; border-radius:8px;">${escapeHtml(cta.label)}</a>
+                <p style="margin:18px 0 0; font-size:12px; line-height:1.5; color:${BRAND.textFaint};">Button not working? Copy and paste this link:<br /><a href="${escapeHtml(cta.url)}" style="color:${BRAND.textSecondary}; text-decoration:underline; overflow-wrap:anywhere; word-break:break-all;">${escapeHtml(cta.url)}</a></p>
               </td>
             </tr>`
                 : ''
@@ -85,13 +88,14 @@ export function renderEmailHtml({
               footnote
                 ? `
             <tr>
-              <td style="padding:16px 32px 28px; border-top:1px solid ${BRAND.border};">
-                <p style="margin:0; font-size:13px; line-height:1.5; color:${BRAND.textSecondary};">${escapeHtml(footnote)}</p>
+              <td style="padding:20px 32px; border-top:1px solid ${BRAND.border}; background:${BRAND.surfaceRaised};">
+                <p style="margin:0; font-size:12px; line-height:1.55; color:${BRAND.textSecondary};">${escapeHtml(footnote)}</p>
               </td>
             </tr>`
                 : ''
             }
           </table>
+          <p style="margin:20px 0 0; font-size:11px; line-height:1.5; color:${BRAND.textFaint};">Whispering Shadows · Stories that stay with you</p>
         </td>
       </tr>
     </table>

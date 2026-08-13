@@ -126,6 +126,7 @@ export class DigestService {
       preheader: 'Your weekly whispers are ready.',
       heading: 'Your weekly whispers',
       bodyHtml: buildDigestHtml(digestInput) ?? '',
+      cta: {label: 'Return to the library', url: siteUrl},
     });
 
     await this.mailTransport.deliver({

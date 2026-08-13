@@ -91,5 +91,6 @@ describe('buildDigestHtml', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('Mara &amp; Co');
     expect(html).toContain('href="https://example.test/stories/story-1"');
+    expect(html).toContain('role="presentation"');
   });
 });
