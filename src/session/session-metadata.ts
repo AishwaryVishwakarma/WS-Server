@@ -1,4 +1,5 @@
 import type {Request} from 'express';
+import type {GeoLocationService} from './geo-location.service';
 
 export interface SessionMetadata {
   device: string;
@@ -27,13 +28,17 @@ function browserLabel(userAgent: string): string {
   return 'Unknown browser';
 }
 
-export function sessionMetadataFrom(req: Request): SessionMetadata {
+export function sessionMetadataFrom(
+  req: Request,
+  geoLocation?: Pick<GeoLocationService, 'lookup'>
+): SessionMetadata {
   const userAgent = header(req, 'user-agent') ?? '';
   const city = header(req, 'x-vercel-ip-city');
   const region = header(req, 'x-vercel-ip-country-region');
   const country =
     header(req, 'x-vercel-ip-country') ?? header(req, 'cf-ipcountry');
-  const location = [city, region, country].filter(Boolean).join(', ');
+  const providerLocation = [city, region, country].filter(Boolean).join(', ');
+  const location = providerLocation || geoLocation?.lookup(req.ip);
 
   return {
     device: deviceLabel(userAgent),

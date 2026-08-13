@@ -50,6 +50,8 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
   @Expose() currentStreak: number;
   @Expose() longestStreak: number;
   @Expose() digestEmailEnabled: boolean;
+  /** Whether this account can use password sign-in/change-password. */
+  @Expose() hasPassword: boolean;
 
   constructor(partial: Partial<UserPrivateResponseDto>) {
     super(partial);

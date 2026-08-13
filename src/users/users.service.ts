@@ -161,6 +161,10 @@ export class UsersService {
     const user = this.usersRepository.create({
       ...rest,
       password: hashedPassword,
+      // Creation never grants the public verified-author status. Admins may
+      // still verify an existing account through update(), and qualifying
+      // authors may earn it through the automatic verification rule.
+      isVerified: false,
     });
 
     try {
@@ -224,8 +228,9 @@ export class UsersService {
       email,
       googleId: profile.googleId,
       password: null,
-      // Google already verified the address.
-      isVerified: true,
+      // Google's email verification proves account ownership, not the
+      // platform's public verified-author status.
+      isVerified: false,
       // Only randomize when there's no Google photo to fall back on — a
       // random pick would never actually render otherwise (Avatar's
       // precedence puts a photo first).
@@ -487,6 +492,16 @@ export class UsersService {
   async updatePassword(userId: string, newPassword: string): Promise<void> {
     const hashedPassword = await this.hashPassword(newPassword);
     await this.usersRepository.update(userId, {password: hashedPassword});
+  }
+
+  async hasPassword(userId: string): Promise<boolean> {
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :userId', {userId})
+      .getOne();
+
+    return Boolean(user?.password);
   }
 
   // Changes a signed-in member's password only after verifying the existing

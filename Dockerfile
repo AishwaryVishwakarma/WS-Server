@@ -10,6 +10,7 @@ RUN npm run build
 FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apk add --no-cache ca-certificates curl tar
 COPY package*.json ./
 # Install prod deps, then drop the npm CLI itself: runtime only runs
 # `node dist/main`, and npm's vendored undici is the sole source of the base
@@ -17,6 +18,9 @@ COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /root/.npm
 COPY --from=build /app/dist ./dist
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod 755 ./docker-entrypoint.sh
 EXPOSE 8000
 # Migrations run automatically on boot (migrationsRun in app.module.ts)
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "dist/main"]

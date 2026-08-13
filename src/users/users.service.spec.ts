@@ -21,6 +21,7 @@ import {AvatarIcon} from './enums/avatar-icon.enum';
 import {AvatarColor} from './enums/avatar-color.enum';
 import {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import type {UpdateUserDto} from './dto/update-user.dto';
+import type {CreateUserDto} from './dto/create-user.dto';
 import {UsersService} from './users.service';
 import {SettingsService} from 'src/settings/settings.service';
 
@@ -39,8 +40,14 @@ describe('UsersService', () => {
     findOne: jest.Mock;
     findAndCount: jest.Mock;
     findOneByOrFail: jest.Mock;
+    createQueryBuilder: jest.Mock;
     softDelete: jest.Mock;
     restore: jest.Mock;
+  };
+  let userQueryBuilder: {
+    addSelect: jest.Mock;
+    where: jest.Mock;
+    getOne: jest.Mock;
   };
   let reportsRepository: {
     create: jest.Mock;
@@ -69,6 +76,11 @@ describe('UsersService', () => {
   let settingsService: {allowsProfileImageUpload: jest.Mock};
 
   beforeEach(async () => {
+    userQueryBuilder = {
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn(),
+    };
     repository = {
       create: jest.fn((data) => data),
       save: jest.fn((user) => Promise.resolve({id: 'user-1', ...user})),
@@ -76,6 +88,7 @@ describe('UsersService', () => {
       findOne: jest.fn(),
       findAndCount: jest.fn(),
       findOneByOrFail: jest.fn(),
+      createQueryBuilder: jest.fn(() => userQueryBuilder),
       softDelete: jest.fn(),
       restore: jest.fn(),
     };
@@ -186,7 +199,7 @@ describe('UsersService', () => {
           googleId: 'g-1',
           email: 'a@b.com',
           password: null,
-          isVerified: true,
+          isVerified: false,
           profileImageUrl: 'https://pic',
         })
       );
@@ -409,6 +422,17 @@ describe('UsersService', () => {
       );
     });
 
+    it('always creates the user unverified', async () => {
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+        isVerified: true,
+      } as CreateUserDto)) as User;
+
+      expect(user.isVerified).toBe(false);
+    });
+
     it('throws ConflictException on duplicate email', async () => {
       repository.save.mockRejectedValue(duplicateEntryError());
 
@@ -509,6 +533,15 @@ describe('UsersService', () => {
       expect(user.password).toBe('already-hashed');
     });
 
+    it('creates the confirmed registration unverified', async () => {
+      const user = (await service.createFromVerifiedRegistration(
+        {name: 'Test', email: 'a@b.com'},
+        'already-hashed'
+      )) as User;
+
+      expect(user.isVerified).toBe(false);
+    });
+
     it('applies the same profile-image-setting gate as create()', async () => {
       settingsService.allowsProfileImageUpload.mockResolvedValue(false);
 
@@ -559,6 +592,17 @@ describe('UsersService', () => {
       await expect(service.findOne('missing')).rejects.toThrow(
         NotFoundException
       );
+    });
+  });
+
+  describe('hasPassword', () => {
+    it('returns true only when the account has a password hash', async () => {
+      userQueryBuilder.getOne
+        .mockResolvedValueOnce({password: 'hash'})
+        .mockResolvedValueOnce({password: null});
+
+      await expect(service.hasPassword('user-1')).resolves.toBe(true);
+      await expect(service.hasPassword('user-2')).resolves.toBe(false);
     });
   });
 
