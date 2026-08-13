@@ -104,6 +104,11 @@ describe('Weekly digest (integration)', () => {
       .put(`/users/${authorBody.id}/follow`)
       .set('x-csrf-token', readerToken)
       .expect(204);
+    await reader
+      .patch('/users/me')
+      .set('x-csrf-token', readerToken)
+      .send({digestEmailEnabled: true})
+      .expect(200);
 
     const sendMail = spyOnMail();
 
