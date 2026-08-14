@@ -15,6 +15,7 @@ describe('PasswordResetService', () => {
     save: jest.Mock;
     create: jest.Mock;
     findOne: jest.Mock;
+    createQueryBuilder: jest.Mock;
   };
   let usersService: {findOneByEmail: jest.Mock; updatePassword: jest.Mock};
   let mailService: {send: jest.Mock};
@@ -28,6 +29,11 @@ describe('PasswordResetService', () => {
       save: jest.fn().mockResolvedValue(undefined),
       create: jest.fn((data) => data),
       findOne: jest.fn(),
+      createQueryBuilder: jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: () => tokensRepository.findOne(),
+      })),
     };
     usersService = {
       findOneByEmail: jest.fn(),
@@ -67,6 +73,7 @@ describe('PasswordResetService', () => {
 
     it('invalidates prior tokens, stores a hashed token, and emails a link', async () => {
       usersService.findOneByEmail.mockResolvedValue(user);
+      tokensRepository.findOne.mockResolvedValue(null);
 
       await service.requestReset(user.email);
 
@@ -92,6 +99,7 @@ describe('PasswordResetService', () => {
 
     it('never stores or emails the raw token as the same value', async () => {
       usersService.findOneByEmail.mockResolvedValue(user);
+      tokensRepository.findOne.mockResolvedValue(null);
 
       await service.requestReset(user.email);
 
@@ -109,6 +117,31 @@ describe('PasswordResetService', () => {
 
       expect(rawToken).toBeDefined();
       expect(savedTokenHash).not.toBe(rawToken);
+    });
+
+    it('silently suppresses another email during the per-account cooldown', async () => {
+      usersService.findOneByEmail.mockResolvedValue(user);
+      tokensRepository.findOne.mockResolvedValue({
+        createdAt: new Date(Date.now() - 30_000),
+      });
+
+      await service.requestReset(user.email);
+
+      expect(tokensRepository.delete).not.toHaveBeenCalled();
+      expect(tokensRepository.save).not.toHaveBeenCalled();
+      expect(mailService.send).not.toHaveBeenCalled();
+    });
+
+    it('replaces and sends a link after the cooldown expires', async () => {
+      usersService.findOneByEmail.mockResolvedValue(user);
+      tokensRepository.findOne.mockResolvedValue({
+        createdAt: new Date(Date.now() - 61_000),
+      });
+
+      await service.requestReset(user.email);
+
+      expect(tokensRepository.delete).toHaveBeenCalled();
+      expect(mailService.send).toHaveBeenCalled();
     });
   });
 

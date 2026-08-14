@@ -11,6 +11,7 @@ import {MailTransportService} from 'src/mail/mail-transport.service';
 import {SettingsService} from 'src/settings/settings.service';
 import {DigestService} from './digest.service';
 import {DIGEST_QUEUE} from 'src/jobs/queue.constants';
+import {DigestUnsubscribeService} from './digest-unsubscribe.service';
 
 // Only the global on/off gate is unit-tested here — the digest content
 // itself (what a sent email actually contains) is covered by
@@ -41,6 +42,10 @@ describe('DigestService', () => {
         {provide: ConfigService, useValue: {get: jest.fn()}},
         {provide: SettingsService, useValue: settingsService},
         {provide: getQueueToken(DIGEST_QUEUE), useValue: digestQueue},
+        {
+          provide: DigestUnsubscribeService,
+          useValue: {createToken: jest.fn().mockReturnValue('token')},
+        },
       ],
     }).compile();
 

@@ -42,6 +42,12 @@ import {Series} from 'src/series/entities/series.entity';
 // independent of status — index it so the queue is a range scan, not a table
 // scan.
 @Index('IDX_story_reportCount', ['reportCount'])
+// Moderation SLA cards count and age only pending stories. A partial index is
+// smaller than a general status/updatedAt index and directly supports those
+// oldest-first threshold scans.
+@Index('IDX_story_pending_updatedAt', ['updatedAt'], {
+  where: `"status" = 'pending'`,
+})
 // Backs the public feed's word/prefix search over the title and excerpt; see
 // StoriesService and story-search.ts. Postgres has no FULLTEXT index type —
 // this pairs with the `searchVector` generated column below, indexed with a

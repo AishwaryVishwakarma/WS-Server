@@ -11,6 +11,10 @@ import {SessionRegistryService} from 'src/session/session-registry.service';
 
 // A link is valid for an hour and can only ever be used once.
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+// A reset request is intentionally idempotent during this window. This is
+// separate from the broad auth endpoint throttle: it prevents one account's
+// inbox being flooded even when requests arrive from different sessions/IPs.
+const RESET_RESEND_COOLDOWN_MS = 60 * 1000;
 
 @Injectable()
 export class PasswordResetService {
@@ -36,6 +40,26 @@ export class PasswordResetService {
   async requestReset(email: string): Promise<void> {
     const user = await this.usersService.findOneByEmail(email);
     if (!user) return;
+
+    // Use the concrete join column here. Some TypeORM/Postgres combinations
+    // do not resolve a nested relation predicate on this unidirectional
+    // relation, which made the cooldown silently miss an existing token.
+    const existingToken = await this.tokensRepository
+      .createQueryBuilder('token')
+      .where('token."userId" = :userId', {userId: user.id})
+      .orderBy('token."createdAt"', 'DESC')
+      .getOne();
+    const coolingDown = existingToken
+      ? existingToken.expiresAt
+        ? existingToken.expiresAt.getTime() - Date.now() >
+          RESET_TOKEN_TTL_MS - RESET_RESEND_COOLDOWN_MS
+        : Boolean(
+            existingToken.createdAt &&
+            Date.now() - existingToken.createdAt.getTime() <
+              RESET_RESEND_COOLDOWN_MS
+          )
+      : false;
+    if (coolingDown) return;
 
     await this.tokensRepository.delete({user: {id: user.id}});
 

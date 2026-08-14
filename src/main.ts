@@ -6,7 +6,9 @@ import {AppModule} from './app.module';
 import {setupApp} from './app.setup';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Resend signs the exact request bytes; rawBody preserves them alongside
+  // the parsed body for /webhooks/resend signature verification.
+  const app = await NestFactory.create(AppModule, {rawBody: true});
   const logger = new Logger('Bootstrap', {timestamp: true});
 
   let redisClient: RedisClientType | undefined;

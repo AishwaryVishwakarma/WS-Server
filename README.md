@@ -38,8 +38,8 @@ groups are:
 - `DB_*` for PostgreSQL
 - `REDIS_URL` for sessions, streams, and queues
 - `SESSION_SECRET` and `SALT_ROUNDS` for authentication
-- `FRONTEND_URL` for email links
-- `RESEND_API_KEY` and `MAIL_FROM` for optional email delivery
+- `FRONTEND_URL` and `BACKEND_URL` for email and unsubscribe links
+- `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, and `MAIL_FROM` for email delivery
 - `GOOGLE_CLIENT_ID` for optional Google sign-in
 - `METRICS_TOKEN` for protected Prometheus metrics
 
@@ -53,6 +53,7 @@ npm run start:dev          # development server
 npm run build              # compile to dist/
 npm run start:prod         # run the compiled application
 npm run typecheck          # TypeScript validation
+npm run format             # Prettier
 npm run lint               # ESLint
 npm test                   # unit tests
 npm run test:cov           # unit tests with coverage
@@ -109,6 +110,11 @@ Approximate session locations use the local GeoLite2 City database. Set
 `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in production; the container
 downloads the current database at startup. Local development can instead set
 `GEOIP_DATABASE_PATH` to an existing `GeoLite2-City.mmdb` file.
+
+For production email suppression, configure Resend to send `bounced`,
+`complained`, and `suppressed` events to `POST /webhooks/resend`, then set its
+signing secret as `RESEND_WEBHOOK_SECRET`. Email and digest work is processed
+through Redis-backed queues with retries and dead-letter recording.
 
 Operational endpoints:
 

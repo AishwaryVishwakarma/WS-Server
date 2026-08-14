@@ -30,6 +30,7 @@ export class SettingsService {
         allowProfileImageUpload: false,
         allowStoryCoverImage: false,
         digestEmailGloballyEnabled: false,
+        notificationEmailGloballyEnabled: false,
         updatedAt: new Date(),
       }
     );
@@ -53,6 +54,11 @@ export class SettingsService {
   async isDigestEmailGloballyEnabled(): Promise<boolean> {
     const settings = await this.getSettings();
     return settings.digestEmailGloballyEnabled;
+  }
+
+  async isNotificationEmailGloballyEnabled(): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.notificationEmailGloballyEnabled;
   }
 
   async updateSettings(dto: UpdateSiteSettingsDto): Promise<SiteSettings> {

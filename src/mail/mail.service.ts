@@ -22,12 +22,13 @@ export class MailService {
     to: string,
     subject: string,
     text: string,
-    html?: string
+    html?: string,
+    options?: {delay?: number}
   ): Promise<void> {
     await this.queue.add(
       'send',
       {to, subject, text, html},
-      DURABLE_JOB_OPTIONS
+      {...DURABLE_JOB_OPTIONS, delay: options?.delay}
     );
   }
 }

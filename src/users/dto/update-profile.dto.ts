@@ -4,10 +4,18 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsInt,
   IsOptional,
+  Matches,
+  Max,
+  Min,
 } from 'class-validator';
 import {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import {RegisterUserDto} from './register-user.dto';
+import {
+  NOTIFICATION_TYPES,
+  type NotificationType,
+} from 'src/notifications/notification.types';
 
 export class UpdateProfileDto extends PartialType(RegisterUserDto) {
   // The reader's own "hide stories carrying these" preference — distinct
@@ -25,4 +33,30 @@ export class UpdateProfileDto extends PartialType(RegisterUserDto) {
   @IsOptional()
   @IsBoolean()
   digestEmailEnabled?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsEnum(NOTIFICATION_TYPES, {each: true})
+  @ArrayMaxSize(4)
+  notificationInAppTypes?: NotificationType[];
+
+  @IsOptional()
+  @IsArray()
+  @IsEnum(NOTIFICATION_TYPES, {each: true})
+  @ArrayMaxSize(4)
+  notificationEmailTypes?: NotificationType[];
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  notificationQuietStart?: string | null;
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  notificationQuietEnd?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(-840)
+  @Max(840)
+  notificationTimezoneOffset?: number;
 }

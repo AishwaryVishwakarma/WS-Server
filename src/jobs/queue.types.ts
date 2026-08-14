@@ -3,6 +3,7 @@ export interface EmailJobData {
   subject: string;
   text: string;
   html?: string;
+  headers?: Record<string, string>;
 }
 
 export interface DigestJobData {

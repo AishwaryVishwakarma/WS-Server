@@ -16,6 +16,8 @@ import {renderEmailHtml} from 'src/mail/email-template';
 import {SettingsService} from 'src/settings/settings.service';
 import {DIGEST_QUEUE} from 'src/jobs/queue.constants';
 import {DURABLE_JOB_OPTIONS} from 'src/jobs/queue.options';
+import {escapeHtml} from 'src/mail/email-template';
+import {DigestUnsubscribeService} from './digest-unsubscribe.service';
 
 const DIGEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const DIGEST_BATCH_SIZE = 100;
@@ -32,7 +34,8 @@ export class DigestService {
     private readonly mailTransport: MailTransportService,
     private readonly configService: ConfigService,
     private readonly settingsService: SettingsService,
-    @InjectQueue(DIGEST_QUEUE) private readonly digestQueue: Queue
+    @InjectQueue(DIGEST_QUEUE) private readonly digestQueue: Queue,
+    private readonly digestUnsubscribe: DigestUnsubscribeService
   ) {}
 
   // Mondays 14:00 UTC. Also reachable manually via POST /admin/digest/send
@@ -122,18 +125,35 @@ export class DigestService {
     const body = buildDigestText(digestInput);
     if (!body) return false;
 
+    const apiUrl =
+      this.configService.get<string>('BACKEND_URL') ??
+      (this.configService.get<string>('RAILWAY_PUBLIC_DOMAIN')
+        ? `https://${this.configService.get<string>('RAILWAY_PUBLIC_DOMAIN')}`
+        : 'http://localhost:8000');
+    const unsubscribeUrl = `${apiUrl}/digest/unsubscribe?token=${encodeURIComponent(
+      this.digestUnsubscribe.createToken(user.id)
+    )}`;
+    const digestHtml = buildDigestHtml(digestInput) ?? '';
+
     const html = renderEmailHtml({
       preheader: 'Your weekly whispers are ready.',
       heading: 'Your weekly whispers',
-      bodyHtml: buildDigestHtml(digestInput) ?? '',
+      bodyHtml:
+        digestHtml +
+        `<p style="margin:22px 0 0; font-size:12px; color:#777681;">` +
+        `<a href="${escapeHtml(unsubscribeUrl)}" style="color:#a6a5af; text-decoration:underline;">Unsubscribe from weekly emails</a></p>`,
       cta: {label: 'Return to the library', url: siteUrl},
     });
 
     await this.mailTransport.deliver({
       to: user.email,
       subject: 'Your weekly whispers',
-      text: body,
+      text: `${body}\n\nUnsubscribe from weekly emails: ${unsubscribeUrl}`,
       html,
+      headers: {
+        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
     });
     await this.usersRepository.update(user.id, {lastDigestSentAt: new Date()});
     return true;

@@ -16,6 +16,8 @@ describe('AdminAnalyticsService', () => {
           comments: '6',
           bookmarks: '4',
           pendingStories: '2',
+          pendingOver24Hours: '1',
+          pendingOver72Hours: '0',
           reportedStories: '1',
           reportedComments: '3',
           reportedUsers: '0',
@@ -96,7 +98,12 @@ describe('AdminAnalyticsService', () => {
     expect(first).toMatchObject({
       rangeDays: 30,
       metrics: {users: {total: 10, current: 2, previous: 1}, views: 42},
-      moderation: {pendingStories: 2, reportedComments: 3},
+      moderation: {
+        pendingStories: 2,
+        pendingOver24Hours: 1,
+        pendingOver72Hours: 0,
+        reportedComments: 3,
+      },
       trends: [{users: 1, stories: 2, comments: 3, likes: 4, bookmarks: 5}],
       topStories: [{views: 8, likes: 2, comments: 1}],
     });

@@ -7,13 +7,12 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import {User} from 'src/users/entities/user.entity';
+import type {NotificationType} from '../notification.types';
 
 // 'reply' — someone replied to your comment; 'comment' — someone left a
 // top-level comment on your story; 'follow' — someone started following you
 // (no story/comment; links to the follower's profile via actorId); 'like' —
 // someone liked your story (links to the story).
-export type NotificationType = 'reply' | 'comment' | 'follow' | 'like';
-
 @Entity()
 // The bell polls unread-count (recipient + isRead) and lists the feed (recipient
 // ordered by createdAt); index both beyond the recipient FK alone.

@@ -16,4 +16,8 @@ export class UpdateSiteSettingsDto {
   @IsOptional()
   @IsBoolean()
   digestEmailGloballyEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notificationEmailGloballyEnabled?: boolean;
 }

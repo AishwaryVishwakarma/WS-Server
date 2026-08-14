@@ -20,6 +20,10 @@ import {UserReport} from './user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
 import type {Badge} from '../enums/badge.enum';
 import type {ContentWarning} from 'src/stories/enums/content-warning.enum';
+import {
+  NOTIFICATION_TYPES,
+  type NotificationType,
+} from 'src/notifications/notification.types';
 
 @Entity()
 // One Google identity maps to at most one account. Named + nullable-unique so
@@ -148,6 +152,49 @@ export class User {
   // new" in their next one (see DigestService).
   @Column({type: 'timestamp', nullable: true})
   lastDigestSentAt: Date | null;
+
+  // Set by authenticated provider webhooks after a permanent bounce, spam
+  // complaint, or provider suppression. Digest delivery is disabled at the
+  // same time; admins can see why an address stopped receiving mail.
+  @Column({type: 'timestamp', nullable: true})
+  emailSuppressedAt: Date | null;
+
+  @Column({type: 'varchar', length: 20, nullable: true})
+  emailSuppressionReason: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 80,
+    default: NOTIFICATION_TYPES.join(','),
+    transformer: {
+      to: (value: NotificationType[] = [...NOTIFICATION_TYPES]) =>
+        value.join(','),
+      from: (value: string): NotificationType[] =>
+        value ? (value.split(',') as NotificationType[]) : [],
+    },
+  })
+  notificationInAppTypes: NotificationType[];
+
+  @Column({
+    type: 'varchar',
+    length: 80,
+    default: '',
+    transformer: {
+      to: (value: NotificationType[] = []) => value.join(','),
+      from: (value: string): NotificationType[] =>
+        value ? (value.split(',') as NotificationType[]) : [],
+    },
+  })
+  notificationEmailTypes: NotificationType[];
+
+  @Column({type: 'varchar', length: 5, nullable: true})
+  notificationQuietStart: string | null;
+
+  @Column({type: 'varchar', length: 5, nullable: true})
+  notificationQuietEnd: string | null;
+
+  @Column({type: 'int', default: 0})
+  notificationTimezoneOffset: number;
 
   @OneToMany(() => Story, (story) => story.author)
   stories: Story[];

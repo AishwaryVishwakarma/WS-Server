@@ -101,7 +101,7 @@ describe('Password reset (integration)', () => {
         .expect(204);
     });
 
-    it('invalidates a previous link when a new one is requested', async () => {
+    it('suppresses repeated emails during the resend cooldown', async () => {
       await registerUser(agent());
       const sendMail = spyOnMail();
 
@@ -116,10 +116,15 @@ describe('Password reset (integration)', () => {
         .send({email: DEFAULT_USER.email})
         .expect(204);
 
+      expect(sendMail).toHaveBeenCalledTimes(1);
+      expect(await tokenRepository().count()).toBe(1);
+
+      // The original link remains valid; a suppressed request must not leave
+      // the member without a usable password-creation/reset path.
       await agent()
         .post('/auth/reset-password')
         .send({token: firstToken, password: 'NewP4ssword!'})
-        .expect(400);
+        .expect(204);
     });
   });
 

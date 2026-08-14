@@ -14,6 +14,10 @@ import {AddDigestEmailGloballyEnabled1786515981348} from './1786515981348-AddDig
 import {AddStoryAuthorFeedIndex1786530000000} from './1786530000000-AddStoryAuthorFeedIndex';
 import {AddAnalyticsEvents1786540000000} from './1786540000000-AddAnalyticsEvents';
 import {DisableDigestEmailByDefault1786550000000} from './1786550000000-DisableDigestEmailByDefault';
+import {AddEmailSuppressionState1786600000000} from './1786600000000-AddEmailSuppressionState';
+import {AddNotificationPreferences1786610000000} from './1786610000000-AddNotificationPreferences';
+import {AddPendingStoryAgeIndex1786620000000} from './1786620000000-AddPendingStoryAgeIndex';
+import {AddNotificationEmailGlobalToggle1786630000000} from './1786630000000-AddNotificationEmailGlobalToggle';
 
 export const migrations = [
   Baseline1786175459406,
@@ -21,4 +25,8 @@ export const migrations = [
   AddStoryAuthorFeedIndex1786530000000,
   AddAnalyticsEvents1786540000000,
   DisableDigestEmailByDefault1786550000000,
+  AddEmailSuppressionState1786600000000,
+  AddNotificationPreferences1786610000000,
+  AddPendingStoryAgeIndex1786620000000,
+  AddNotificationEmailGlobalToggle1786630000000,
 ];

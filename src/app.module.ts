@@ -256,6 +256,13 @@ export class AppModule {
         // replaces the only proof of identity a session would provide).
         '/auth/forgot-password',
         '/auth/reset-password',
+        // Email clients call this without a browser session or CSRF cookie.
+        // The HMAC-signed token is the authorization and the action can only
+        // reduce email delivery, never subscribe or alter other account data.
+        '/digest/unsubscribe',
+        // Resend has no browser session/CSRF cookie. Authenticity is enforced
+        // with its Svix signature over the untouched raw request body.
+        '/webhooks/resend',
         // Anonymous read-counter ping — anonymous browsers can't hold a CSRF
         // token, and it's a harmless denormalized counter, not a real mutation.
         {path: 'stories/:id/view', method: RequestMethod.POST},
