@@ -11,6 +11,10 @@ import {SessionRegistryService} from 'src/session/session-registry.service';
 
 // A link is valid for an hour and can only ever be used once.
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+// A reset request is intentionally idempotent during this window. This is
+// separate from the broad auth endpoint throttle: it prevents one account's
+// inbox being flooded even when requests arrive from different sessions/IPs.
+const RESET_RESEND_COOLDOWN_MS = 60 * 1000;
 
 @Injectable()
 export class PasswordResetService {
@@ -36,6 +40,17 @@ export class PasswordResetService {
   async requestReset(email: string): Promise<void> {
     const user = await this.usersService.findOneByEmail(email);
     if (!user) return;
+
+    const existingToken = await this.tokensRepository.findOne({
+      where: {user: {id: user.id}},
+      order: {createdAt: 'DESC'},
+    });
+    if (
+      existingToken?.createdAt &&
+      Date.now() - existingToken.createdAt.getTime() < RESET_RESEND_COOLDOWN_MS
+    ) {
+      return;
+    }
 
     await this.tokensRepository.delete({user: {id: user.id}});
 
