@@ -34,4 +34,16 @@ export class RegisterUserDto {
   // input trip @IsEmpty and get a 400 before an account is created.
   @IsEmpty()
   website?: string;
+
+  // Images are managed exclusively through the upload endpoints. Keep these
+  // retired customization fields as validation-only guards so clients cannot
+  // silently submit stale/raw avatar data through registration or profile DTOs.
+  @IsEmpty()
+  profileImageUrl?: never;
+
+  @IsEmpty()
+  avatarIcon?: never;
+
+  @IsEmpty()
+  avatarColor?: never;
 }
