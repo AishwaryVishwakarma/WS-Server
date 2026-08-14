@@ -41,16 +41,25 @@ export class PasswordResetService {
     const user = await this.usersService.findOneByEmail(email);
     if (!user) return;
 
-    const existingToken = await this.tokensRepository.findOne({
-      where: {user: {id: user.id}},
-      order: {createdAt: 'DESC'},
-    });
-    if (
-      existingToken?.createdAt &&
-      Date.now() - existingToken.createdAt.getTime() < RESET_RESEND_COOLDOWN_MS
-    ) {
-      return;
-    }
+    // Use the concrete join column here. Some TypeORM/Postgres combinations
+    // do not resolve a nested relation predicate on this unidirectional
+    // relation, which made the cooldown silently miss an existing token.
+    const existingToken = await this.tokensRepository
+      .createQueryBuilder('token')
+      .where('token."userId" = :userId', {userId: user.id})
+      .orderBy('token."createdAt"', 'DESC')
+      .getOne();
+    const coolingDown = existingToken
+      ? existingToken.expiresAt
+        ? existingToken.expiresAt.getTime() - Date.now() >
+          RESET_TOKEN_TTL_MS - RESET_RESEND_COOLDOWN_MS
+        : Boolean(
+            existingToken.createdAt &&
+            Date.now() - existingToken.createdAt.getTime() <
+              RESET_RESEND_COOLDOWN_MS
+          )
+      : false;
+    if (coolingDown) return;
 
     await this.tokensRepository.delete({user: {id: user.id}});
 

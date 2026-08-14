@@ -15,6 +15,7 @@ describe('PasswordResetService', () => {
     save: jest.Mock;
     create: jest.Mock;
     findOne: jest.Mock;
+    createQueryBuilder: jest.Mock;
   };
   let usersService: {findOneByEmail: jest.Mock; updatePassword: jest.Mock};
   let mailService: {send: jest.Mock};
@@ -28,6 +29,11 @@ describe('PasswordResetService', () => {
       save: jest.fn().mockResolvedValue(undefined),
       create: jest.fn((data) => data),
       findOne: jest.fn(),
+      createQueryBuilder: jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: () => tokensRepository.findOne(),
+      })),
     };
     usersService = {
       findOneByEmail: jest.fn(),
