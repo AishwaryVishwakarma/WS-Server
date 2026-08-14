@@ -293,6 +293,35 @@ describe('Users (integration)', () => {
         .expect(404);
       await client.get('/users/me').expect(200);
     });
+
+    it('logs out every other device while preserving the current session', async () => {
+      const currentClient = agent();
+      await registerUser(currentClient);
+      const currentToken = await getCsrfToken(currentClient);
+
+      const otherClients = [agent(), agent()];
+      for (const client of otherClients) {
+        await client
+          .post('/auth/login')
+          .send({email: DEFAULT_USER.email, password: DEFAULT_USER.password})
+          .expect(201);
+      }
+
+      await currentClient
+        .delete('/users/me/sessions')
+        .set('x-csrf-token', currentToken)
+        .expect(204);
+
+      for (const client of otherClients) {
+        await client.get('/users/me').expect(401);
+      }
+      await currentClient.get('/users/me').expect(200);
+      const sessions = await currentClient
+        .get('/users/me/sessions')
+        .expect(200);
+      expect(sessions.body).toHaveLength(1);
+      expect(sessions.body[0].current).toBe(true);
+    });
   });
 
   describe('PATCH /users/me/password', () => {

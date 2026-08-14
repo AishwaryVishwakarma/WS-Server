@@ -98,6 +98,15 @@ export class PrivateUsersController {
     return this.sessionRegistryService.list(req.session.userId!, req.sessionID);
   }
 
+  @Delete('sessions')
+  @HttpCode(204)
+  async revokeOtherSessions(@Req() req: Request) {
+    await this.sessionRegistryService.invalidateOthers(
+      req.session.userId!,
+      req.sessionID
+    );
+  }
+
   @Delete('sessions/:id')
   @HttpCode(204)
   async revokeSession(@Param('id') id: string, @Req() req: Request) {
