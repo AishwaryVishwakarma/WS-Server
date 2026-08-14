@@ -144,6 +144,24 @@ const DEFAULT_DB_POOL_SIZE = 10;
           );
         }
 
+        if (config.NODE_ENV === 'production') {
+          for (const key of [
+            'APPWRITE_ENDPOINT',
+            'APPWRITE_PROJECT_ID',
+            'APPWRITE_API_KEY',
+            'APPWRITE_IMAGE_BUCKET_ID',
+          ]) {
+            if (!config[key])
+              throw new Error(`${key} is required in production`);
+          }
+          try {
+            const endpoint = new URL(String(config.APPWRITE_ENDPOINT));
+            if (endpoint.protocol !== 'https:') throw new Error();
+          } catch {
+            throw new Error('APPWRITE_ENDPOINT must be a valid HTTPS URL');
+          }
+        }
+
         // Fail fast on a typo'd NODE_ENV — it gates cookie security, so a
         // bad value silently weakens production.
         const nodeEnv = config.NODE_ENV;

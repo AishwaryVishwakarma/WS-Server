@@ -19,8 +19,6 @@ import {Role} from 'src/users/enums/role';
 import {ReportReason} from 'src/users/enums/report-reason.enum';
 import {StoryReportReason} from 'src/stories/enums/story-report-reason.enum';
 import {UsersService} from 'src/users/users.service';
-import {AvatarIcon} from 'src/users/enums/avatar-icon.enum';
-import {AvatarColor} from 'src/users/enums/avatar-color.enum';
 import {SettingsService} from 'src/settings/settings.service';
 import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {
@@ -48,8 +46,6 @@ const WRITERS = [
     // Demonstrates the curated icon-avatar path, plus an explicit color
     // override. Carol is left with neither an icon nor a URL on purpose, to
     // exercise the initial-letter fallback (with its auto name-based color).
-    avatarIcon: AvatarIcon.Moon,
-    avatarColor: AvatarColor.Spectral,
   },
   {
     name: 'Bob Greaves',
@@ -74,8 +70,6 @@ const WRITERS = [
     isVerified: true,
     isBlocked: true,
     bio: 'Currently unavailable.',
-    avatarIcon: AvatarIcon.Skull,
-    avatarColor: AvatarColor.Blood,
   },
 ];
 

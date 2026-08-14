@@ -80,8 +80,13 @@ export class Story {
   })
   searchVector: string;
 
-  @Column({nullable: true})
-  coverImageUrl: string;
+  // Explicit type is required for nullable union properties: TypeScript emits
+  // Object as their design:type, which TypeORM cannot map to PostgreSQL.
+  @Column({type: 'varchar', nullable: true})
+  coverImageUrl: string | null;
+
+  @Column({type: 'varchar', length: 36, nullable: true, select: false})
+  coverImageFileId: string | null;
 
   @Column({type: 'int', default: 1})
   scareLevel: number;

@@ -1,7 +1,5 @@
 import {Exclude, Expose, Type} from 'class-transformer';
 import {Role} from '../enums/role';
-import type {AvatarIcon} from '../enums/avatar-icon.enum';
-import type {AvatarColor} from '../enums/avatar-color.enum';
 import type {ReportReason} from '../enums/report-reason.enum';
 import type {Badge} from '../enums/badge.enum';
 import type {AchievementBadge} from '../achievements';
@@ -15,8 +13,6 @@ export class UserPreviewResponseDto {
   @Expose() id: string;
   @Expose() name: string;
   @Expose() profileImageUrl?: string;
-  @Expose() avatarIcon: AvatarIcon | null;
-  @Expose() avatarColor: AvatarColor | null;
   @Expose() bio?: string;
   @Expose() isVerified: boolean;
   @Expose() createdAt: Date;

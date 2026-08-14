@@ -119,9 +119,6 @@ export class AuthService {
       {
         name: confirmed.name,
         email: confirmed.email,
-        profileImageUrl: confirmed.profileImageUrl ?? undefined,
-        avatarIcon: confirmed.avatarIcon,
-        avatarColor: confirmed.avatarColor,
         bio: confirmed.bio ?? undefined,
       },
       confirmed.passwordHash

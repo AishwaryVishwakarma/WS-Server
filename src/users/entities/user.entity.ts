@@ -13,8 +13,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import {Role} from '../enums/role';
-import {AvatarIcon} from '../enums/avatar-icon.enum';
-import {AvatarColor} from '../enums/avatar-color.enum';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {UserReport} from './user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
@@ -84,20 +82,9 @@ export class User {
   @Column({type: 'varchar', length: 500, nullable: true})
   profileImageUrl: string | null;
 
-  // A chosen themed icon avatar — always available (unlike profileImageUrl,
-  // not gated by allowProfileImageUpload) since it's curated, not an
-  // arbitrary external URL. Avatar's precedence: profileImageUrl > avatarIcon.
-  // UsersService assigns a random one at creation, but only when the account
-  // has no profileImageUrl to fall back on instead — an account created with
-  // a photo (e.g. Google sign-in) stays null here until/unless its owner
-  // deliberately picks an icon, since the photo already covers rendering.
-  @Column({type: 'enum', enum: AvatarIcon, nullable: true})
-  avatarIcon: AvatarIcon | null;
-
-  // A background-color pairing for the avatar icon — same conditional
-  // random-at-creation, same nullable treatment as avatarIcon.
-  @Column({type: 'enum', enum: AvatarColor, nullable: true})
-  avatarColor: AvatarColor | null;
+  @Exclude()
+  @Column({type: 'varchar', length: 36, nullable: true, select: false})
+  profileImageFileId: string | null;
 
   @Column({length: 500, nullable: true})
   bio: string;

@@ -13,6 +13,9 @@ import {
   forwardRef,
   NotFoundException,
   Param,
+  Post,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import {ApiCookieAuth, ApiOkResponse} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
@@ -31,6 +34,11 @@ import {UsersService} from '../users.service';
 import {ChangePasswordDto} from '../dto/change-password.dto';
 import {SessionRegistryService} from 'src/session/session-registry.service';
 import {SessionResponseDto} from 'src/session/dto/session-response.dto';
+import {FileInterceptor} from '@nestjs/platform-express';
+import {
+  MAX_IMAGE_BYTES,
+  type UploadedImage,
+} from 'src/image-storage/image-storage.service';
 
 @ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard)
@@ -147,6 +155,29 @@ export class PrivateUsersController {
       updateProfileDto
     );
     return await this._serialize(user as User);
+  }
+
+  @Post('profile-image')
+  @UseInterceptors(
+    FileInterceptor('file', {limits: {fileSize: MAX_IMAGE_BYTES}})
+  )
+  async uploadProfileImage(
+    @UploadedFile() file: UploadedImage,
+    @Req() req: Request
+  ) {
+    const user = await this.usersService.replaceProfileImage(
+      req.session.userId!,
+      file
+    );
+    return this._serialize(user);
+  }
+
+  @Delete('profile-image')
+  async deleteProfileImage(@Req() req: Request) {
+    const user = await this.usersService.removeProfileImage(
+      req.session.userId!
+    );
+    return this._serialize(user);
   }
 
   @Patch('password')
