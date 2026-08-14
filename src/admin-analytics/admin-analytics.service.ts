@@ -22,6 +22,8 @@ interface CsvOverview {
   };
   moderation: {
     pendingStories: number;
+    pendingOver24Hours: number;
+    pendingOver72Hours: number;
     reportedStories: number;
     reportedComments: number;
     reportedUsers: number;
@@ -72,6 +74,8 @@ export class AdminAnalyticsService {
             (SELECT COUNT(*) FROM comment) AS "comments",
             (SELECT COUNT(*) FROM bookmark) AS "bookmarks",
             (SELECT COUNT(*) FROM story WHERE status = 'pending') AS "pendingStories",
+            (SELECT COUNT(*) FROM story WHERE status = 'pending' AND "updatedAt" < now() - interval '24 hours') AS "pendingOver24Hours",
+            (SELECT COUNT(*) FROM story WHERE status = 'pending' AND "updatedAt" < now() - interval '72 hours') AS "pendingOver72Hours",
             (SELECT COUNT(*) FROM story WHERE status = 'flagged' OR "reportCount" > 0) AS "reportedStories",
             (SELECT COUNT(*) FROM comment WHERE "isFlagged" = true OR "reportCount" > 0) AS "reportedComments",
             (SELECT COUNT(*) FROM "user" WHERE "deletedAt" IS NULL AND "reportCount" > 0) AS "reportedUsers"
@@ -149,7 +153,7 @@ export class AdminAnalyticsService {
           FROM analytics_event e JOIN story s ON s.id = e."storyId"
           WHERE e.type = 'story_status_changed' AND e.metadata->>'to' IN ('approved', 'rejected')
             AND e."createdAt" >= $1 AND e."createdAt" < $2) AS "averageReviewHours",
-        (SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (now() - "createdAt")) / 3600), 0) FROM story WHERE status = 'pending') AS "oldestPendingHours",
+        (SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (now() - "updatedAt")) / 3600), 0) FROM story WHERE status = 'pending') AS "oldestPendingHours",
         (SELECT COUNT(*) FROM "user" u WHERE u."deletedAt" IS NULL AND u."createdAt" >= $1 AND u."createdAt" < $2) AS "cohortUsers",
         (SELECT COUNT(*) FROM "user" u WHERE u."deletedAt" IS NULL AND u."createdAt" >= $1 AND u."createdAt" < $2 AND EXISTS (
           SELECT 1 FROM comment c WHERE c."userId" = u.id AND c."createdAt" > u."createdAt" AND c."createdAt" <= u."createdAt" + interval '7 days'
@@ -189,6 +193,8 @@ export class AdminAnalyticsService {
       },
       moderation: {
         pendingStories: Number(totals.pendingStories),
+        pendingOver24Hours: Number(totals.pendingOver24Hours),
+        pendingOver72Hours: Number(totals.pendingOver72Hours),
         reportedStories: Number(totals.reportedStories),
         reportedComments: Number(totals.reportedComments),
         reportedUsers: Number(totals.reportedUsers),
@@ -242,6 +248,8 @@ export class AdminAnalyticsService {
       ['Published stories', value.metrics.publishedStories],
       ['Story views', value.metrics.views],
       ['Pending stories', value.moderation.pendingStories],
+      ['Pending over 24 hours', value.moderation.pendingOver24Hours],
+      ['Pending over 72 hours', value.moderation.pendingOver72Hours],
       ['Reported stories', value.moderation.reportedStories],
       ['Reported comments', value.moderation.reportedComments],
       ['Reported members', value.moderation.reportedUsers],

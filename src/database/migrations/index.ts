@@ -16,6 +16,7 @@ import {AddAnalyticsEvents1786540000000} from './1786540000000-AddAnalyticsEvent
 import {DisableDigestEmailByDefault1786550000000} from './1786550000000-DisableDigestEmailByDefault';
 import {AddEmailSuppressionState1786600000000} from './1786600000000-AddEmailSuppressionState';
 import {AddNotificationPreferences1786610000000} from './1786610000000-AddNotificationPreferences';
+import {AddPendingStoryAgeIndex1786620000000} from './1786620000000-AddPendingStoryAgeIndex';
 
 export const migrations = [
   Baseline1786175459406,
@@ -25,4 +26,5 @@ export const migrations = [
   DisableDigestEmailByDefault1786550000000,
   AddEmailSuppressionState1786600000000,
   AddNotificationPreferences1786610000000,
+  AddPendingStoryAgeIndex1786620000000,
 ];
