@@ -6,6 +6,7 @@ import {Series} from 'src/series/entities/series.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {SessionModule} from 'src/session/session.module';
 import {PublicUsersController} from './controllers/public-users.controller';
 import {AdminUsersController} from './controllers/admin-users.controller';
@@ -30,6 +31,7 @@ import {UsersService} from './users.service';
       Series,
       Bookmark,
       Follow,
+      ReadingProgress,
     ]),
     SessionModule,
     StoriesModule,

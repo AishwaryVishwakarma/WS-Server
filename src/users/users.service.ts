@@ -13,6 +13,7 @@ import {Series} from 'src/series/entities/series.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
@@ -26,6 +27,12 @@ import {computeStreakUpdate} from './streak';
 import {SettingsService} from 'src/settings/settings.service';
 import {AvatarIcon} from './enums/avatar-icon.enum';
 import {AvatarColor} from './enums/avatar-color.enum';
+import {
+  ACHIEVEMENT_DEFINITIONS,
+  AchievementKey,
+  type AchievementProgress,
+  unlockedTier,
+} from './achievements';
 
 // Thresholds for the "Prolific"/"Fan Favorite"/"Conversation Starter"
 // badges. Prolific mirrors StoriesService.FREE_PUBLISH_LIMIT (10) — the
@@ -59,6 +66,8 @@ export class UsersService {
     private readonly bookmarksRepository: Repository<Bookmark>,
     @InjectRepository(Follow)
     private readonly followsRepository: Repository<Follow>,
+    @InjectRepository(ReadingProgress)
+    private readonly readingProgressRepository: Repository<ReadingProgress>,
     private readonly configService: ConfigService,
     private readonly settingsService: SettingsService
   ) {}
@@ -415,6 +424,64 @@ export class UsersService {
     if (longestStreak >= MONTH_STREAK_DAYS) badges.push(Badge.MonthStreak);
 
     return badges;
+  }
+
+  async computeAchievements(userId: string): Promise<AchievementProgress[]> {
+    const user = await this.findOne(userId);
+    const [storyStats, seriesCount, completedStories] = await Promise.all([
+      this.storiesRepository
+        .createQueryBuilder('story')
+        .select('COUNT(*)', 'approvedCount')
+        .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
+        .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
+        .where('story.author = :authorId', {authorId: userId})
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getRawOne<{
+          approvedCount: string;
+          totalLikes: string;
+          totalComments: string;
+        }>(),
+      this.seriesRepository
+        .createQueryBuilder('series')
+        .innerJoin('series.stories', 'story')
+        .where('series.author = :authorId', {authorId: userId})
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getCount(),
+      this.readingProgressRepository
+        .createQueryBuilder('progress')
+        .innerJoin('progress.story', 'story')
+        .where('progress.user = :userId', {userId})
+        .andWhere('progress.percent = :completePercent', {
+          completePercent: 100,
+        })
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getCount(),
+    ]);
+
+    const progressByKey: Record<AchievementKey, number> = {
+      [AchievementKey.Storyteller]: Number(storyStats?.approvedCount) || 0,
+      [AchievementKey.CrowdFavorite]: Number(storyStats?.totalLikes) || 0,
+      [AchievementKey.CampfireHost]: Number(storyStats?.totalComments) || 0,
+      [AchievementKey.SerialStoryteller]: seriesCount,
+      [AchievementKey.ReadingRitual]: user.longestStreak,
+      [AchievementKey.NightExplorer]: completedStories,
+    };
+
+    return ACHIEVEMENT_DEFINITIONS.map((definition) => {
+      const progress = progressByKey[definition.key];
+      return {
+        ...definition,
+        progress,
+        highestUnlockedTier: unlockedTier(progress, definition.thresholds),
+      };
+    });
+  }
+
+  async computeAchievementBadges(userId: string) {
+    const achievements = await this.computeAchievements(userId);
+    return achievements.flatMap(({key, highestUnlockedTier}) =>
+      highestUnlockedTier === 0 ? [] : [{key, tier: highestUnlockedTier}]
+    );
   }
 
   // Aggregate snapshot for the author's own dashboard (GET /users/me/stats).

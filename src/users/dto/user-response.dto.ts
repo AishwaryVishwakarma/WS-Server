@@ -4,6 +4,7 @@ import type {AvatarIcon} from '../enums/avatar-icon.enum';
 import type {AvatarColor} from '../enums/avatar-color.enum';
 import type {ReportReason} from '../enums/report-reason.enum';
 import type {Badge} from '../enums/badge.enum';
+import type {AchievementBadge} from '../achievements';
 import type {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import type {NotificationType} from 'src/notifications/notification.types';
 
@@ -26,6 +27,8 @@ export class UserPreviewResponseDto {
   // (admin lists, a comment's `user`, etc.) to avoid the extra aggregate
   // queries on every row of a bulk listing.
   @Expose() badges?: Badge[];
+
+  @Expose() achievementBadges?: AchievementBadge[];
 
   @Exclude() password: string;
 

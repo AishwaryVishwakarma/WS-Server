@@ -92,6 +92,11 @@ export class PrivateUsersController {
     return this.usersService.computeAuthorStats(req.session.userId!);
   }
 
+  @Get('achievements')
+  async myAchievements(@Req() req: Request) {
+    return this.usersService.computeAchievements(req.session.userId!);
+  }
+
   @Get('sessions')
   @ApiOkResponse({type: SessionResponseDto, isArray: true})
   async sessions(@Req() req: Request) {

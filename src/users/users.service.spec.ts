@@ -15,6 +15,7 @@ import {Story} from 'src/stories/entities/story.entity';
 import {Series} from 'src/series/entities/series.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
 import {AvatarIcon} from './enums/avatar-icon.enum';
@@ -24,6 +25,7 @@ import type {UpdateUserDto} from './dto/update-user.dto';
 import type {CreateUserDto} from './dto/create-user.dto';
 import {UsersService} from './users.service';
 import {SettingsService} from 'src/settings/settings.service';
+import {AchievementKey} from './achievements';
 
 const duplicateEntryError = () => {
   const error = new QueryFailedError('INSERT', [], new Error('dup'));
@@ -64,7 +66,13 @@ describe('UsersService', () => {
     getRawOne: jest.Mock;
   };
   let storiesRepository: {createQueryBuilder: jest.Mock};
-  let seriesRepository: {exists: jest.Mock};
+  let seriesQueryBuilder: {
+    innerJoin: jest.Mock;
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    getCount: jest.Mock;
+  };
+  let seriesRepository: {exists: jest.Mock; createQueryBuilder: jest.Mock};
   let bookmarksQueryBuilder: {
     innerJoin: jest.Mock;
     where: jest.Mock;
@@ -73,6 +81,13 @@ describe('UsersService', () => {
   };
   let bookmarksRepository: {createQueryBuilder: jest.Mock};
   let followsRepository: {countBy: jest.Mock};
+  let readingProgressQueryBuilder: {
+    innerJoin: jest.Mock;
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    getCount: jest.Mock;
+  };
+  let readingProgressRepository: {createQueryBuilder: jest.Mock};
   let settingsService: {allowsProfileImageUpload: jest.Mock};
 
   beforeEach(async () => {
@@ -113,7 +128,16 @@ describe('UsersService', () => {
     storiesRepository = {
       createQueryBuilder: jest.fn(() => storiesQueryBuilder),
     };
-    seriesRepository = {exists: jest.fn().mockResolvedValue(false)};
+    seriesQueryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+    };
+    seriesRepository = {
+      exists: jest.fn().mockResolvedValue(false),
+      createQueryBuilder: jest.fn(() => seriesQueryBuilder),
+    };
     bookmarksQueryBuilder = {
       innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
@@ -124,6 +148,15 @@ describe('UsersService', () => {
       createQueryBuilder: jest.fn(() => bookmarksQueryBuilder),
     };
     followsRepository = {countBy: jest.fn().mockResolvedValue(0)};
+    readingProgressQueryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+    };
+    readingProgressRepository = {
+      createQueryBuilder: jest.fn(() => readingProgressQueryBuilder),
+    };
     // Defaults to true (allowed) so every pre-existing test that sets
     // profileImageUrl keeps asserting today's behavior unchanged.
     settingsService = {
@@ -139,6 +172,10 @@ describe('UsersService', () => {
         {provide: getRepositoryToken(Series), useValue: seriesRepository},
         {provide: getRepositoryToken(Bookmark), useValue: bookmarksRepository},
         {provide: getRepositoryToken(Follow), useValue: followsRepository},
+        {
+          provide: getRepositoryToken(ReadingProgress),
+          useValue: readingProgressRepository,
+        },
         {
           provide: ConfigService,
           // Low salt rounds to keep hashing fast in tests
@@ -930,6 +967,66 @@ describe('UsersService', () => {
       );
       expect(await service.computeBadges('user-1', 30)).toContain(
         Badge.MonthStreak
+      );
+    });
+  });
+
+  describe('computeAchievements', () => {
+    beforeEach(() => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        longestStreak: 30,
+      });
+    });
+
+    it('returns all six tracks with three thresholds each', async () => {
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(achievements).toHaveLength(6);
+      expect(achievements.every((item) => item.thresholds.length === 3)).toBe(
+        true
+      );
+    });
+
+    it('tiers current approved-story metrics at their boundaries', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '5',
+        totalLikes: '25',
+        totalComments: '100',
+      });
+
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(
+        achievements.find(({key}) => key === AchievementKey.Storyteller)
+      ).toMatchObject({progress: 5, highestUnlockedTier: 2});
+      expect(
+        achievements.find(({key}) => key === AchievementKey.CrowdFavorite)
+      ).toMatchObject({progress: 25, highestUnlockedTier: 2});
+      expect(
+        achievements.find(({key}) => key === AchievementKey.CampfireHost)
+      ).toMatchObject({progress: 100, highestUnlockedTier: 3});
+    });
+
+    it('counts only series returned by the approved-story join and completed reads', async () => {
+      seriesQueryBuilder.getCount.mockResolvedValue(3);
+      readingProgressQueryBuilder.getCount.mockResolvedValue(25);
+
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(
+        achievements.find(({key}) => key === AchievementKey.SerialStoryteller)
+      ).toMatchObject({progress: 3, highestUnlockedTier: 2});
+      expect(
+        achievements.find(({key}) => key === AchievementKey.NightExplorer)
+      ).toMatchObject({progress: 25, highestUnlockedTier: 2});
+      expect(readingProgressQueryBuilder.innerJoin).toHaveBeenCalledWith(
+        'progress.story',
+        'story'
+      );
+      expect(readingProgressQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'story.status = :status',
+        {status: 'approved'}
       );
     });
   });

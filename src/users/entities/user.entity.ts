@@ -19,6 +19,7 @@ import {Comment} from 'src/comments/entities/comment.entity';
 import {UserReport} from './user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
 import type {Badge} from '../enums/badge.enum';
+import type {AchievementBadge} from '../achievements';
 import type {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import {
   NOTIFICATION_TYPES,
@@ -211,6 +212,9 @@ export class User {
   /** Not a column — computed by UsersService.computeBadges and attached
    *  before serializing the single-profile fetch (GET /users/:id). */
   badges?: Badge[];
+
+  /** Tiered achievement badges computed for a public profile. */
+  achievementBadges?: AchievementBadge[];
 
   @CreateDateColumn()
   createdAt: Date;
