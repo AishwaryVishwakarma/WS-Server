@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -41,6 +42,12 @@ export class ReadingProgressController {
       dto.percent,
       req.session.role
     );
+  }
+
+  @Delete('stories/:id/reading-progress')
+  @HttpCode(204)
+  async clear(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    await this.readingProgressService.clear(req.session.userId!, id);
   }
 
   @Get('users/me/reading-progress')

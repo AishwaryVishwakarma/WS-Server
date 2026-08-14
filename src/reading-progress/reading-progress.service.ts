@@ -53,6 +53,13 @@ export class ReadingProgressService {
     );
   }
 
+  async clear(userId: string, storyId: string): Promise<void> {
+    await this.readingProgressRepository.delete({
+      user: {id: userId},
+      story: {id: storyId},
+    });
+  }
+
   // Every story the member has in progress, most-recently-read first —
   // unbounded, like BookmarksService.bookmarkedIds: personal data expected to
   // stay small, so no pagination. Excludes stories no longer approved (e.g.

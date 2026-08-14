@@ -126,6 +126,24 @@ describe('Reading progress (integration)', () => {
     expect(list.body[0].percent).toBe(40);
   });
 
+  it('explicitly clears progress when a reader starts from the beginning', async () => {
+    const {story} = await approvedStory();
+    const {client, token} = await reader();
+
+    await client
+      .put(`/stories/${story.id}/reading-progress`)
+      .set('x-csrf-token', token)
+      .send({percent: 40})
+      .expect(204);
+    await client
+      .delete(`/stories/${story.id}/reading-progress`)
+      .set('x-csrf-token', token)
+      .expect(204);
+
+    const list = await client.get('/users/me/reading-progress').expect(200);
+    expect(list.body).toHaveLength(0);
+  });
+
   it('moves an effectively finished read into history', async () => {
     const {story} = await approvedStory();
     const {client, token} = await reader();
@@ -249,6 +267,7 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${story.id}/reading-progress`)
       .send({percent: 30})
       .expect(403);
+    await anon.delete(`/stories/${story.id}/reading-progress`).expect(403);
     await anon.get('/users/me/reading-progress').expect(401);
     await anon.get('/users/me/reading-history').expect(401);
   });
