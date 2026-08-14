@@ -90,20 +90,14 @@ describe('RegistrationOtpService', () => {
       expect(savedHash).not.toBe(code);
     });
 
-    it('carries the optional profile fields through when given, null otherwise', async () => {
+    it('carries the optional bio through when given, null otherwise', async () => {
       await service.start({
         ...dto,
-        profileImageUrl: 'https://example.com/me.png',
-        avatarIcon: 'ghost' as never,
-        avatarColor: 'blood' as never,
         bio: 'A reader of dark things.',
       });
 
       expect(pendingRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          profileImageUrl: 'https://example.com/me.png',
-          avatarIcon: 'ghost',
-          avatarColor: 'blood',
           bio: 'A reader of dark things.',
         })
       );
@@ -112,9 +106,6 @@ describe('RegistrationOtpService', () => {
 
       expect(pendingRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          profileImageUrl: null,
-          avatarIcon: null,
-          avatarColor: null,
           bio: null,
         })
       );
@@ -241,9 +232,6 @@ describe('RegistrationOtpService', () => {
         name: dto.name,
         email: dto.email,
         passwordHash: hashedPassword,
-        profileImageUrl: null,
-        avatarIcon: null,
-        avatarColor: null,
         bio: null,
       });
       expect(pendingRepository.delete).toHaveBeenCalledWith({

@@ -191,76 +191,16 @@ describe('Settings (integration)', () => {
     });
   });
 
-  describe('profile image upload follows the setting', () => {
-    it('drops profileImageUrl on registration by default', async () => {
-      const client = agent();
-
-      const {body} = await registerUser(client, {
+  it('rejects a raw profileImageUrl during registration', async () => {
+    await agent()
+      .post('/auth/register')
+      .send({
+        name: 'Test User',
+        email: 'user@test.com',
+        password: 'S3cret!Password',
         profileImageUrl: 'https://example.com/me.png',
-      } as Record<string, unknown>);
-
-      expect(body.profileImageUrl).toBeNull();
-    });
-
-    it('keeps profileImageUrl on registration once the setting is on', async () => {
-      const admin = await seedAdmin(testApp);
-      await setImageSettings(admin, {allowProfileImageUpload: true});
-
-      const client = agent();
-      const {body} = await registerUser(client, {
-        profileImageUrl: 'https://example.com/me.png',
-      } as Record<string, unknown>);
-
-      expect(body.profileImageUrl).toBe('https://example.com/me.png');
-    });
-
-    it('always accepts avatarIcon regardless of the setting', async () => {
-      const client = agent();
-
-      const {body} = await registerUser(client, {
-        avatarIcon: 'ghost',
-      } as Record<string, unknown>);
-
-      expect(body.avatarIcon).toBe('ghost');
-    });
-
-    it('rejects an avatarIcon value outside the curated set', async () => {
-      const client = agent();
-
-      await client
-        .post('/auth/register')
-        .send({
-          name: 'Test User',
-          email: 'user@test.com',
-          password: 'S3cret!Password',
-          avatarIcon: 'not-a-real-icon',
-        })
-        .expect(400);
-    });
-
-    it('always accepts avatarColor regardless of the setting', async () => {
-      const client = agent();
-
-      const {body} = await registerUser(client, {
-        avatarColor: 'blood',
-      } as Record<string, unknown>);
-
-      expect(body.avatarColor).toBe('blood');
-    });
-
-    it('rejects an avatarColor value outside the curated set', async () => {
-      const client = agent();
-
-      await client
-        .post('/auth/register')
-        .send({
-          name: 'Test User',
-          email: 'user@test.com',
-          password: 'S3cret!Password',
-          avatarColor: 'not-a-real-color',
-        })
-        .expect(400);
-    });
+      })
+      .expect(400);
   });
 
   describe('story cover image follows the setting', () => {

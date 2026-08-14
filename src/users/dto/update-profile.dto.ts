@@ -21,7 +21,7 @@ export class UpdateProfileDto extends PartialType(RegisterUserDto) {
   // The reader's own "hide stories carrying these" preference — distinct
   // from a story's own contentWarnings. Not privileged (unlike role/
   // isVerified/isBlocked, which this self-service DTO family excludes), so
-  // it's a plain pass-through field like bio/profileImageUrl.
+  // it's a plain pass-through field like bio.
   @IsOptional()
   @IsArray()
   @IsEnum(ContentWarning, {each: true})

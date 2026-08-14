@@ -13,6 +13,8 @@ import {
   Query,
   Inject,
   forwardRef,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import {ApiCookieAuth} from '@nestjs/swagger';
 import {StoriesService} from '../stories.service';
@@ -42,6 +44,11 @@ import {
 import {ReportStoryDto} from '../dto/report-story.dto';
 import {Role} from 'src/users/enums/role';
 import {MutesService} from 'src/mutes/mutes.service';
+import {FileInterceptor} from '@nestjs/platform-express';
+import {
+  MAX_IMAGE_BYTES,
+  type UploadedImage,
+} from 'src/image-storage/image-storage.service';
 
 // Reads are public (anonymous allowed, throttled); mutations require a session
 @Controller('stories')
@@ -311,6 +318,41 @@ export class PublicStoriesController {
     const story = await this.storiesService.update(
       id,
       updateStoryDto,
+      req.session.userId!,
+      req.session.role!
+    );
+    return this._serialize(StoryResponseDto, story);
+  }
+
+  @Post(':id/cover-image')
+  @ApiCookieAuth('session')
+  @UseGuards(SessionAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {limits: {fileSize: MAX_IMAGE_BYTES}})
+  )
+  async uploadCoverImage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: UploadedImage,
+    @Req() req: Request
+  ) {
+    const story = await this.storiesService.replaceCoverImage(
+      id,
+      file,
+      req.session.userId!,
+      req.session.role!
+    );
+    return this._serialize(StoryResponseDto, story);
+  }
+
+  @Delete(':id/cover-image')
+  @ApiCookieAuth('session')
+  @UseGuards(SessionAuthGuard)
+  async deleteCoverImage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request
+  ) {
+    const story = await this.storiesService.removeCoverImage(
+      id,
       req.session.userId!,
       req.session.role!
     );

@@ -7,8 +7,6 @@ import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {UsersService} from 'src/users/users.service';
 import {MailService} from 'src/mail/mail.service';
 import {EMAIL_ACCENT_COLOR, renderEmailHtml} from 'src/mail/email-template';
-import {AvatarIcon} from 'src/users/enums/avatar-icon.enum';
-import {AvatarColor} from 'src/users/enums/avatar-color.enum';
 
 // A code is meant to be read off an email and typed back in one sitting —
 // unlike a password-reset link, there's no reason to let it sit unused for
@@ -23,9 +21,6 @@ export interface ConfirmedRegistration {
   name: string;
   email: string;
   passwordHash: string;
-  profileImageUrl: string | null;
-  avatarIcon: AvatarIcon | null;
-  avatarColor: AvatarColor | null;
   bio: string | null;
 }
 
@@ -103,9 +98,6 @@ export class RegistrationOtpService {
         email,
         name: dto.name,
         passwordHash,
-        profileImageUrl: dto.profileImageUrl ?? null,
-        avatarIcon: dto.avatarIcon ?? null,
-        avatarColor: dto.avatarColor ?? null,
         bio: dto.bio ?? null,
         codeHash,
         expiresAt,
@@ -156,9 +148,6 @@ export class RegistrationOtpService {
       name: pending.name,
       email: pending.email,
       passwordHash: pending.passwordHash,
-      profileImageUrl: pending.profileImageUrl,
-      avatarIcon: pending.avatarIcon,
-      avatarColor: pending.avatarColor,
       bio: pending.bio,
     };
   }

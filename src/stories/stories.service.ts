@@ -48,6 +48,10 @@ import {
 } from './story-cursor';
 import {toBooleanFulltextQuery} from './story-search';
 import {StoryReportReason} from './enums/story-report-reason.enum';
+import {
+  ImageStorageService,
+  type UploadedImage,
+} from 'src/image-storage/image-storage.service';
 
 interface StoryFilters {
   tag?: string;
@@ -156,8 +160,69 @@ export class StoriesService {
     private readonly seriesService: SeriesService,
     private readonly mutesService: MutesService,
     private readonly settingsService: SettingsService,
+    @Optional() private readonly imageStorage?: ImageStorageService,
     @Optional() private readonly analyticsEvents?: AnalyticsEventsService
   ) {}
+
+  async replaceCoverImage(
+    storyId: string,
+    file: UploadedImage,
+    userId: string,
+    role: Role
+  ) {
+    if (!(await this.settingsService.allowsStoryCoverImage())) {
+      throw new ForbiddenException('Story cover image uploads are disabled');
+    }
+    await this._getStoryIfAuthorized(storyId, userId, role);
+    const storedStory = await this.storiesRepository
+      .createQueryBuilder('story')
+      .addSelect('story.coverImageFileId')
+      .where('story.id = :storyId', {storyId})
+      .getOneOrFail();
+    const uploaded = await this.imageStorage!.upload(file, `cover-${storyId}`);
+    const previousFileId = storedStory.coverImageFileId;
+    const previousUrl = storedStory.coverImageUrl;
+    try {
+      const saved = await this.update(
+        storyId,
+        {coverImageUrl: uploaded.url},
+        userId,
+        role
+      );
+      await this.storiesRepository.update(storyId, {
+        coverImageFileId: uploaded.fileId,
+      });
+      saved.coverImageFileId = uploaded.fileId;
+      if (previousFileId)
+        void this.imageStorage!.delete(previousFileId).catch(() => undefined);
+      return saved;
+    } catch (error) {
+      await this.imageStorage!.delete(uploaded.fileId).catch(() => undefined);
+      await this.storiesRepository
+        .update(storyId, {coverImageUrl: previousUrl})
+        .catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async removeCoverImage(storyId: string, userId: string, role: Role) {
+    await this._getStoryIfAuthorized(storyId, userId, role);
+    const story = await this.storiesRepository
+      .createQueryBuilder('story')
+      .addSelect('story.coverImageFileId')
+      .where('story.id = :storyId', {storyId})
+      .getOneOrFail();
+    const fileId = story.coverImageFileId;
+    const saved = await this.update(
+      storyId,
+      {coverImageUrl: null} as unknown as UpdateStoryDto,
+      userId,
+      role
+    );
+    await this.storiesRepository.update(storyId, {coverImageFileId: null});
+    if (fileId) void this.imageStorage!.delete(fileId).catch(() => undefined);
+    return saved;
+  }
 
   private async _getStoryIfAuthorized(
     storyId: string,

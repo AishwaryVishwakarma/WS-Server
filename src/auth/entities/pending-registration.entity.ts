@@ -4,8 +4,6 @@ import {
   Entity,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import {AvatarIcon} from 'src/users/enums/avatar-icon.enum';
-import {AvatarColor} from 'src/users/enums/avatar-color.enum';
 
 // A registration in progress: submitted name/email/password (plus whatever
 // optional profile fields RegisterUserDto allows), waiting on the OTP emailed
@@ -34,17 +32,7 @@ export class PendingRegistration {
   // — nothing here needs its own enforcement. `type: 'varchar'` is required
   // (not just length) — TypeORM infers a column type from the property's
   // reflected design:type, and a `string | null` union reflects as `Object`,
-  // which it can't map to a SQL type on its own (mirrors why User's own
-  // profileImageUrl/bio are typed as plain `string` despite being nullable).
-  @Column({type: 'varchar', length: 500, nullable: true})
-  profileImageUrl: string | null;
-
-  @Column({type: 'enum', enum: AvatarIcon, nullable: true})
-  avatarIcon: AvatarIcon | null;
-
-  @Column({type: 'enum', enum: AvatarColor, nullable: true})
-  avatarColor: AvatarColor | null;
-
+  // which it can't map to a SQL type on its own.
   @Column({type: 'varchar', length: 500, nullable: true})
   bio: string | null;
 

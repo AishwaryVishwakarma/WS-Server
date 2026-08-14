@@ -38,6 +38,18 @@ describe('User DTO validation', () => {
       expect(result).not.toHaveProperty('isBlocked');
     });
 
+    it.each(['profileImageUrl', 'avatarIcon', 'avatarColor'])(
+      'rejects retired profile customization field %s',
+      async (field) => {
+        await expect(
+          transform(RegisterUserDto, {
+            ...validRegistration,
+            [field]: 'retired-value',
+          })
+        ).rejects.toThrow(BadRequestException);
+      }
+    );
+
     it('rejects weak passwords', async () => {
       await expect(
         transform(RegisterUserDto, {...validRegistration, password: 'weak'})

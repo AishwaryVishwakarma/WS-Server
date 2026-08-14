@@ -11,6 +11,8 @@ import {
   UseGuards,
   Req,
   ParseUUIDPipe,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import {ApiCookieAuth} from '@nestjs/swagger';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
@@ -26,6 +28,11 @@ import {RolesGuard} from 'src/common/gaurds/roles.gaurd';
 import {Roles} from 'src/common/decorators/roles.decorators';
 import {Role} from '../enums/role';
 import {UsersService} from '../users.service';
+import {FileInterceptor} from '@nestjs/platform-express';
+import {
+  MAX_IMAGE_BYTES,
+  type UploadedImage,
+} from 'src/image-storage/image-storage.service';
 
 @ApiCookieAuth('session')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -97,6 +104,24 @@ export class AdminUsersController {
   ) {
     const user = await this.usersService.update(id, updateUserDto);
     return this._serialize(user as User);
+  }
+
+  @Post(':id/profile-image')
+  @UseInterceptors(
+    FileInterceptor('file', {limits: {fileSize: MAX_IMAGE_BYTES}})
+  )
+  async uploadProfileImage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: UploadedImage
+  ) {
+    const user = await this.usersService.replaceProfileImage(id, file);
+    return this._serialize(user);
+  }
+
+  @Delete(':id/profile-image')
+  async deleteProfileImage(@Param('id', ParseUUIDPipe) id: string) {
+    const user = await this.usersService.removeProfileImage(id);
+    return this._serialize(user);
   }
 
   @Patch(':id/restore')

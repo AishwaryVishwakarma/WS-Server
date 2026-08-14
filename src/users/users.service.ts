@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {RegisterUserDto} from './dto/register-user.dto';
 import {UpdateUserDto} from './dto/update-user.dto';
@@ -13,6 +14,7 @@ import {Series} from 'src/series/entities/series.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
@@ -24,8 +26,16 @@ import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import {syncReportCount} from 'src/utils/report-count';
 import {computeStreakUpdate} from './streak';
 import {SettingsService} from 'src/settings/settings.service';
-import {AvatarIcon} from './enums/avatar-icon.enum';
-import {AvatarColor} from './enums/avatar-color.enum';
+import {
+  ACHIEVEMENT_DEFINITIONS,
+  AchievementKey,
+  type AchievementProgress,
+  unlockedTier,
+} from './achievements';
+import {
+  ImageStorageService,
+  type UploadedImage,
+} from 'src/image-storage/image-storage.service';
 
 // Thresholds for the "Prolific"/"Fan Favorite"/"Conversation Starter"
 // badges. Prolific mirrors StoriesService.FREE_PUBLISH_LIMIT (10) — the
@@ -59,9 +69,53 @@ export class UsersService {
     private readonly bookmarksRepository: Repository<Bookmark>,
     @InjectRepository(Follow)
     private readonly followsRepository: Repository<Follow>,
+    @InjectRepository(ReadingProgress)
+    private readonly readingProgressRepository: Repository<ReadingProgress>,
     private readonly configService: ConfigService,
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
+    @Optional() private readonly imageStorage?: ImageStorageService
   ) {}
+
+  async replaceProfileImage(userId: string, file: UploadedImage) {
+    if (!(await this.settingsService.allowsProfileImageUpload())) {
+      throw new ForbiddenException('Profile image uploads are disabled');
+    }
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.profileImageFileId')
+      .where('user.id = :userId', {userId})
+      .getOne();
+    if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
+
+    const uploaded = await this.imageStorage!.upload(file, `profile-${userId}`);
+    const previousFileId = user.profileImageFileId;
+    user.profileImageUrl = uploaded.url;
+    user.profileImageFileId = uploaded.fileId;
+    try {
+      const saved = await this.usersRepository.save(user);
+      if (previousFileId)
+        void this.imageStorage!.delete(previousFileId).catch(() => undefined);
+      return saved;
+    } catch (error) {
+      await this.imageStorage!.delete(uploaded.fileId).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async removeProfileImage(userId: string) {
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.profileImageFileId')
+      .where('user.id = :userId', {userId})
+      .getOne();
+    if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
+    const fileId = user.profileImageFileId;
+    user.profileImageUrl = null;
+    user.profileImageFileId = null;
+    const saved = await this.usersRepository.save(user);
+    if (fileId) void this.imageStorage!.delete(fileId).catch(() => undefined);
+    return saved;
+  }
 
   // Hash the password using bcrypt — public so callers that hash ahead of
   // creating the User row (e.g. RegistrationOtpService, which hashes at
@@ -74,38 +128,9 @@ export class UsersService {
     return bcrypt.hash(password, saltRounds);
   }
 
-  // A member can pick a themed icon/color; someone who never does gets a
-  // random one just once, at creation, rather than the UI deriving a
-  // "consistent-per-render" look from their name on every read.
-  private _randomAvatarIcon(): AvatarIcon {
-    const values = Object.values(AvatarIcon);
-    return values[Math.floor(Math.random() * values.length)];
-  }
-
-  private _randomAvatarColor(): AvatarColor {
-    const values = Object.values(AvatarColor);
-    return values[Math.floor(Math.random() * values.length)];
-  }
-
   // Update the user entity with the new data
   private async _applyUserUpdates(user: User, updateUserDto: UpdateUserDto) {
     const {password, ...rest} = updateUserDto;
-
-    // Silently drop rather than reject — a stale client with the old URL
-    // field shouldn't error, it just doesn't take effect. avatarIcon has no
-    // such gate: it's always allowed (curated, not an arbitrary URL). Only
-    // gates a genuinely *new* value — restoring the photo the account
-    // already has (e.g. the profile picker's "use my photo" tile, for a
-    // Google-sourced photo that itself bypassed this toggle) is always
-    // allowed, since nothing is actually being added.
-    if (
-      rest.profileImageUrl !== undefined &&
-      rest.profileImageUrl !== null &&
-      rest.profileImageUrl !== user.profileImageUrl &&
-      !(await this.settingsService.allowsProfileImageUpload())
-    ) {
-      delete rest.profileImageUrl;
-    }
 
     Object.assign(user, rest);
 
@@ -141,25 +166,8 @@ export class UsersService {
     dto: Omit<RegisterUserDto, 'password'>,
     hashedPassword: string
   ) {
-    const rest = {...dto};
-
-    if (
-      rest.profileImageUrl !== undefined &&
-      !(await this.settingsService.allowsProfileImageUpload())
-    ) {
-      delete rest.profileImageUrl;
-    }
-
-    // Only randomize when there's no photo to fall back on instead — a
-    // random pick would never actually render (Avatar's precedence puts a
-    // photo first), so there's no point spending one.
-    if (!rest.profileImageUrl) {
-      rest.avatarIcon = rest.avatarIcon ?? this._randomAvatarIcon();
-      rest.avatarColor = rest.avatarColor ?? this._randomAvatarColor();
-    }
-
     const user = this.usersRepository.create({
-      ...rest,
+      ...dto,
       password: hashedPassword,
       // Creation never grants the public verified-author status. Admins may
       // still verify an existing account through update(), and qualifying
@@ -231,15 +239,7 @@ export class UsersService {
       // Google's email verification proves account ownership, not the
       // platform's public verified-author status.
       isVerified: false,
-      // Only randomize when there's no Google photo to fall back on — a
-      // random pick would never actually render otherwise (Avatar's
-      // precedence puts a photo first).
-      ...(profile.picture
-        ? {profileImageUrl: profile.picture}
-        : {
-            avatarIcon: this._randomAvatarIcon(),
-            avatarColor: this._randomAvatarColor(),
-          }),
+      ...(profile.picture ? {profileImageUrl: profile.picture} : {}),
     });
 
     try {
@@ -415,6 +415,64 @@ export class UsersService {
     if (longestStreak >= MONTH_STREAK_DAYS) badges.push(Badge.MonthStreak);
 
     return badges;
+  }
+
+  async computeAchievements(userId: string): Promise<AchievementProgress[]> {
+    const user = await this.findOne(userId);
+    const [storyStats, seriesCount, completedStories] = await Promise.all([
+      this.storiesRepository
+        .createQueryBuilder('story')
+        .select('COUNT(*)', 'approvedCount')
+        .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
+        .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
+        .where('story.author = :authorId', {authorId: userId})
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getRawOne<{
+          approvedCount: string;
+          totalLikes: string;
+          totalComments: string;
+        }>(),
+      this.seriesRepository
+        .createQueryBuilder('series')
+        .innerJoin('series.stories', 'story')
+        .where('series.author = :authorId', {authorId: userId})
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getCount(),
+      this.readingProgressRepository
+        .createQueryBuilder('progress')
+        .innerJoin('progress.story', 'story')
+        .where('progress.user = :userId', {userId})
+        .andWhere('progress.percent = :completePercent', {
+          completePercent: 100,
+        })
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getCount(),
+    ]);
+
+    const progressByKey: Record<AchievementKey, number> = {
+      [AchievementKey.Storyteller]: Number(storyStats?.approvedCount) || 0,
+      [AchievementKey.CrowdFavorite]: Number(storyStats?.totalLikes) || 0,
+      [AchievementKey.CampfireHost]: Number(storyStats?.totalComments) || 0,
+      [AchievementKey.SerialStoryteller]: seriesCount,
+      [AchievementKey.ReadingRitual]: user.longestStreak,
+      [AchievementKey.NightExplorer]: completedStories,
+    };
+
+    return ACHIEVEMENT_DEFINITIONS.map((definition) => {
+      const progress = progressByKey[definition.key];
+      return {
+        ...definition,
+        progress,
+        highestUnlockedTier: unlockedTier(progress, definition.thresholds),
+      };
+    });
+  }
+
+  async computeAchievementBadges(userId: string) {
+    const achievements = await this.computeAchievements(userId);
+    return achievements.flatMap(({key, highestUnlockedTier}) =>
+      highestUnlockedTier === 0 ? [] : [{key, tier: highestUnlockedTier}]
+    );
   }
 
   // Aggregate snapshot for the author's own dashboard (GET /users/me/stats).

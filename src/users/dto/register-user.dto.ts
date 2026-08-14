@@ -1,17 +1,13 @@
 import {
   IsEmail,
   IsEmpty,
-  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsStrongPassword,
-  IsUrl,
   MaxLength,
 } from 'class-validator';
 import {IsClean} from 'src/common/moderation/is-clean.decorator';
-import {AvatarIcon} from '../enums/avatar-icon.enum';
-import {AvatarColor} from '../enums/avatar-color.enum';
 
 // Self-service DTO: excludes privileged fields (role, isVerified, isBlocked)
 export class RegisterUserDto {
@@ -29,24 +25,6 @@ export class RegisterUserDto {
   password: string;
 
   @IsOptional()
-  @IsUrl({
-    max_allowed_length: 500,
-  })
-  profileImageUrl?: string | null;
-
-  // Always available, unlike profileImageUrl — see SiteSettings.
-  @IsOptional()
-  @IsEnum(AvatarIcon)
-  avatarIcon?: AvatarIcon | null;
-
-  // An explicit background-color override — null clears back to the
-  // frontend's name-based auto color. Same always-allowed treatment as
-  // avatarIcon.
-  @IsOptional()
-  @IsEnum(AvatarColor)
-  avatarColor?: AvatarColor | null;
-
-  @IsOptional()
   @IsString()
   @MaxLength(500)
   @IsClean()
@@ -56,4 +34,16 @@ export class RegisterUserDto {
   // input trip @IsEmpty and get a 400 before an account is created.
   @IsEmpty()
   website?: string;
+
+  // Images are managed exclusively through the upload endpoints. Keep these
+  // retired customization fields as validation-only guards so clients cannot
+  // silently submit stale/raw avatar data through registration or profile DTOs.
+  @IsEmpty()
+  profileImageUrl?: never;
+
+  @IsEmpty()
+  avatarIcon?: never;
+
+  @IsEmpty()
+  avatarColor?: never;
 }

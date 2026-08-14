@@ -15,15 +15,15 @@ import {Story} from 'src/stories/entities/story.entity';
 import {Series} from 'src/series/entities/series.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
-import {AvatarIcon} from './enums/avatar-icon.enum';
-import {AvatarColor} from './enums/avatar-color.enum';
 import {ContentWarning} from 'src/stories/enums/content-warning.enum';
 import type {UpdateUserDto} from './dto/update-user.dto';
 import type {CreateUserDto} from './dto/create-user.dto';
 import {UsersService} from './users.service';
 import {SettingsService} from 'src/settings/settings.service';
+import {AchievementKey} from './achievements';
 
 const duplicateEntryError = () => {
   const error = new QueryFailedError('INSERT', [], new Error('dup'));
@@ -64,7 +64,13 @@ describe('UsersService', () => {
     getRawOne: jest.Mock;
   };
   let storiesRepository: {createQueryBuilder: jest.Mock};
-  let seriesRepository: {exists: jest.Mock};
+  let seriesQueryBuilder: {
+    innerJoin: jest.Mock;
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    getCount: jest.Mock;
+  };
+  let seriesRepository: {exists: jest.Mock; createQueryBuilder: jest.Mock};
   let bookmarksQueryBuilder: {
     innerJoin: jest.Mock;
     where: jest.Mock;
@@ -73,6 +79,13 @@ describe('UsersService', () => {
   };
   let bookmarksRepository: {createQueryBuilder: jest.Mock};
   let followsRepository: {countBy: jest.Mock};
+  let readingProgressQueryBuilder: {
+    innerJoin: jest.Mock;
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    getCount: jest.Mock;
+  };
+  let readingProgressRepository: {createQueryBuilder: jest.Mock};
   let settingsService: {allowsProfileImageUpload: jest.Mock};
 
   beforeEach(async () => {
@@ -113,7 +126,16 @@ describe('UsersService', () => {
     storiesRepository = {
       createQueryBuilder: jest.fn(() => storiesQueryBuilder),
     };
-    seriesRepository = {exists: jest.fn().mockResolvedValue(false)};
+    seriesQueryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+    };
+    seriesRepository = {
+      exists: jest.fn().mockResolvedValue(false),
+      createQueryBuilder: jest.fn(() => seriesQueryBuilder),
+    };
     bookmarksQueryBuilder = {
       innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
@@ -124,8 +146,15 @@ describe('UsersService', () => {
       createQueryBuilder: jest.fn(() => bookmarksQueryBuilder),
     };
     followsRepository = {countBy: jest.fn().mockResolvedValue(0)};
-    // Defaults to true (allowed) so every pre-existing test that sets
-    // profileImageUrl keeps asserting today's behavior unchanged.
+    readingProgressQueryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+    };
+    readingProgressRepository = {
+      createQueryBuilder: jest.fn(() => readingProgressQueryBuilder),
+    };
     settingsService = {
       allowsProfileImageUpload: jest.fn().mockResolvedValue(true),
     };
@@ -139,6 +168,10 @@ describe('UsersService', () => {
         {provide: getRepositoryToken(Series), useValue: seriesRepository},
         {provide: getRepositoryToken(Bookmark), useValue: bookmarksRepository},
         {provide: getRepositoryToken(Follow), useValue: followsRepository},
+        {
+          provide: getRepositoryToken(ReadingProgress),
+          useValue: readingProgressRepository,
+        },
         {
           provide: ConfigService,
           // Low salt rounds to keep hashing fast in tests
@@ -206,18 +239,7 @@ describe('UsersService', () => {
       expect(user.id).toBe('user-1');
     });
 
-    it('does not assign a random avatarIcon/avatarColor when a Google photo is present', async () => {
-      repository.findOne.mockResolvedValue(null);
-
-      const user = await service.findOrCreateGoogleUser(profile);
-
-      // A random pick would never render (the photo wins precedence), so
-      // it's skipped entirely rather than wasted.
-      expect(user.avatarIcon).toBeUndefined();
-      expect(user.avatarColor).toBeUndefined();
-    });
-
-    it('assigns a random avatarIcon/avatarColor when the Google profile has no photo', async () => {
+    it('does not set a profile image when the Google profile has no photo', async () => {
       repository.findOne.mockResolvedValue(null);
 
       const user = await service.findOrCreateGoogleUser({
@@ -225,8 +247,7 @@ describe('UsersService', () => {
         picture: undefined,
       });
 
-      expect(Object.values(AvatarIcon)).toContain(user.avatarIcon);
-      expect(Object.values(AvatarColor)).toContain(user.avatarColor);
+      expect(user.profileImageUrl).toBeUndefined();
     });
 
     it('refuses re-registration when an admin-removed account still holds the identity', async () => {
@@ -444,83 +465,6 @@ describe('UsersService', () => {
         })
       ).rejects.toThrow(ConflictException);
     });
-
-    it('drops profileImageUrl when the site setting disallows it', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-
-      const user = (await service.create({
-        name: 'Test',
-        email: 'a@b.com',
-        password: 'S3cret!Password',
-        profileImageUrl: 'https://example.com/me.png',
-      })) as User;
-
-      expect(user.profileImageUrl).toBeUndefined();
-    });
-
-    it('keeps profileImageUrl when the site setting allows it', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(true);
-
-      const user = (await service.create({
-        name: 'Test',
-        email: 'a@b.com',
-        password: 'S3cret!Password',
-        profileImageUrl: 'https://example.com/me.png',
-      })) as User;
-
-      expect(user.profileImageUrl).toBe('https://example.com/me.png');
-    });
-
-    it('always keeps avatarIcon regardless of the profile-image setting', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-
-      const user = (await service.create({
-        name: 'Test',
-        email: 'a@b.com',
-        password: 'S3cret!Password',
-        avatarIcon: 'ghost' as never,
-      })) as User;
-
-      expect(user.avatarIcon).toBe('ghost');
-    });
-
-    it('always keeps avatarColor regardless of the profile-image setting', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-
-      const user = (await service.create({
-        name: 'Test',
-        email: 'a@b.com',
-        password: 'S3cret!Password',
-        avatarColor: 'blood' as never,
-      })) as User;
-
-      expect(user.avatarColor).toBe('blood');
-    });
-
-    it('assigns a random avatarIcon/avatarColor when neither is given', async () => {
-      const user = (await service.create({
-        name: 'Test',
-        email: 'a@b.com',
-        password: 'S3cret!Password',
-      })) as User;
-
-      expect(Object.values(AvatarIcon)).toContain(user.avatarIcon);
-      expect(Object.values(AvatarColor)).toContain(user.avatarColor);
-    });
-
-    it('does not assign a random avatarIcon/avatarColor when a profile image is given', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(true);
-
-      const user = (await service.create({
-        name: 'Test',
-        email: 'a@b.com',
-        password: 'S3cret!Password',
-        profileImageUrl: 'https://example.com/me.png',
-      })) as User;
-
-      expect(user.avatarIcon).toBeUndefined();
-      expect(user.avatarColor).toBeUndefined();
-    });
   });
 
   describe('createFromVerifiedRegistration', () => {
@@ -542,21 +486,6 @@ describe('UsersService', () => {
       expect(user.isVerified).toBe(false);
     });
 
-    it('applies the same profile-image-setting gate as create()', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-
-      const user = (await service.createFromVerifiedRegistration(
-        {
-          name: 'Test',
-          email: 'a@b.com',
-          profileImageUrl: 'https://example.com/me.png',
-        },
-        'already-hashed'
-      )) as User;
-
-      expect(user.profileImageUrl).toBeUndefined();
-    });
-
     it('maps a duplicate email to ConflictException', async () => {
       repository.save.mockRejectedValue(duplicateEntryError());
 
@@ -566,16 +495,6 @@ describe('UsersService', () => {
           'already-hashed'
         )
       ).rejects.toThrow(ConflictException);
-    });
-
-    it('assigns a random avatarIcon/avatarColor when neither is given', async () => {
-      const user = (await service.createFromVerifiedRegistration(
-        {name: 'Test', email: 'a@b.com'},
-        'already-hashed'
-      )) as User;
-
-      expect(Object.values(AvatarIcon)).toContain(user.avatarIcon);
-      expect(Object.values(AvatarColor)).toContain(user.avatarColor);
     });
   });
 
@@ -634,96 +553,6 @@ describe('UsersService', () => {
       const user = (await service.update('user-1', {name: 'New'})) as User;
 
       expect(user.password).toBe('old-hash');
-    });
-
-    it('drops a profileImageUrl update when the site setting disallows it', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-      repository.findOneByOrFail.mockResolvedValue({
-        id: 'user-1',
-        name: 'Old',
-        profileImageUrl: 'https://example.com/old.png',
-      });
-
-      const user = (await service.update('user-1', {
-        profileImageUrl: 'https://example.com/new.png',
-      })) as User;
-
-      expect(user.profileImageUrl).toBe('https://example.com/old.png');
-    });
-
-    it('allows restoring the same profileImageUrl even when the site setting disallows new ones', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-      repository.findOneByOrFail.mockResolvedValue({
-        id: 'user-1',
-        name: 'Old',
-        profileImageUrl: 'https://example.com/google.png',
-      });
-
-      const user = (await service.update('user-1', {
-        profileImageUrl: 'https://example.com/google.png',
-      })) as User;
-
-      expect(user.profileImageUrl).toBe('https://example.com/google.png');
-    });
-
-    it('allows clearing profileImageUrl when the site setting disallows new ones', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-      repository.findOneByOrFail.mockResolvedValue({
-        id: 'user-1',
-        name: 'Old',
-        profileImageUrl: 'https://example.com/google.png',
-      });
-
-      const user = (await service.update('user-1', {
-        profileImageUrl: null,
-      })) as User;
-
-      expect(user.profileImageUrl).toBeNull();
-    });
-
-    it('applies a profileImageUrl update when the site setting allows it', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(true);
-      repository.findOneByOrFail.mockResolvedValue({
-        id: 'user-1',
-        name: 'Old',
-        profileImageUrl: 'https://example.com/old.png',
-      });
-
-      const user = (await service.update('user-1', {
-        profileImageUrl: 'https://example.com/new.png',
-      })) as User;
-
-      expect(user.profileImageUrl).toBe('https://example.com/new.png');
-    });
-
-    it('always applies an avatarIcon update regardless of the profile-image setting', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-      repository.findOneByOrFail.mockResolvedValue({
-        id: 'user-1',
-        name: 'Old',
-        avatarIcon: null,
-      });
-
-      const user = (await service.update('user-1', {
-        avatarIcon: 'skull' as never,
-      })) as User;
-
-      expect(user.avatarIcon).toBe('skull');
-    });
-
-    it('always applies an avatarColor update regardless of the profile-image setting', async () => {
-      settingsService.allowsProfileImageUpload.mockResolvedValue(false);
-      repository.findOneByOrFail.mockResolvedValue({
-        id: 'user-1',
-        name: 'Old',
-        avatarColor: null,
-      });
-
-      const user = (await service.update('user-1', {
-        avatarColor: 'ember' as never,
-      })) as User;
-
-      expect(user.avatarColor).toBe('ember');
     });
 
     it('locks verification when an admin explicitly sets isVerified', async () => {
@@ -930,6 +759,66 @@ describe('UsersService', () => {
       );
       expect(await service.computeBadges('user-1', 30)).toContain(
         Badge.MonthStreak
+      );
+    });
+  });
+
+  describe('computeAchievements', () => {
+    beforeEach(() => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        longestStreak: 30,
+      });
+    });
+
+    it('returns all six tracks with three thresholds each', async () => {
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(achievements).toHaveLength(6);
+      expect(achievements.every((item) => item.thresholds.length === 3)).toBe(
+        true
+      );
+    });
+
+    it('tiers current approved-story metrics at their boundaries', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '5',
+        totalLikes: '25',
+        totalComments: '100',
+      });
+
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(
+        achievements.find(({key}) => key === AchievementKey.Storyteller)
+      ).toMatchObject({progress: 5, highestUnlockedTier: 2});
+      expect(
+        achievements.find(({key}) => key === AchievementKey.CrowdFavorite)
+      ).toMatchObject({progress: 25, highestUnlockedTier: 2});
+      expect(
+        achievements.find(({key}) => key === AchievementKey.CampfireHost)
+      ).toMatchObject({progress: 100, highestUnlockedTier: 3});
+    });
+
+    it('counts only series returned by the approved-story join and completed reads', async () => {
+      seriesQueryBuilder.getCount.mockResolvedValue(3);
+      readingProgressQueryBuilder.getCount.mockResolvedValue(25);
+
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(
+        achievements.find(({key}) => key === AchievementKey.SerialStoryteller)
+      ).toMatchObject({progress: 3, highestUnlockedTier: 2});
+      expect(
+        achievements.find(({key}) => key === AchievementKey.NightExplorer)
+      ).toMatchObject({progress: 25, highestUnlockedTier: 2});
+      expect(readingProgressQueryBuilder.innerJoin).toHaveBeenCalledWith(
+        'progress.story',
+        'story'
+      );
+      expect(readingProgressQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'story.status = :status',
+        {status: 'approved'}
       );
     });
   });
