@@ -14,6 +14,7 @@ import {AddDigestEmailGloballyEnabled1786515981348} from './1786515981348-AddDig
 import {AddStoryAuthorFeedIndex1786530000000} from './1786530000000-AddStoryAuthorFeedIndex';
 import {AddAnalyticsEvents1786540000000} from './1786540000000-AddAnalyticsEvents';
 import {DisableDigestEmailByDefault1786550000000} from './1786550000000-DisableDigestEmailByDefault';
+import {AddEmailSuppressionState1786600000000} from './1786600000000-AddEmailSuppressionState';
 
 export const migrations = [
   Baseline1786175459406,
@@ -21,4 +22,5 @@ export const migrations = [
   AddStoryAuthorFeedIndex1786530000000,
   AddAnalyticsEvents1786540000000,
   DisableDigestEmailByDefault1786550000000,
+  AddEmailSuppressionState1786600000000,
 ];

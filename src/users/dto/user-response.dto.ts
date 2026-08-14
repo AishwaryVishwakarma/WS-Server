@@ -89,6 +89,8 @@ export class UserResponseDto extends UserPrivateResponseDto {
   @Expose() deletionKind?: 'self' | 'admin';
   /** Member reports; drives the ?reported=true queue ordering. */
   @Expose() reportCount: number;
+  @Expose() emailSuppressedAt?: Date;
+  @Expose() emailSuppressionReason?: string;
 
   /** The individual reports against this user — see UserReportResponseDto. */
   @Expose()

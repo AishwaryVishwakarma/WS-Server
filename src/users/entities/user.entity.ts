@@ -149,6 +149,15 @@ export class User {
   @Column({type: 'timestamp', nullable: true})
   lastDigestSentAt: Date | null;
 
+  // Set by authenticated provider webhooks after a permanent bounce, spam
+  // complaint, or provider suppression. Digest delivery is disabled at the
+  // same time; admins can see why an address stopped receiving mail.
+  @Column({type: 'timestamp', nullable: true})
+  emailSuppressedAt: Date | null;
+
+  @Column({type: 'varchar', length: 20, nullable: true})
+  emailSuppressionReason: string | null;
+
   @OneToMany(() => Story, (story) => story.author)
   stories: Story[];
 
