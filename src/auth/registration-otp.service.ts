@@ -43,6 +43,16 @@ export class RegistrationOtpService {
   }
 
   private _generateCode(): string {
+    // Browser tests must complete the real verification UI without reading
+    // production mail. This override is deliberately impossible outside the
+    // test environment, even if the variable is accidentally configured.
+    if (
+      process.env.NODE_ENV === 'test' &&
+      /^\d{6}$/.test(process.env.REGISTRATION_OTP_TEST_CODE ?? '')
+    ) {
+      return process.env.REGISTRATION_OTP_TEST_CODE!;
+    }
+
     return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
   }
 

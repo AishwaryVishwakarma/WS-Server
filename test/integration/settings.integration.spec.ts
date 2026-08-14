@@ -63,6 +63,7 @@ describe('Settings (integration)', () => {
       expect(response.body.allowProfileImageUpload).toBe(false);
       expect(response.body.allowStoryCoverImage).toBe(false);
       expect(response.body.digestEmailGloballyEnabled).toBe(false);
+      expect(response.body.notificationEmailGloballyEnabled).toBe(false);
     });
   });
 
@@ -72,6 +73,7 @@ describe('Settings (integration)', () => {
 
       expect(response.body.requireStoryApproval).toBe(true);
       expect(response.body.digestEmailGloballyEnabled).toBe(false);
+      expect(response.body.notificationEmailGloballyEnabled).toBe(false);
     });
 
     it('reflects the current value and omits admin-only fields', async () => {
@@ -137,6 +139,22 @@ describe('Settings (integration)', () => {
 
       const refetched = await admin.get('/admin/settings').expect(200);
       expect(refetched.body.digestEmailGloballyEnabled).toBe(true);
+    });
+
+    it('persists the notificationEmailGloballyEnabled toggle', async () => {
+      const admin = await seedAdmin(testApp);
+      const token = await getCsrfToken(admin);
+
+      const response = await admin
+        .patch('/admin/settings')
+        .set('x-csrf-token', token)
+        .send({notificationEmailGloballyEnabled: true});
+
+      expect(response.status).toBe(200);
+      expect(response.body.notificationEmailGloballyEnabled).toBe(true);
+
+      const refetched = await admin.get('/admin/settings').expect(200);
+      expect(refetched.body.notificationEmailGloballyEnabled).toBe(true);
     });
   });
 

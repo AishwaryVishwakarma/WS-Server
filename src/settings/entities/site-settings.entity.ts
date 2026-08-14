@@ -26,6 +26,11 @@ export class SiteSettings {
   @Column({type: 'boolean', default: false})
   digestEmailGloballyEnabled: boolean;
 
+  // Transactional activity emails (reply/comment/follow/like) are opt-in at
+  // both levels: an admin enables the channel, then each member chooses types.
+  @Column({type: 'boolean', default: false})
+  notificationEmailGloballyEnabled: boolean;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }

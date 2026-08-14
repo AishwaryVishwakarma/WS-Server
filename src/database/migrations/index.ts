@@ -17,6 +17,7 @@ import {DisableDigestEmailByDefault1786550000000} from './1786550000000-DisableD
 import {AddEmailSuppressionState1786600000000} from './1786600000000-AddEmailSuppressionState';
 import {AddNotificationPreferences1786610000000} from './1786610000000-AddNotificationPreferences';
 import {AddPendingStoryAgeIndex1786620000000} from './1786620000000-AddPendingStoryAgeIndex';
+import {AddNotificationEmailGlobalToggle1786630000000} from './1786630000000-AddNotificationEmailGlobalToggle';
 
 export const migrations = [
   Baseline1786175459406,
@@ -27,4 +28,5 @@ export const migrations = [
   AddEmailSuppressionState1786600000000,
   AddNotificationPreferences1786610000000,
   AddPendingStoryAgeIndex1786620000000,
+  AddNotificationEmailGlobalToggle1786630000000,
 ];

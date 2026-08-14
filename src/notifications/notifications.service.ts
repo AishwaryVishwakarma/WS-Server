@@ -10,6 +10,7 @@ import {User} from 'src/users/entities/user.entity';
 import {MailService} from 'src/mail/mail.service';
 import {ConfigService} from '@nestjs/config';
 import {escapeHtml, renderEmailHtml} from 'src/mail/email-template';
+import {SettingsService} from 'src/settings/settings.service';
 
 interface NotificationInput {
   type: NotificationType;
@@ -80,7 +81,8 @@ export class NotificationsService {
     private readonly usersRepository: Repository<User>,
     private readonly stream: NotificationsStream,
     private readonly mailService: MailService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly settingsService: SettingsService
   ) {}
 
   async createNotification(input: NotificationInput) {
@@ -105,7 +107,10 @@ export class NotificationsService {
       await this.stream.publish(input.recipientId, input.storyId ?? undefined);
     }
 
-    if (recipient.notificationEmailTypes.includes(input.type)) {
+    if (
+      recipient.notificationEmailTypes.includes(input.type) &&
+      (await this.settingsService.isNotificationEmailGloballyEnabled())
+    ) {
       await this._queueEmail(recipient, input);
     }
     return saved;
