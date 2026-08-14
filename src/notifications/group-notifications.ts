@@ -1,7 +1,5 @@
-import type {
-  Notification,
-  NotificationType,
-} from './entities/notification.entity';
+import type {Notification} from './entities/notification.entity';
+import type {NotificationType} from './notification.types';
 
 export interface GroupedNotification {
   id: string;

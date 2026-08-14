@@ -1,5 +1,5 @@
 import {Expose} from 'class-transformer';
-import type {NotificationType} from '../entities/notification.entity';
+import type {NotificationType} from '../notification.types';
 
 /**
  * [private] — a recipient's own notification, possibly a bundle of several

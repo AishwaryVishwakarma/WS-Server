@@ -5,6 +5,7 @@ import type {AvatarColor} from '../enums/avatar-color.enum';
 import type {ReportReason} from '../enums/report-reason.enum';
 import type {Badge} from '../enums/badge.enum';
 import type {ContentWarning} from 'src/stories/enums/content-warning.enum';
+import type {NotificationType} from 'src/notifications/notification.types';
 
 /**
  * [public]
@@ -52,6 +53,11 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
   @Expose() digestEmailEnabled: boolean;
   /** Whether this account can use password sign-in/change-password. */
   @Expose() hasPassword: boolean;
+  @Expose() notificationInAppTypes: NotificationType[];
+  @Expose() notificationEmailTypes: NotificationType[];
+  @Expose() notificationQuietStart?: string | null;
+  @Expose() notificationQuietEnd?: string | null;
+  @Expose() notificationTimezoneOffset: number;
 
   constructor(partial: Partial<UserPrivateResponseDto>) {
     super(partial);
