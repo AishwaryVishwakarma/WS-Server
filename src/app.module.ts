@@ -56,6 +56,7 @@ import {JobsModule} from './jobs/jobs.module';
 import {AdminAnalyticsModule} from './admin-analytics/admin-analytics.module';
 import {AnalyticsEvent} from './admin-analytics/entities/analytics-event.entity';
 import {ImageStorageModule} from './image-storage/image-storage.module';
+import {normalizeBooleanEnv} from './common/config/normalize-boolean-env';
 
 // A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
@@ -192,13 +193,10 @@ const DEFAULT_DB_POOL_SIZE = 10;
           );
         }
 
-        if (
-          config.IMAGE_PURGE_ENABLED !== undefined &&
-          (typeof config.IMAGE_PURGE_ENABLED !== 'string' ||
-            !['true', 'false'].includes(config.IMAGE_PURGE_ENABLED))
-        ) {
-          throw new Error('IMAGE_PURGE_ENABLED must be true or false');
-        }
+        config.IMAGE_PURGE_ENABLED = normalizeBooleanEnv(
+          'IMAGE_PURGE_ENABLED',
+          config.IMAGE_PURGE_ENABLED
+        );
 
         // Fail fast on a typo'd NODE_ENV — it gates cookie security, so a
         // bad value silently weakens production.
