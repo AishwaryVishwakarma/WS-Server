@@ -7,6 +7,8 @@ import {
   DIGEST_QUEUE,
   EMAIL_DEAD_LETTER_QUEUE,
   EMAIL_QUEUE,
+  IMAGE_MAINTENANCE_DEAD_LETTER_QUEUE,
+  IMAGE_MAINTENANCE_QUEUE,
 } from './queue.constants';
 import {DeadLetterService} from './dead-letter.service';
 
@@ -37,7 +39,9 @@ function redisConnection(redisUrl: string) {
       {name: EMAIL_QUEUE},
       {name: EMAIL_DEAD_LETTER_QUEUE},
       {name: DIGEST_QUEUE},
-      {name: DIGEST_DEAD_LETTER_QUEUE}
+      {name: DIGEST_DEAD_LETTER_QUEUE},
+      {name: IMAGE_MAINTENANCE_QUEUE},
+      {name: IMAGE_MAINTENANCE_DEAD_LETTER_QUEUE}
     ),
   ],
   providers: [DeadLetterService],

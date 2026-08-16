@@ -33,6 +33,7 @@ export const DEFAULT_USER = {
   name: 'Test User',
   email: 'user@test.com',
   password: 'S3cret!Password',
+  acceptedTerms: true,
 };
 
 export const ADMIN_USER = {

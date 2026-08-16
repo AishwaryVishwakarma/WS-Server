@@ -39,9 +39,9 @@ export class ReadingProgressService {
     percent: number,
     role?: Role
   ): Promise<void> {
-    await this.storiesService.findOneVisible(storyId, userId, role);
-
     if (percent < MIN_PERCENT) return;
+
+    await this.storiesService.assertVisible(storyId, userId, role);
 
     await this.readingProgressRepository.upsert(
       {

@@ -34,6 +34,7 @@ export default new DataSource({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   poolSize: parseInt(process.env.DB_POOL_SIZE || '10', 10),
+  maxQueryExecutionTime: parseInt(process.env.DB_SLOW_QUERY_MS || '500', 10),
   entities: [
     User,
     UserReport,

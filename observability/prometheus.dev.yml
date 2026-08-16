@@ -1,0 +1,18 @@
+# Local development only. This credential matches the documented default in
+# .env.example; never reuse it for a deployed environment.
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: ws-server
+    metrics_path: /metrics
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials: dev-metrics-token-change-me
+    static_configs:
+      - targets:
+          - host.docker.internal:8000
+        labels:
+          environment: development

@@ -10,6 +10,10 @@ export interface DigestJobData {
   userId: string;
 }
 
+export interface ImagePurgeJobData {
+  requestedBy: string;
+}
+
 export interface DeadLetterJobData<T = unknown> {
   sourceJobId: string | undefined;
   sourceJobName: string;
