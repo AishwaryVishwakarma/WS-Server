@@ -57,6 +57,7 @@ import {AdminAnalyticsModule} from './admin-analytics/admin-analytics.module';
 import {AnalyticsEvent} from './admin-analytics/entities/analytics-event.entity';
 import {ImageStorageModule} from './image-storage/image-storage.module';
 import {normalizeBooleanEnv} from './common/config/normalize-boolean-env';
+import {normalizePositiveIntegerEnv} from './common/config/normalize-positive-integer-env';
 
 // A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
@@ -131,19 +132,15 @@ const DEFAULT_DB_POOL_SIZE = 10;
         // when unset). ws_db_pool_connections{state} in /metrics tracks live
         // usage; raise this if that gauge sits near the configured max
         // under load.
-        if (config.DB_POOL_SIZE !== undefined) {
-          const poolSize = Number(config.DB_POOL_SIZE);
-          if (!Number.isInteger(poolSize) || poolSize < 1) {
-            throw new Error('DB_POOL_SIZE must be a positive integer');
-          }
-        }
+        config.DB_POOL_SIZE = normalizePositiveIntegerEnv(
+          'DB_POOL_SIZE',
+          config.DB_POOL_SIZE
+        );
 
-        if (config.DB_SLOW_QUERY_MS !== undefined) {
-          const threshold = Number(config.DB_SLOW_QUERY_MS);
-          if (!Number.isInteger(threshold) || threshold < 1) {
-            throw new Error('DB_SLOW_QUERY_MS must be a positive integer');
-          }
-        }
+        config.DB_SLOW_QUERY_MS = normalizePositiveIntegerEnv(
+          'DB_SLOW_QUERY_MS',
+          config.DB_SLOW_QUERY_MS
+        );
 
         // /metrics is bearer-token protected; in production the token is
         // mandatory (fail-closed guard denies scrapes without it). Optional
@@ -172,14 +169,10 @@ const DEFAULT_DB_POOL_SIZE = 10;
           }
         }
 
-        if (config.APPWRITE_IMAGE_CAPACITY_BYTES !== undefined) {
-          const capacity = Number(config.APPWRITE_IMAGE_CAPACITY_BYTES);
-          if (!Number.isSafeInteger(capacity) || capacity < 1) {
-            throw new Error(
-              'APPWRITE_IMAGE_CAPACITY_BYTES must be a positive integer'
-            );
-          }
-        }
+        config.APPWRITE_IMAGE_CAPACITY_BYTES = normalizePositiveIntegerEnv(
+          'APPWRITE_IMAGE_CAPACITY_BYTES',
+          config.APPWRITE_IMAGE_CAPACITY_BYTES
+        );
 
         if (
           config.APPWRITE_IMAGE_NAMESPACE !== undefined &&
