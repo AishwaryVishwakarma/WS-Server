@@ -44,6 +44,7 @@ describe('StoriesService', () => {
     update: jest.Mock;
     delete: jest.Mock;
     createQueryBuilder: jest.Mock;
+    query: jest.Mock;
     manager: {transaction: jest.Mock};
   };
   let reportsRepository: {
@@ -106,6 +107,7 @@ describe('StoriesService', () => {
       update: jest.fn(),
       delete: jest.fn(),
       createQueryBuilder: jest.fn(() => randomQueryBuilder),
+      query: jest.fn().mockResolvedValue([]),
       // bulkUpdateStatus runs inside a transaction; withRepository() just
       // hands back this same mock, so its find/save calls behave identically
       // whether or not a "real" transaction is in play.
@@ -1373,6 +1375,89 @@ describe('StoriesService', () => {
           }),
         })
       );
+    });
+  });
+
+  describe('getAuthorStoryBreakdown', () => {
+    it("queries only the author's own approved stories, most-viewed first", async () => {
+      const rows = [
+        {
+          id: 'story-1',
+          title: 'A',
+          viewCount: 10,
+          likeCount: 2,
+          commentCount: 1,
+          createdAt: new Date(),
+        },
+      ];
+      repository.find.mockResolvedValue(rows);
+
+      const result = await service.getAuthorStoryBreakdown('author-1');
+
+      expect(repository.find).toHaveBeenCalledWith({
+        where: {author: {id: 'author-1'}, status: StoryStatus.Approved},
+        select: {
+          id: true,
+          title: true,
+          viewCount: true,
+          likeCount: true,
+          commentCount: true,
+          createdAt: true,
+        },
+        order: {viewCount: 'DESC'},
+        take: 50,
+      });
+      expect(result).toBe(rows);
+    });
+  });
+
+  describe('getStoryDailyStats', () => {
+    it('404s when the story does not exist', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.getStoryDailyStats('story-1', 'author-1', 30)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(repository.query).not.toHaveBeenCalled();
+    });
+
+    it("404s rather than 403s when the requester isn't the story's author", async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        author: {id: 'someone-else'},
+      });
+
+      await expect(
+        service.getStoryDailyStats('story-1', 'author-1', 30)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(repository.query).not.toHaveBeenCalled();
+    });
+
+    it("returns the owner's day-bucketed views/likes/comments", async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        author: {id: 'author-1'},
+      });
+      repository.query.mockResolvedValue([
+        {date: '2026-08-01', views: '3', likes: '1', comments: '0'},
+        {date: '2026-08-02', views: '0', likes: '0', comments: '2'},
+      ]);
+
+      const result = await service.getStoryDailyStats(
+        'story-1',
+        'author-1',
+        30
+      );
+
+      expect(result).toEqual([
+        {date: '2026-08-01', views: 3, likes: 1, comments: 0},
+        {date: '2026-08-02', views: 0, likes: 0, comments: 2},
+      ]);
+      // Filtered to the one story, and the view event type is parameterized
+      // rather than string-concatenated into the SQL.
+      const [, params] = repository.query.mock.calls[0];
+      expect(params[0]).toBe('story-1');
+      expect(params[3]).toBe('story_viewed');
     });
   });
 });

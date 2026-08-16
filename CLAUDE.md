@@ -75,6 +75,14 @@ production safety checks there.
 - Denormalized counters such as likes, comments, views, and reports must be
   updated through their owning services. Report counts use
   `src/utils/report-count.ts` to avoid drift and preserve `updatedAt`.
+- An author's own `/users/me/stats/stories` (per-story lifetime totals) and
+  `/users/me/stories/:id/stats` (day-bucketed views/likes/comments trend, via
+  `StoriesService.getAuthorStoryBreakdown`/`.getStoryDailyStats`) reuse
+  existing timestamped rows — `analytics_event` (views) and `story_like`/
+  `comment`'s own `createdAt` (likes/comments) — rather than a new table, so
+  history only goes back as far as those rows already do. The per-story
+  endpoint is strictly self-scoped (author id must match the session, 404
+  otherwise, no admin bypass) — it is not the site-wide admin analytics view.
 - Public visibility is status-based. Author/admin access to non-approved work
   goes through the existing visibility service methods rather than ad hoc
   controller checks.

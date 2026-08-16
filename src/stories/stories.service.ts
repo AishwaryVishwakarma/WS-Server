@@ -1358,4 +1358,97 @@ export class StoriesService {
       throw new NotFoundException(`Story with ID ${id} not found`);
     }
   }
+
+  // Per-story lifetime totals for the author's own "Stats" tab — the
+  // existing denormalized counters, no new query complexity. Capped rather
+  // than paginated: a breakdown table this long would need pagination UI
+  // before a limit here matters.
+  async getAuthorStoryBreakdown(
+    authorId: string
+  ): Promise<
+    Pick<
+      Story,
+      'id' | 'title' | 'viewCount' | 'likeCount' | 'commentCount' | 'createdAt'
+    >[]
+  > {
+    return this.storiesRepository.find({
+      where: {author: {id: authorId}, status: StoryStatus.Approved},
+      select: {
+        id: true,
+        title: true,
+        viewCount: true,
+        likeCount: true,
+        commentCount: true,
+        createdAt: true,
+      },
+      order: {viewCount: 'DESC'},
+      take: 50,
+    });
+  }
+
+  // Day-bucketed views/likes/comments for one of the author's own stories,
+  // for the "Stats" tab's per-story trend chart. Mirrors
+  // AdminAnalyticsService.getOverview's zero-filled generate_series pattern,
+  // but scoped to one story: views come from `analytics_event` (recorded on
+  // every deduped public view, see recordView below), likes/comments come
+  // straight from `story_like`/`comment`'s own createdAt — no new table, so
+  // history only goes back as far as those rows already do. Ownership is
+  // 404'd rather than 403'd, matching `_assertStoryVisible`'s existing
+  // "don't leak existence" stance — this is a strictly-mine view, not a
+  // public/admin one, so there's no role bypass either.
+  async getStoryDailyStats(
+    storyId: string,
+    requesterId: string,
+    // Validated to 7/30/90 by StoryStatsQueryDto at the controller boundary.
+    days: number
+  ): Promise<{date: string; views: number; likes: number; comments: number}[]> {
+    const story = await this.storiesRepository.findOne({
+      where: {id: storyId},
+      select: {id: true, author: {id: true}},
+      relations: {author: true},
+    });
+    if (!story || story.author?.id !== requesterId) {
+      throw new NotFoundException(`Story with ID ${storyId} not found`);
+    }
+
+    const end = new Date();
+    const start = new Date(end.getTime() - (days - 1) * 86_400_000);
+
+    const rows = await this.storiesRepository.query<
+      {date: string; views: string; likes: string; comments: string}[]
+    >(
+      `WITH days AS (
+        SELECT generate_series($2::date, $3::date, interval '1 day')::date AS day
+      ), events AS (
+        SELECT "createdAt"::date AS day, COUNT(*)::int AS views, 0 AS likes, 0 AS comments
+          FROM analytics_event
+          WHERE type = $4 AND "storyId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3 + interval '1 day'
+          GROUP BY 1
+        UNION ALL
+        SELECT "createdAt"::date, 0, COUNT(*)::int, 0
+          FROM story_like
+          WHERE "storyId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3 + interval '1 day'
+          GROUP BY 1
+        UNION ALL
+        SELECT "createdAt"::date, 0, 0, COUNT(*)::int
+          FROM comment
+          WHERE "storyId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3 + interval '1 day'
+          GROUP BY 1
+      )
+      SELECT to_char(days.day, 'YYYY-MM-DD') AS date,
+        COALESCE(SUM(views), 0)::int AS views,
+        COALESCE(SUM(likes), 0)::int AS likes,
+        COALESCE(SUM(comments), 0)::int AS comments
+      FROM days LEFT JOIN events ON events.day = days.day
+      GROUP BY days.day ORDER BY days.day`,
+      [storyId, start, end, AnalyticsEventType.StoryViewed]
+    );
+
+    return rows.map((row) => ({
+      date: row.date,
+      views: Number(row.views),
+      likes: Number(row.likes),
+      comments: Number(row.comments),
+    }));
+  }
 }

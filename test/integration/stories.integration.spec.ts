@@ -1884,4 +1884,83 @@ describe('Stories (integration)', () => {
       expect(ids).not.toContain(mutedAuthorStory.id);
     });
   });
+
+  describe('author story stats', () => {
+    const likeStory = async (client: Agent, storyId: string) => {
+      const token = await getCsrfToken(client);
+      await client
+        .put(`/stories/${storyId}/like`)
+        .set('x-csrf-token', token)
+        .expect(204);
+    };
+
+    it("returns the author's own approved-story breakdown", async () => {
+      const {client, story} = await createStory();
+      await approveStory(story.id);
+
+      const reader = agent();
+      await registerUser(reader, {email: 'stats-reader@test.com'});
+      await reader.post(`/stories/${story.id}/view`).expect(200);
+      await likeStory(reader, story.id);
+      const readerToken = await getCsrfToken(reader);
+      await reader
+        .post('/comments')
+        .set('x-csrf-token', readerToken)
+        .send({content: 'Scary!', storyId: story.id})
+        .expect(201);
+
+      const response = await client.get('/users/me/stats/stories').expect(200);
+
+      expect(response.body).toHaveLength(1);
+      expect(response.body[0]).toMatchObject({
+        id: story.id,
+        title: story.title,
+        viewCount: 1,
+        likeCount: 1,
+        commentCount: 1,
+      });
+    });
+
+    it("excludes another author's stories", async () => {
+      const {client} = await createStory();
+      await createStory(
+        {...STORY_PAYLOAD, title: 'Someone else’s tale'},
+        'other-author@test.com'
+      );
+
+      const response = await client.get('/users/me/stats/stories').expect(200);
+
+      expect(response.body).toEqual([]);
+    });
+
+    it("day-buckets a story's views/likes/comments, zero-filled across the range", async () => {
+      const {client, story} = await createStory();
+      await approveStory(story.id);
+
+      const reader = agent();
+      await registerUser(reader, {email: 'stats-reader2@test.com'});
+      await reader.post(`/stories/${story.id}/view`).expect(200);
+
+      const response = await client
+        .get(`/users/me/stories/${story.id}/stats`)
+        .query({days: 7})
+        .expect(200);
+
+      expect(response.body).toHaveLength(7);
+      const today = new Date().toISOString().slice(0, 10);
+      expect(
+        (response.body as {date: string}[]).find((row) => row.date === today)
+      ).toMatchObject({views: 1, likes: 0, comments: 0});
+    });
+
+    it("404s a story you don't own, even for another signed-in member", async () => {
+      const {story} = await createStory();
+      await approveStory(story.id);
+
+      const other = agent();
+      await registerUser(other, {email: 'not-the-author@test.com'});
+
+      await other.get(`/users/me/stories/${story.id}/stats`).expect(404);
+    });
+  });
 });
