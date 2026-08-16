@@ -510,6 +510,38 @@ export class StoriesService {
   async findOneVisible(id: string, userId?: string, role?: Role) {
     const story = await this.findOne(id);
 
+    this._assertStoryVisible(story, id, userId, role);
+
+    return story;
+  }
+
+  // Authorization-only visibility check for hot writes such as reading
+  // progress. Avoids loading story content, tags and series every few seconds
+  // merely to prove the member may see the story.
+  async assertVisible(id: string, userId?: string, role?: Role): Promise<void> {
+    const story = await this.storiesRepository.findOne({
+      where: {id},
+      relations: {author: true},
+      select: {
+        id: true,
+        status: true,
+        scheduledFor: true,
+        author: {id: true},
+      },
+      withDeleted: true,
+    });
+    if (!story) throw new NotFoundException(`Story with ID ${id} not found`);
+    this._assertStoryVisible(story, id, userId, role);
+  }
+
+  private _assertStoryVisible(
+    story: Pick<Story, 'status' | 'scheduledFor'> & {
+      author?: {id: string} | null;
+    },
+    id: string,
+    userId?: string,
+    role?: Role
+  ) {
     const isOwner = userId !== undefined && story.author?.id === userId;
     // A scheduled story stays invisible to everyone but its author/an admin
     // until the moment passes, even once approved — no scheduler involved,
@@ -524,8 +556,6 @@ export class StoriesService {
     ) {
       throw new NotFoundException(`Story with ID ${id} not found`);
     }
-
-    return story;
   }
 
   // Shared query for the public approved listing: field selection, author/tag

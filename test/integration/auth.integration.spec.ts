@@ -69,6 +69,16 @@ describe('Auth (integration)', () => {
       expect(setCookie?.some((c) => c.startsWith('connect.sid='))).toBeFalsy();
     });
 
+    it.each([undefined, false])(
+      'rejects registration when acceptedTerms is %s',
+      async (acceptedTerms) => {
+        await agent()
+          .post('/auth/register')
+          .send({...DEFAULT_USER, acceptedTerms})
+          .expect(400);
+      }
+    );
+
     it('creates no User row until the code is confirmed', async () => {
       await agent().post('/auth/register').send(DEFAULT_USER).expect(204);
 

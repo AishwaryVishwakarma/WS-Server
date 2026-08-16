@@ -170,10 +170,12 @@ export class MetricsService {
     // public, documented properties.
     try {
       const pool = (this.dataSource.driver as {master?: unknown}).master as
-        {totalCount?: number; idleCount?: number} | undefined;
+        | {totalCount?: number; idleCount?: number; waitingCount?: number}
+        | undefined;
       if (pool?.totalCount !== undefined) {
         this.dbPool.set({state: 'total'}, pool.totalCount);
         this.dbPool.set({state: 'free'}, pool.idleCount ?? 0);
+        this.dbPool.set({state: 'waiting'}, pool.waitingCount ?? 0);
       }
     } catch {
       // Pool shape changed — drop the gauge rather than fail the scrape.

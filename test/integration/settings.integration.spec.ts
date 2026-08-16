@@ -198,6 +198,7 @@ describe('Settings (integration)', () => {
         name: 'Test User',
         email: 'user@test.com',
         password: 'S3cret!Password',
+        acceptedTerms: true,
         profileImageUrl: 'https://example.com/me.png',
       })
       .expect(400);

@@ -173,6 +173,47 @@ describe('StoriesService', () => {
     service = module.get(StoriesService);
   });
 
+  describe('assertVisible', () => {
+    it('uses a narrow projection instead of loading story content and tags', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        status: StoryStatus.Approved,
+        scheduledFor: null,
+        author,
+      });
+
+      await service.assertVisible('story-1', 'reader-1', Role.User);
+
+      expect(repository.findOne).toHaveBeenCalledWith({
+        where: {id: 'story-1'},
+        relations: {author: true},
+        select: {
+          id: true,
+          status: true,
+          scheduledFor: true,
+          author: {id: true},
+        },
+        withDeleted: true,
+      });
+    });
+
+    it('preserves the hidden scheduled-story rule', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        status: StoryStatus.Approved,
+        scheduledFor: new Date(Date.now() + 60_000),
+        author,
+      });
+
+      await expect(
+        service.assertVisible('story-1', 'reader-1', Role.User)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.assertVisible('story-1', author.id, Role.User)
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe('create', () => {
     const baseDto = {title: 'A Story', content: 'x'.repeat(500)};
 

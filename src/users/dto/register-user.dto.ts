@@ -7,6 +7,7 @@ import {
   IsStrongPassword,
   MaxLength,
 } from 'class-validator';
+import {ApiHideProperty} from '@nestjs/swagger';
 import {IsClean} from 'src/common/moderation/is-clean.decorator';
 
 // Self-service DTO: excludes privileged fields (role, isVerified, isBlocked)
@@ -38,12 +39,15 @@ export class RegisterUserDto {
   // Images are managed exclusively through the upload endpoints. Keep these
   // retired customization fields as validation-only guards so clients cannot
   // silently submit stale/raw avatar data through registration or profile DTOs.
+  @ApiHideProperty()
   @IsEmpty()
-  profileImageUrl?: never;
+  profileImageUrl?: string;
 
+  @ApiHideProperty()
   @IsEmpty()
-  avatarIcon?: never;
+  avatarIcon?: string;
 
+  @ApiHideProperty()
   @IsEmpty()
-  avatarColor?: never;
+  avatarColor?: string;
 }

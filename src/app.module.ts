@@ -55,6 +55,7 @@ import {RateLimitModule} from './common/rate-limit.module';
 import {JobsModule} from './jobs/jobs.module';
 import {AdminAnalyticsModule} from './admin-analytics/admin-analytics.module';
 import {AnalyticsEvent} from './admin-analytics/entities/analytics-event.entity';
+import {ImageStorageModule} from './image-storage/image-storage.module';
 
 // A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
@@ -65,6 +66,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     // src/common/constants/throttle.ts for the tiers.
     RateLimitModule,
     JobsModule,
+    ImageStorageModule,
     ThrottlerModule.forRootAsync({
       imports: [RateLimitModule],
       inject: [RedisThrottlerStorage],
@@ -135,6 +137,13 @@ const DEFAULT_DB_POOL_SIZE = 10;
           }
         }
 
+        if (config.DB_SLOW_QUERY_MS !== undefined) {
+          const threshold = Number(config.DB_SLOW_QUERY_MS);
+          if (!Number.isInteger(threshold) || threshold < 1) {
+            throw new Error('DB_SLOW_QUERY_MS must be a positive integer');
+          }
+        }
+
         // /metrics is bearer-token protected; in production the token is
         // mandatory (fail-closed guard denies scrapes without it). Optional
         // locally/in tests so the endpoint simply stays closed there.
@@ -160,6 +169,35 @@ const DEFAULT_DB_POOL_SIZE = 10;
           } catch {
             throw new Error('APPWRITE_ENDPOINT must be a valid HTTPS URL');
           }
+        }
+
+        if (config.APPWRITE_IMAGE_CAPACITY_BYTES !== undefined) {
+          const capacity = Number(config.APPWRITE_IMAGE_CAPACITY_BYTES);
+          if (!Number.isSafeInteger(capacity) || capacity < 1) {
+            throw new Error(
+              'APPWRITE_IMAGE_CAPACITY_BYTES must be a positive integer'
+            );
+          }
+        }
+
+        if (
+          config.APPWRITE_IMAGE_NAMESPACE !== undefined &&
+          (typeof config.APPWRITE_IMAGE_NAMESPACE !== 'string' ||
+            !['production', 'development'].includes(
+              config.APPWRITE_IMAGE_NAMESPACE
+            ))
+        ) {
+          throw new Error(
+            'APPWRITE_IMAGE_NAMESPACE must be production or development'
+          );
+        }
+
+        if (
+          config.IMAGE_PURGE_ENABLED !== undefined &&
+          (typeof config.IMAGE_PURGE_ENABLED !== 'string' ||
+            !['true', 'false'].includes(config.IMAGE_PURGE_ENABLED))
+        ) {
+          throw new Error('IMAGE_PURGE_ENABLED must be true or false');
         }
 
         // Fail fast on a typo'd NODE_ENV — it gates cookie security, so a
@@ -196,6 +234,10 @@ const DEFAULT_DB_POOL_SIZE = 10;
         // under load means this is the ceiling to raise.
         poolSize: parseInt(
           configService.get('DB_POOL_SIZE') || String(DEFAULT_DB_POOL_SIZE),
+          10
+        ),
+        maxQueryExecutionTime: parseInt(
+          configService.get('DB_SLOW_QUERY_MS') || '500',
           10
         ),
         entities: [

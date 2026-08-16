@@ -17,6 +17,25 @@ export interface UploadedImage {
   size: number;
 }
 
+export interface StoredImage {
+  id: string;
+  name: string;
+  createdAt: string;
+  size: number;
+}
+
+interface AppwriteFile {
+  $id: string;
+  name: string;
+  $createdAt: string;
+  sizeOriginal: number;
+}
+
+interface AppwriteFileList {
+  total: number;
+  files: AppwriteFile[];
+}
+
 interface ImageType {
   extension: 'jpg' | 'png' | 'webp';
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
@@ -43,7 +62,7 @@ export class ImageStorageService {
     form.append(
       'file',
       new Blob([Uint8Array.from(file.buffer)], {type: type.mimeType}),
-      `${namePrefix}.${type.extension}`
+      `${this.namespace()}--${namePrefix}.${type.extension}`
     );
 
     let response: Response;
@@ -87,6 +106,80 @@ export class ImageStorageService {
       if (error instanceof BadGatewayException) throw error;
       throw new ServiceUnavailableException('Image storage is unavailable');
     }
+  }
+
+  async listAll(): Promise<StoredImage[]> {
+    const endpoint = this.required('APPWRITE_ENDPOINT').replace(/\/$/, '');
+    const bucketId = this.required('APPWRITE_IMAGE_BUCKET_ID');
+    const files: StoredImage[] = [];
+    const pageSize = 100;
+
+    for (let offset = 0; ; offset += pageSize) {
+      const params = new URLSearchParams();
+      // Appwrite 1.9 query strings are JSON-serialized Query objects. The
+      // older `limit(100)` form reaches the endpoint but its parser rejects
+      // it with "Invalid query: Syntax error".
+      params.append(
+        'queries[]',
+        JSON.stringify({method: 'limit', values: [pageSize]})
+      );
+      params.append(
+        'queries[]',
+        JSON.stringify({method: 'offset', values: [offset]})
+      );
+      const url =
+        `${endpoint}/storage/buckets/${encodeURIComponent(bucketId)}/files?` +
+        params.toString();
+      let response: Response;
+      try {
+        response = await fetch(url, {headers: this.headers()});
+      } catch {
+        throw new ServiceUnavailableException('Image storage is unavailable');
+      }
+      if (!response.ok) {
+        const detail = await this.responseError(response);
+        this.logger.error(
+          `Appwrite file listing failed (${response.status}): ${detail}`
+        );
+        throw new BadGatewayException('Image storage rejected the request');
+      }
+      const page = (await response.json()) as AppwriteFileList;
+      files.push(
+        ...page.files.map((file) => ({
+          id: file.$id,
+          name: file.name,
+          createdAt: file.$createdAt,
+          size: file.sizeOriginal,
+        }))
+      );
+      if (page.files.length < pageSize || files.length >= page.total) break;
+    }
+    return files;
+  }
+
+  capacityBytes(): number {
+    const configured = Number(
+      this.config.get<string>('APPWRITE_IMAGE_CAPACITY_BYTES')
+    );
+    return Number.isSafeInteger(configured) && configured > 0
+      ? configured
+      : 2 * 1024 * 1024 * 1024;
+  }
+
+  namespace(): 'production' | 'development' {
+    const value = this.config.get<string>('APPWRITE_IMAGE_NAMESPACE');
+    if (value === 'production' || value === 'development') return value;
+    throw new ServiceUnavailableException(
+      'Image storage namespace is not configured'
+    );
+  }
+
+  purgeEnabled(): boolean {
+    return this.config.get<string>('IMAGE_PURGE_ENABLED') === 'true';
+  }
+
+  belongsToNamespace(file: StoredImage): boolean {
+    return file.name.startsWith(`${this.namespace()}--`);
   }
 
   private headers() {

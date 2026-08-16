@@ -16,7 +16,7 @@ import {ConfirmRegistrationDto} from './dto/confirm-registration.dto';
 import {ResendRegistrationDto} from './dto/resend-registration.dto';
 import {RegistrationOtpService} from './registration-otp.service';
 import type {Request, Response} from 'express';
-import {RegisterUserDto} from 'src/users/dto/register-user.dto';
+import {StartRegistrationDto} from './dto/start-registration.dto';
 import {User} from 'src/users/entities/user.entity';
 import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {ApiCookieAuth} from '@nestjs/swagger';
@@ -64,7 +64,7 @@ export class AuthController {
   @Throttle(AUTH_THROTTLE)
   @HttpCode(204)
   async register(
-    @Body() registerUserDto: RegisterUserDto,
+    @Body() registerUserDto: StartRegistrationDto,
     @Req() req: Request
   ) {
     if (await this.authService.hasActiveSession(req)) {

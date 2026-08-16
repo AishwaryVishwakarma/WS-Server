@@ -30,6 +30,32 @@ interactive OpenAPI documentation is available at
 [`http://localhost:8000/docs`](http://localhost:8000/docs); use it
 as the endpoint, payload, authentication, and response reference.
 
+### Local metrics
+
+The development infrastructure also starts Prometheus at
+[`http://localhost:9090`](http://localhost:9090). Start the API with the
+default `METRICS_TOKEN` from `.env.example`, then check the `ws-server` target
+at [`http://localhost:9090/targets`](http://localhost:9090/targets).
+
+Prometheus runs inside Docker and scrapes the host API at
+`host.docker.internal:8000` every 30 seconds. Its local time-series data is
+retained for 15 days in the `ws-prometheus-dev-data` Docker volume. If you
+change `METRICS_TOKEN` locally, update the development-only credential in
+`observability/prometheus.dev.yml` to match and restart Prometheus:
+
+```bash
+docker compose -f docker-compose.dev.yml restart prometheus-dev
+```
+
+For production, do not reuse or commit the development token. Mount the token
+into the Prometheus container and replace `authorization.credentials` with:
+
+```yaml
+authorization:
+  type: Bearer
+  credentials_file: /run/secrets/ws_metrics_token
+```
+
 ### Configuration
 
 Start from `.env.example`, which documents every supported variable. The main

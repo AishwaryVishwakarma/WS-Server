@@ -35,7 +35,8 @@
     "migration:generate": "nest build && typeorm migration:generate -d dist/database/data-source.js",
     "migration:run": "nest build && typeorm migration:run -d dist/database/data-source.js",
     "migration:revert": "nest build && typeorm migration:revert -d dist/database/data-source.js",
-    "analytics:explain": "nest build && node dist/database/explain-analytics.js"
+    "analytics:explain": "nest build && node dist/database/explain-analytics.js",
+    "perf:smoke": "node scripts/perf-smoke.mjs"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.5",
