@@ -22,4 +22,10 @@ describe('normalizeBooleanEnv', () => {
       'FEATURE_ENABLED must be true or false; received "enabled" (string)'
     );
   });
+
+  it('rejects non-string values without using object stringification', () => {
+    expect(() => normalizeBooleanEnv('FEATURE_ENABLED', {})).toThrow(
+      'FEATURE_ENABLED must be true or false; received type object'
+    );
+  });
 });

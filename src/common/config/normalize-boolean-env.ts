@@ -3,9 +3,14 @@ export function normalizeBooleanEnv(
   value: unknown
 ): 'true' | 'false' | undefined {
   if (value === undefined) return undefined;
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value !== 'string') {
+    throw new Error(
+      `${key} must be true or false; received type ${typeof value}`
+    );
+  }
 
-  let normalized =
-    typeof value === 'boolean' ? String(value) : String(value).trim();
+  let normalized = value.trim();
 
   const quote = normalized.at(0);
   if (
@@ -19,9 +24,7 @@ export function normalizeBooleanEnv(
   normalized = normalized.toLowerCase();
   if (normalized === 'true' || normalized === 'false') return normalized;
 
-  const received =
-    typeof value === 'string' ? JSON.stringify(value) : String(value);
   throw new Error(
-    `${key} must be true or false; received ${received} (${typeof value})`
+    `${key} must be true or false; received ${JSON.stringify(value)} (string)`
   );
 }
