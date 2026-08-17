@@ -90,7 +90,6 @@ export async function setupApp(
   // be populated before the CSRF middleware runs.
   app.use(cookieParser());
 
-  // Middleware to handle session management
   app.use(
     session({
       store,

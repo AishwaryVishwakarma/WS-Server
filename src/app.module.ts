@@ -84,7 +84,6 @@ const DEFAULT_DB_POOL_SIZE = 10;
         skipIf: () => process.env.THROTTLE_DISABLED === 'true',
       }),
     }),
-    // Load environment variables from .env file
     ConfigModule.forRoot({
       isGlobal: true,
       // NODE_ENV=test reads .env.test (throwaway test infra: ws_test on 3311,

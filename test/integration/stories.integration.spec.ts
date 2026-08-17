@@ -71,8 +71,8 @@ describe('Stories (integration)', () => {
     return admin;
   };
 
-  describe('free publish limit', () => {
-    // One client that will publish repeatedly.
+  describe('free publish and draft limits', () => {
+    // One client that will publish (or draft) repeatedly.
     const primeAuthor = async (email: string) => {
       const client = agent();
       await registerUser(client, {email});
@@ -85,7 +85,7 @@ describe('Stories (integration)', () => {
       return {client, token, post};
     };
 
-    it('allows ten publishes, then blocks the next — but never drafts', async () => {
+    it('allows ten publishes, then blocks the next — but a draft is a separate bucket', async () => {
       const {post} = await primeAuthor('prolific@test.com');
 
       for (let i = 0; i < 10; i++) {
@@ -93,11 +93,12 @@ describe('Stories (integration)', () => {
       }
       // The eleventh submitted story is refused.
       await post('One too many').expect(403);
-      // A private draft is still fine — drafts don't count against the limit.
+      // A private draft is still fine — it counts against the separate draft
+      // limit, still well under its own cap of ten.
       await post('A quiet draft', true).expect(201);
     });
 
-    it('blocks submitting a draft once at the limit', async () => {
+    it('blocks submitting a draft once at the publish limit', async () => {
       const {client, token, post} = await primeAuthor('atlimit@test.com');
 
       for (let i = 0; i < 10; i++) {
@@ -128,6 +129,42 @@ describe('Stories (integration)', () => {
 
       // With a slot freed, publishing works again.
       await post('Now there is room').expect(201);
+    });
+
+    it('allows ten drafts, then blocks the next — but publishing is a separate bucket', async () => {
+      const {post} = await primeAuthor('drafter@test.com');
+
+      for (let i = 0; i < 10; i++) {
+        await post(`Draft ${i}`, true).expect(201);
+      }
+      // The eleventh draft is refused.
+      await post('One too many drafts', true).expect(403);
+      // Publishing is still fine — it counts against the separate publish
+      // limit, still well under its own cap of ten.
+      await post('Submitted straight away').expect(201);
+    });
+
+    it('frees a slot when a draft is deleted', async () => {
+      const {client, token, post} = await primeAuthor(
+        'draft-recycler@test.com'
+      );
+
+      const ids: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const {body}: {body: IdBody} = await post(`Draft ${i}`, true).expect(
+          201
+        );
+        ids.push(body.id);
+      }
+      await post('Blocked', true).expect(403);
+
+      await client
+        .delete(`/stories/${ids[0]}`)
+        .set('x-csrf-token', token)
+        .expect(204);
+
+      // With a slot freed, drafting works again.
+      await post('Now there is room', true).expect(201);
     });
   });
 

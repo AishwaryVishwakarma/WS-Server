@@ -43,7 +43,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return response.status(status).json(exception.getResponse());
     }
 
-    // Anything else is an unhandled server error — log it in full
     this.logger.error(
       `[${requestId}] ${request.method} ${request.url} → 500 (unhandled)`,
       exception instanceof Error ? exception.stack : String(exception)
