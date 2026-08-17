@@ -20,7 +20,9 @@ export class NotificationResponseDto {
   @Expose() actorNames: string[];
   @Expose() count: number;
   @Expose() actorId: string | null;
+  @Expose() actorSlug: string | null;
   @Expose() storyId: string | null;
+  @Expose() storySlug: string | null;
   @Expose() storyTitle: string | null;
   @Expose() commentId: string | null;
   @Expose() parentId: string | null;

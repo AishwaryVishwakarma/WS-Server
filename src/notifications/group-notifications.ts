@@ -9,7 +9,9 @@ export interface GroupedNotification {
   actorNames: string[];
   count: number;
   actorId: string | null;
+  actorSlug: string | null;
   storyId: string | null;
+  storySlug: string | null;
   storyTitle: string | null;
   commentId: string | null;
   parentId: string | null;
@@ -75,7 +77,9 @@ export function groupNotifications(
         actorNames: [...actorsSeen.values()],
         count: members.length,
         actorId: newest.actorId,
+        actorSlug: newest.actorSlug,
         storyId: newest.storyId,
+        storySlug: newest.storySlug,
         storyTitle: newest.storyTitle,
         commentId: newest.commentId,
         parentId: newest.parentId,
