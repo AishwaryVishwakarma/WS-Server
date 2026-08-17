@@ -110,11 +110,11 @@ export class SeriesController {
   }
 
   // Public: a series' own page, its approved stories in narrative order.
-  @Get('series/:id')
+  @Get('series/:slug')
   @Throttle(PUBLIC_READ_THROTTLE)
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    const series = await this.seriesService.findOne(id);
-    const stories = await this.storiesService.findApprovedBySeriesId(id);
+  async findOne(@Param('slug') slug: string) {
+    const series = await this.seriesService.findOneBySlug(slug);
+    const stories = await this.storiesService.findApprovedBySeriesId(series.id);
 
     return {
       ...this._serializeSeries(series),

@@ -9,6 +9,7 @@ import type {Series} from '../entities/series.entity';
 export class SeriesResponseDto {
   @Expose() id: string;
   @Expose() title: string;
+  @Expose() slug: string;
 
   @Expose()
   @Type(() => StoryAuthorResponseDto)

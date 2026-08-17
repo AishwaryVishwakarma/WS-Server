@@ -38,6 +38,16 @@ export class SeriesService {
       });
   }
 
+  // Backs the public series page — a clean cutover, not a dual id-or-slug
+  // lookup, mirroring StoriesService.findOneVisibleBySlug.
+  async findOneBySlug(slug: string): Promise<Series> {
+    return await this.seriesRepository
+      .findOneOrFail({where: {slug}, relations: ['author']})
+      .catch(() => {
+        throw new NotFoundException(`Series '${slug}' not found`);
+      });
+  }
+
   // The author's own series, for the story editor's "you already have"
   // hints — so retyping an exact existing title (rather than a near-miss)
   // is easy to get right — and for /me's My Series list, which shows each
