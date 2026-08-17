@@ -29,6 +29,11 @@ function groupKey(notification: Notification): string {
  * `ids`, since both underlying notifications still need marking read/deleted
  * together. `isRead` is true only once every member is.
  *
+ * Actor identity for that dedup is `actorId` (falling back to `actorName`
+ * only when it's null, e.g. a removed account) — never `actorName` alone,
+ * since two real people can share a display name and must still count as
+ * distinct "others".
+ *
  * `input` must already be sorted newest-first — a bundle's single-value
  * fields (id, actorName, commentId, createdAt) come from its newest member,
  * so a click still deep-links somewhere real (the most recent event) rather
@@ -52,12 +57,22 @@ export function groupNotifications(
   return Array.from(groups.values())
     .map((members): GroupedNotification => {
       const [newest] = members;
+      // Keyed by identity, not the display string — members is newest-first,
+      // so the first occurrence of a given identity also fixes the name
+      // shown for them.
+      const actorsSeen = new Map<string, string>();
+      for (const member of members) {
+        const identity = member.actorId ?? member.actorName;
+        if (!actorsSeen.has(identity)) {
+          actorsSeen.set(identity, member.actorName);
+        }
+      }
       return {
         id: newest.id,
         ids: members.map((member) => member.id),
         type: newest.type,
         actorName: newest.actorName,
-        actorNames: [...new Set(members.map((member) => member.actorName))],
+        actorNames: [...actorsSeen.values()],
         count: members.length,
         actorId: newest.actorId,
         storyId: newest.storyId,
