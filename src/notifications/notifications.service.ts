@@ -17,8 +17,10 @@ interface NotificationInput {
   recipientId: string;
   actorName: string;
   actorId: string;
+  actorSlug: string;
   // Story/comment context — present for 'comment'/'reply', omitted for 'follow'.
   storyId?: string | null;
+  storySlug?: string | null;
   storyTitle?: string | null;
   commentId?: string | null;
   // Only set for a 'reply' — the top-level thread the reply lives under.
@@ -98,7 +100,9 @@ export class NotificationsService {
         type: input.type,
         actorName: input.actorName,
         actorId: input.actorId,
+        actorSlug: input.actorSlug,
         storyId: input.storyId ?? null,
+        storySlug: input.storySlug ?? null,
         storyTitle: input.storyTitle ?? null,
         commentId: input.commentId ?? null,
         parentId: input.parentId ?? null,
@@ -120,9 +124,9 @@ export class NotificationsService {
     const copy = EMAIL_COPY[input.type];
     const siteUrl =
       this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
-    const path = input.storyId
-      ? `/stories/${input.storyId}${input.commentId ? `#comment-${input.commentId}` : ''}`
-      : `/authors/${input.actorId}`;
+    const path = input.storySlug
+      ? `/stories/${input.storySlug}${input.commentId ? `#comment-${input.commentId}` : ''}`
+      : `/authors/${input.actorSlug}`;
     const url = `${siteUrl}${path}`;
     const sentence = `${input.actorName} ${copy.action}${
       input.storyTitle ? `, “${input.storyTitle}”.` : '.'

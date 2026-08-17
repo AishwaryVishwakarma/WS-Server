@@ -76,6 +76,7 @@ describe('Series (integration)', () => {
       expect(story.series).toEqual({
         id: expect.any(String),
         title: 'Hollow Lane',
+        slug: expect.any(String),
         position: 1,
       });
     });
@@ -193,7 +194,7 @@ describe('Series (integration)', () => {
       await approveStory(second.id, admin);
 
       const response = await agent()
-        .get(`/series/${first.series!.id}`)
+        .get(`/series/${first.series!.slug}`)
         .expect(200);
 
       expect(response.body.title).toBe('Hollow Lane');
@@ -209,7 +210,17 @@ describe('Series (integration)', () => {
       });
       await approveStory(story.id);
 
-      await agent().get(`/series/${story.series!.id}`).expect(200);
+      await agent().get(`/series/${story.series!.slug}`).expect(200);
+    });
+
+    it('404s on the raw uuid — the public route resolves by slug only', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        seriesTitle: 'Hollow Lane',
+      });
+      await approveStory(story.id);
+
+      await agent().get(`/series/${story.series!.id}`).expect(404);
     });
   });
 
@@ -403,7 +414,7 @@ describe('Series (integration)', () => {
         .expect(200);
 
       const response = await agent()
-        .get(`/series/${first.series!.id}`)
+        .get(`/series/${first.series!.slug}`)
         .expect(200);
 
       expect(

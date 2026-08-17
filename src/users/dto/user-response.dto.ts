@@ -13,6 +13,7 @@ import type {NotificationType} from 'src/notifications/notification.types';
 export class UserPreviewResponseDto {
   @Expose() id: string;
   @Expose() name: string;
+  @Expose() slug: string;
   @Expose() profileImageUrl?: string;
   @Expose() bio?: string;
   @Expose() isVerified: boolean;

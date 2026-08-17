@@ -118,7 +118,7 @@ export class AdminAnalyticsService {
         ),
         this.dataSource.query<CountRow[]>(
           `
-          SELECT s.id, s.title, s."viewCount"::int AS views, s."likeCount"::int AS likes,
+          SELECT s.id, s.title, s.slug, s."viewCount"::int AS views, s."likeCount"::int AS likes,
             s."commentCount"::int AS comments, u.id AS "authorId", u.name AS author
           FROM story s JOIN "user" u ON u.id = s."authorId"
           WHERE s.status::text = $1
@@ -131,13 +131,13 @@ export class AdminAnalyticsService {
         ),
         this.dataSource.query<CountRow[]>(
           `
-          SELECT u.id, u.name, COUNT(s.id)::int AS stories,
+          SELECT u.id, u.name, u.slug, COUNT(s.id)::int AS stories,
             COALESCE(SUM(s."viewCount"), 0)::int AS views,
             COALESCE(SUM(s."likeCount"), 0)::int AS likes
           FROM "user" u JOIN story s ON s."authorId" = u.id AND s.status::text = $1
           WHERE u."deletedAt" IS NULL AND ($2::uuid IS NULL OR u.id = $2)
             AND ($3::text IS NULL OR EXISTS (SELECT 1 FROM story_tags_tag st JOIN tag t ON t.id = st."tagId" WHERE st."storyId" = s.id AND t.slug = $3))
-          GROUP BY u.id, u.name
+          GROUP BY u.id, u.name, u.slug
           ORDER BY (COALESCE(SUM(s."viewCount"), 0) + COALESCE(SUM(s."likeCount"), 0) * 3) DESC, u.id
           LIMIT 5
         `,

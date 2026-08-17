@@ -40,12 +40,16 @@ export class PublicUsersController {
     });
   }
 
-  @Get(':id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    const user = await this.usersService.findOne(id);
-    user.badges = await this.usersService.computeBadges(id, user.longestStreak);
-    user.achievementBadges =
-      await this.usersService.computeAchievementBadges(id);
+  @Get(':slug')
+  async findOne(@Param('slug') slug: string) {
+    const user = await this.usersService.findOneBySlug(slug);
+    user.badges = await this.usersService.computeBadges(
+      user.id,
+      user.longestStreak
+    );
+    user.achievementBadges = await this.usersService.computeAchievementBadges(
+      user.id
+    );
     return this._serialize(user);
   }
 
@@ -69,13 +73,14 @@ export class PublicUsersController {
     );
   }
 
-  @Get(':id/stories')
+  @Get(':slug/stories')
   async findUserStories(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('slug') slug: string,
     @Query() paginationDto: PaginationDto
   ) {
+    const user = await this.usersService.findOneBySlug(slug);
     const {data, ...rest} = await this.storiesService.findAllApprovedByUserId(
-      id,
+      user.id,
       paginationDto.page,
       paginationDto.limit
     );

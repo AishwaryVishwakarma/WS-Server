@@ -137,7 +137,7 @@ export class CommentsService {
   private async _notify(
     parent: Comment | null,
     story: Story,
-    actor: {name: string},
+    actor: {name: string; slug: string},
     commentId: string,
     actorId: string
   ) {
@@ -148,7 +148,9 @@ export class CommentsService {
           recipientId: parent.user.id,
           actorName: actor.name,
           actorId,
+          actorSlug: actor.slug,
           storyId: story.id,
+          storySlug: story.slug,
           storyTitle: story.title,
           commentId,
           parentId: parent.id,
@@ -167,7 +169,9 @@ export class CommentsService {
         recipientId: story.author.id,
         actorName: actor.name,
         actorId,
+        actorSlug: actor.slug,
         storyId: story.id,
+        storySlug: story.slug,
         storyTitle: story.title,
         commentId,
         parentId: null,

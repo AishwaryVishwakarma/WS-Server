@@ -47,6 +47,7 @@ export class FollowsService {
       recipientId: targetId,
       actorName: follower.name,
       actorId: followerId,
+      actorSlug: follower.slug,
     });
   }
 

@@ -55,7 +55,9 @@ export class LikesService {
         recipientId: story.author.id,
         actorName: liker.name,
         actorId: userId,
+        actorSlug: liker.slug,
         storyId: story.id,
+        storySlug: story.slug,
         storyTitle: story.title,
       });
     }

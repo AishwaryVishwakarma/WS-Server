@@ -58,7 +58,12 @@ describe('Reading streaks (integration)', () => {
     const reader = agent();
     await registerUser(reader, {email: 'reader@test.com'});
 
-    return {reader, authorId: authorBody.id, story};
+    return {
+      reader,
+      authorId: authorBody.id,
+      authorSlug: authorBody.slug,
+      story,
+    };
   };
 
   it('starts a 1-day streak on the first story view', async () => {
@@ -108,16 +113,16 @@ describe('Reading streaks (integration)', () => {
   });
 
   it('surfaces streak-milestone badges once longestStreak crosses 7/30', async () => {
-    const {authorId} = await readerWithApprovedStory();
+    const {authorId, authorSlug} = await readerWithApprovedStory();
     const anon = agent();
 
     await userRepository().update({id: authorId}, {longestStreak: 7});
-    const week = await anon.get(`/users/${authorId}`).expect(200);
+    const week = await anon.get(`/users/${authorSlug}`).expect(200);
     expect(week.body.badges).toContain('week-streak');
     expect(week.body.badges).not.toContain('month-streak');
 
     await userRepository().update({id: authorId}, {longestStreak: 30});
-    const month = await anon.get(`/users/${authorId}`).expect(200);
+    const month = await anon.get(`/users/${authorSlug}`).expect(200);
     expect(month.body.badges).toContain('month-streak');
   });
 });

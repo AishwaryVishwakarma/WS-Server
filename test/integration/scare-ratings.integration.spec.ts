@@ -71,7 +71,7 @@ describe('Scare ratings (integration)', () => {
       .send({value: 4})
       .expect(204);
 
-    const detail = await agent().get(`/stories/${story.id}`).expect(200);
+    const detail = await agent().get(`/stories/${story.slug}`).expect(200);
     expect(detail.body.scareRatingAverage).toBe(4);
     expect(detail.body.scareRatingCount).toBe(1);
 
@@ -95,7 +95,7 @@ describe('Scare ratings (integration)', () => {
       .send({value: 2})
       .expect(204);
 
-    const detail = await agent().get(`/stories/${story.id}`).expect(200);
+    const detail = await agent().get(`/stories/${story.slug}`).expect(200);
     expect(detail.body.scareRatingAverage).toBe(3.5);
     expect(detail.body.scareRatingCount).toBe(2);
   });
@@ -114,7 +114,7 @@ describe('Scare ratings (integration)', () => {
     await cast(2);
     await cast(5);
 
-    const detail = await agent().get(`/stories/${story.id}`).expect(200);
+    const detail = await agent().get(`/stories/${story.slug}`).expect(200);
     expect(detail.body.scareRatingAverage).toBe(5);
     expect(detail.body.scareRatingCount).toBe(1);
   });
@@ -140,7 +140,7 @@ describe('Scare ratings (integration)', () => {
       .set('x-csrf-token', r2.token)
       .expect(204);
 
-    const detail = await agent().get(`/stories/${story.id}`).expect(200);
+    const detail = await agent().get(`/stories/${story.slug}`).expect(200);
     expect(detail.body.scareRatingAverage).toBe(5);
     expect(detail.body.scareRatingCount).toBe(1);
 

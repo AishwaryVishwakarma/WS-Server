@@ -47,10 +47,19 @@ export class Notification {
   @Column({type: 'varchar', length: 36, nullable: true})
   actorId: string | null;
 
+  // Denormalized alongside actorId, same reasoning: a snapshot at
+  // notification-creation time, not a live join, so it goes stale (like
+  // actorId/storyId already do) if the actor later renames themselves.
+  @Column({type: 'varchar', length: 100, nullable: true})
+  actorSlug: string | null;
+
   // Story/comment context. Null for a 'follow' (which has neither) — populated
   // for 'comment'/'reply'.
   @Column({type: 'varchar', length: 36, nullable: true})
   storyId: string | null;
+
+  @Column({type: 'varchar', length: 100, nullable: true})
+  storySlug: string | null;
 
   @Column({type: 'varchar', length: 255, nullable: true})
   storyTitle: string | null;

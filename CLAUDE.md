@@ -86,6 +86,21 @@ production safety checks there.
 - Public visibility is status-based. Author/admin access to non-approved work
   goes through the existing visibility service methods rather than ad hoc
   controller checks.
+- Stories, users, and series each carry a `slug` (`src/utils/slug.ts`'s
+  `buildSlug`: slugified title/name + a short random id fragment,
+  LinkedIn/Medium-style — not Tag's bare-unique-with-409 pattern, since
+  titles/names collide far more than tag names do). The public single-item
+  GET route for each (`GET /stories/:slug`, `GET /users/:slug`
+  [`+ /:slug/stories`], `GET /series/:slug`) resolves by slug only — a clean
+  cutover, not a dual id-or-slug lookup, so a raw uuid 404s there. Every
+  other route on those controllers (mutations, admin, `/users/me/...`) stays
+  UUID-based via `ParseUUIDPipe`, unaffected. A story's slug regenerates
+  when its title changes (`StoriesService.update`); a user's when their name
+  changes (`UsersService._applyUserUpdates`) — both explicitly guarded on
+  the incoming value actually differing from current, not a blanket
+  `@BeforeUpdate` hook, since the slug's random suffix would otherwise
+  reshuffle the public URL on any unrelated save. A series has no rename
+  path, so its slug is assigned once at creation and never regenerates.
 
 ## Accounts and moderation
 

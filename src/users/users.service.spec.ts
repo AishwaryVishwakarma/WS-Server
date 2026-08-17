@@ -567,6 +567,50 @@ describe('UsersService', () => {
       expect(user.password).toBe('old-hash');
     });
 
+    it('regenerates the slug when the name actually changes', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old Name',
+        slug: 'old-name-abc123',
+      });
+
+      const user = (await service.update('user-1', {
+        name: 'New Name',
+      })) as User;
+
+      expect(user.slug).not.toBe('old-name-abc123');
+      expect(user.slug).toMatch(/^new-name-/);
+    });
+
+    it('leaves the slug untouched when the name is not part of the update', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old Name',
+        slug: 'old-name-abc123',
+        bio: 'old bio',
+      });
+
+      const user = (await service.update('user-1', {
+        bio: 'new bio',
+      })) as User;
+
+      expect(user.slug).toBe('old-name-abc123');
+    });
+
+    it('leaves the slug untouched when the name is resubmitted unchanged', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        name: 'Old Name',
+        slug: 'old-name-abc123',
+      });
+
+      const user = (await service.update('user-1', {
+        name: 'Old Name',
+      })) as User;
+
+      expect(user.slug).toBe('old-name-abc123');
+    });
+
     it('locks verification when an admin explicitly sets isVerified', async () => {
       repository.findOneByOrFail.mockResolvedValue({
         id: 'user-1',

@@ -208,13 +208,15 @@ describe('Stories (integration)', () => {
 
       // Pending: not visible in the user's approved stories
       const before = await client
-        .get(`/users/${author.id}/stories`)
+        .get(`/users/${author.slug}/stories`)
         .expect(200);
       expect(before.body.total).toBe(0);
 
       await approveStory(story.id);
 
-      const after = await client.get(`/users/${author.id}/stories`).expect(200);
+      const after = await client
+        .get(`/users/${author.slug}/stories`)
+        .expect(200);
       expect(after.body.total).toBe(1);
       expect(after.body.data[0].id).toBe(story.id);
     });
@@ -283,7 +285,7 @@ describe('Stories (integration)', () => {
         })
         .expect(200);
 
-      const detail = await client.get(`/stories/${story.id}`).expect(200);
+      const detail = await client.get(`/stories/${story.slug}`).expect(200);
       expect(detail.body.rejectionReason).toBe(
         'Too short — please expand the ending.'
       );
@@ -313,7 +315,7 @@ describe('Stories (integration)', () => {
         .send({status: StoryStatus.Approved})
         .expect(200);
 
-      const detail = await client.get(`/stories/${story.id}`).expect(200);
+      const detail = await client.get(`/stories/${story.slug}`).expect(200);
       expect(detail.body.rejectionReason).toBeFalsy();
     });
   });
@@ -328,7 +330,13 @@ describe('Stories (integration)', () => {
       await registerUser(reporter, {email: 'reporter@test.com'});
       const reporterToken = await getCsrfToken(reporter);
 
-      return {storyId: story.id, admin, reporter, reporterToken};
+      return {
+        storyId: story.id,
+        storySlug: story.slug,
+        admin,
+        reporter,
+        reporterToken,
+      };
     };
 
     it('reports an approved story into the queue (with reason + detail) and resolves it', async () => {
@@ -420,10 +428,11 @@ describe('Stories (integration)', () => {
     });
 
     it('does not mark a reported story as edited (updatedAt preserved)', async () => {
-      const {storyId, admin, reporter, reporterToken} = await reportFixture();
+      const {storyId, storySlug, admin, reporter, reporterToken} =
+        await reportFixture();
 
       // The story is approved, so the reporter can read it (and its updatedAt).
-      const before = await reporter.get(`/stories/${storyId}`).expect(200);
+      const before = await reporter.get(`/stories/${storySlug}`).expect(200);
 
       await reporter
         .post(`/stories/${storyId}/report`)
@@ -523,27 +532,52 @@ describe('Stories (integration)', () => {
     });
   });
 
-  describe('visibility (GET /stories/:id)', () => {
+  describe('visibility (GET /stories/:slug)', () => {
     it('hides a pending story from other users with 404', async () => {
       const {story} = await createStory();
 
       const other = agent();
       await registerUser(other, {email: 'other@test.com'});
 
+      await other.get(`/stories/${story.slug}`).expect(404);
+    });
+
+    it('404s on the raw uuid — the public route resolves by slug only', async () => {
+      const {story} = await createStory();
+      await approveStory(story.id);
+
+      const other = agent();
+      await registerUser(other, {email: 'uuid-visitor@test.com'});
+
       await other.get(`/stories/${story.id}`).expect(404);
+    });
+
+    it('regenerates the slug when the title changes, and the old slug 404s', async () => {
+      const {client, token, story} = await createStory();
+      const oldSlug = story.slug;
+
+      const updated = await client
+        .patch(`/stories/${story.id}`)
+        .set('x-csrf-token', token)
+        .send({title: 'A Brand New Title'})
+        .expect(200);
+
+      expect(updated.body.slug).not.toBe(oldSlug);
+      await client.get(`/stories/${oldSlug}`).expect(404);
+      await client.get(`/stories/${updated.body.slug}`).expect(200);
     });
 
     it('lets the author read their own pending story', async () => {
       const {client, story} = await createStory();
 
-      await client.get(`/stories/${story.id}`).expect(200);
+      await client.get(`/stories/${story.slug}`).expect(200);
     });
 
     it('lets an admin read any pending story', async () => {
       const {story} = await createStory();
       const admin = await seedAdmin(testApp);
 
-      await admin.get(`/stories/${story.id}`).expect(200);
+      await admin.get(`/stories/${story.slug}`).expect(200);
     });
 
     it('shows an approved story to any logged-in user', async () => {
@@ -553,7 +587,7 @@ describe('Stories (integration)', () => {
       const other = agent();
       await registerUser(other, {email: 'other@test.com'});
 
-      await other.get(`/stories/${story.id}`).expect(200);
+      await other.get(`/stories/${story.slug}`).expect(200);
     });
 
     it('hides comments of a story the user cannot see', async () => {
@@ -579,7 +613,7 @@ describe('Stories (integration)', () => {
 
       const other = agent();
       await registerUser(other, {email: 'other@test.com'});
-      await other.get(`/stories/${story.id}`).expect(404);
+      await other.get(`/stories/${story.slug}`).expect(404);
     });
 
     it('lets the author and an admin read an approved-but-not-yet-due story', async () => {
@@ -589,8 +623,8 @@ describe('Stories (integration)', () => {
       });
       const admin = await approveStory(story.id);
 
-      await client.get(`/stories/${story.id}`).expect(200);
-      await admin.get(`/stories/${story.id}`).expect(200);
+      await client.get(`/stories/${story.slug}`).expect(200);
+      await admin.get(`/stories/${story.slug}`).expect(200);
     });
 
     it('shows an approved story to everyone once its schedule has passed', async () => {
@@ -602,7 +636,7 @@ describe('Stories (integration)', () => {
 
       const other = agent();
       await registerUser(other, {email: 'other@test.com'});
-      await other.get(`/stories/${story.id}`).expect(200);
+      await other.get(`/stories/${story.slug}`).expect(200);
     });
 
     it('excludes a not-yet-due story from the public feed, includes it once due', async () => {
@@ -751,6 +785,21 @@ describe('Stories (integration)', () => {
       // newest-first: reverse of creation order, every id exactly once.
       expect(walked).toEqual([...created].reverse());
       expect(new Set(walked).size).toBe(5);
+    });
+
+    // The feed's narrow SELECTED_FIELDS projection is easy to grow stale
+    // after adding a column elsewhere (slug shipped with the story detail
+    // route, but the feed silently omitted it until this caught it) — assert
+    // every listing item carries it, not just the single-story fetch.
+    it('includes slug on every feed item', async () => {
+      await seedApproved(2);
+      const browser = agent();
+
+      const {body} = await browser.get('/stories?limit=10').expect(200);
+      const items = body.data as {slug?: string}[];
+
+      expect(items.length).toBeGreaterThan(0);
+      items.forEach((item) => expect(typeof item.slug).toBe('string'));
     });
 
     it('agrees with a single large fetch under the oldest sort', async () => {
@@ -1011,7 +1060,7 @@ describe('Stories (integration)', () => {
       const readerToken = await getCsrfToken(reader);
       const author = await request
         .agent(testApp.app.getHttpServer())
-        .get(`/stories/${lighthouse.id}`)
+        .get(`/stories/${lighthouse.slug}`)
         .expect(200);
       const authorId = author.body.author.id as string;
 
@@ -1033,8 +1082,8 @@ describe('Stories (integration)', () => {
         lighthouse.id
       );
 
-      // Direct fetch by id is unaffected either way.
-      await reader.get(`/stories/${lighthouse.id}`).expect(200);
+      // Direct fetch by slug is unaffected either way.
+      await reader.get(`/stories/${lighthouse.slug}`).expect(200);
     });
   });
 
@@ -1098,10 +1147,10 @@ describe('Stories (integration)', () => {
       // Author sees it on their own shelf and can open it
       const mine = await client.get('/users/me/stories').expect(200);
       expect(mine.body.total).toBe(1);
-      await client.get(`/stories/${story.id}`).expect(200);
+      await client.get(`/stories/${story.slug}`).expect(200);
 
       // Everyone else gets a 404, and it never reaches the admin list
-      await agent().get(`/stories/${story.id}`).expect(404);
+      await agent().get(`/stories/${story.slug}`).expect(404);
       const admin = await seedAdmin(testApp);
       const adminList = await admin.get('/admin/stories').expect(200);
       expect(adminList.body.total).toBe(0);
@@ -1195,7 +1244,7 @@ describe('Stories (integration)', () => {
         .send({content: 'Boo', storyId: story.id})
         .expect(201);
 
-      const after = await client.get(`/stories/${story.id}`).expect(200);
+      const after = await client.get(`/stories/${story.slug}`).expect(200);
       expect(after.body.commentCount).toBe(1);
 
       await client
@@ -1203,7 +1252,7 @@ describe('Stories (integration)', () => {
         .set('x-csrf-token', token)
         .expect(204);
 
-      const final = await client.get(`/stories/${story.id}`).expect(200);
+      const final = await client.get(`/stories/${story.slug}`).expect(200);
       expect(final.body.commentCount).toBe(0);
     });
 
@@ -1352,7 +1401,7 @@ describe('Stories (integration)', () => {
       const {story} = await setup();
       await agent().post(`/stories/${story.id}/view`).expect(200);
 
-      const detail = await agent().get(`/stories/${story.id}`).expect(200);
+      const detail = await agent().get(`/stories/${story.slug}`).expect(200);
       expect(detail.body.viewCount).toBe(1);
 
       const feed = await agent().get('/stories').expect(200);
@@ -1375,7 +1424,7 @@ describe('Stories (integration)', () => {
       const feed = await anonymous.get('/stories').expect(200);
       expect(feed.body.total).toBe(1);
 
-      const detail = await anonymous.get(`/stories/${story.id}`).expect(200);
+      const detail = await anonymous.get(`/stories/${story.slug}`).expect(200);
       expect(detail.body.content).toBeDefined();
 
       const comments = await anonymous
@@ -1387,7 +1436,7 @@ describe('Stories (integration)', () => {
     it('hides non-approved stories from anonymous visitors with 404', async () => {
       const {story} = await createStory(); // pending
 
-      await agent().get(`/stories/${story.id}`).expect(404);
+      await agent().get(`/stories/${story.slug}`).expect(404);
     });
 
     it('rejects anonymous mutations', async () => {
@@ -1427,14 +1476,14 @@ describe('Stories (integration)', () => {
       const admin = await seedAdmin(testApp);
 
       // Admin can read the pending story...
-      await admin.get(`/stories/${story.id}`).expect(200);
+      await admin.get(`/stories/${story.slug}`).expect(200);
 
       // ...but once blocked, the same session must not retain admin reads
       await testApp.dataSource
         .getRepository(User)
         .update({email: 'admin@test.com'}, {isBlocked: true});
 
-      await admin.get(`/stories/${story.id}`).expect(404);
+      await admin.get(`/stories/${story.slug}`).expect(404);
     });
   });
 

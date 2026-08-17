@@ -163,6 +163,37 @@ describe('Users (integration)', () => {
       expect(response.body.bio).toBe('I write scary stories');
     });
 
+    it('regenerates the slug when the name changes, and the old slug 404s', async () => {
+      const client = agent();
+      const {body} = await registerUser(client);
+      const token = await getCsrfToken(client);
+      const oldSlug = body.slug;
+
+      const response = await client
+        .patch('/users/me')
+        .set('x-csrf-token', token)
+        .send({name: 'A Brand New Name'})
+        .expect(200);
+
+      expect(response.body.slug).not.toBe(oldSlug);
+      await client.get(`/users/${oldSlug}`).expect(404);
+      await client.get(`/users/${response.body.slug}`).expect(200);
+    });
+
+    it('leaves the slug untouched when bio changes without a name change', async () => {
+      const client = agent();
+      const {body} = await registerUser(client);
+      const token = await getCsrfToken(client);
+
+      const response = await client
+        .patch('/users/me')
+        .set('x-csrf-token', token)
+        .send({bio: 'Still the same name'})
+        .expect(200);
+
+      expect(response.body.slug).toBe(body.slug);
+    });
+
     it('persists and round-trips mutedContentWarnings', async () => {
       const client = agent();
       await registerUser(client);
@@ -661,15 +692,22 @@ describe('Users (integration)', () => {
     });
   });
 
-  describe('GET /users/:id (public profile)', () => {
+  describe('GET /users/:slug (public profile)', () => {
     it('returns the preview profile without email', async () => {
       const client = agent();
       const {body} = await registerUser(client);
 
-      const response = await client.get(`/users/${body.id}`).expect(200);
+      const response = await client.get(`/users/${body.slug}`).expect(200);
 
       expect(response.body.name).toBe(DEFAULT_USER.name);
       expect(response.body.email).toBeUndefined();
+    });
+
+    it('404s on the raw uuid — the public route resolves by slug only', async () => {
+      const client = agent();
+      const {body} = await registerUser(client);
+
+      await client.get(`/users/${body.id}`).expect(404);
     });
 
     describe('badges', () => {
@@ -702,7 +740,7 @@ describe('Users (integration)', () => {
         const client = agent();
         const {body} = await registerUser(client);
 
-        const response = await client.get(`/users/${body.id}`).expect(200);
+        const response = await client.get(`/users/${body.slug}`).expect(200);
 
         expect(response.body.badges).toEqual([]);
       });
@@ -712,7 +750,7 @@ describe('Users (integration)', () => {
         const {body} = await registerUser(client);
         await createApprovedStory(client, 'A Story');
 
-        const response = await client.get(`/users/${body.id}`).expect(200);
+        const response = await client.get(`/users/${body.slug}`).expect(200);
 
         expect(response.body.badges).toEqual(['published']);
       });
@@ -727,7 +765,7 @@ describe('Users (integration)', () => {
           .send({title: 'Still Pending', content: 'x'.repeat(500)})
           .expect(201);
 
-        const response = await client.get(`/users/${body.id}`).expect(200);
+        const response = await client.get(`/users/${body.slug}`).expect(200);
 
         expect(response.body.badges).toEqual([]);
       });
@@ -742,7 +780,7 @@ describe('Users (integration)', () => {
             .admin;
         }
 
-        const response = await client.get(`/users/${body.id}`).expect(200);
+        const response = await client.get(`/users/${body.slug}`).expect(200);
 
         expect(response.body.badges).toContain('prolific');
       });
@@ -764,7 +802,7 @@ describe('Users (integration)', () => {
           commentCount: 25,
         });
 
-        const response = await client.get(`/users/${body.id}`).expect(200);
+        const response = await client.get(`/users/${body.slug}`).expect(200);
 
         expect(response.body.badges).toContain('fan-favorite');
         expect(response.body.badges).toContain('conversation-starter');
@@ -784,7 +822,7 @@ describe('Users (integration)', () => {
           })
           .expect(201);
 
-        const response = await client.get(`/users/${body.id}`).expect(200);
+        const response = await client.get(`/users/${body.slug}`).expect(200);
 
         expect(response.body.badges).toContain('series-author');
       });

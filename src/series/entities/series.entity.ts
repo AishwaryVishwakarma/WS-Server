@@ -1,6 +1,7 @@
 import {User} from 'src/users/entities/user.entity';
 import {Story} from 'src/stories/entities/story.entity';
 import {
+  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
@@ -10,6 +11,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
+import {buildSlug} from 'src/utils/slug';
 
 // An author's own ordered grouping of their stories (e.g. "Part 1", "Part
 // 2"). Created implicitly the first time a story is saved with a new series
@@ -26,6 +28,12 @@ export class Series {
   @Column({length: 100})
   title: string;
 
+  // Derived from title on creation. There's no rename endpoint for a series
+  // (see findOrCreateForAuthor above), so unlike Story/User this never needs
+  // to regenerate later.
+  @Column({length: 100, unique: true})
+  slug: string;
+
   @ManyToOne(() => User, (user) => user.seriesList, {onDelete: 'CASCADE'})
   author: User;
 
@@ -37,4 +45,11 @@ export class Series {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @BeforeInsert()
+  assignSlug() {
+    if (!this.slug) {
+      this.slug = buildSlug(this.title, 'series');
+    }
+  }
 }

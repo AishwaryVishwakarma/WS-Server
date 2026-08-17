@@ -20,6 +20,7 @@ import {Comment} from 'src/comments/entities/comment.entity';
 import {StoryReport} from './story-report.entity';
 import {StoryRevision} from './story-revision.entity';
 import {Series} from 'src/series/entities/series.entity';
+import {buildSlug} from 'src/utils/slug';
 
 @Entity()
 // The public feed filters status='approved' and sorts by createdAt (newest/
@@ -65,6 +66,13 @@ export class Story {
 
   @Column({length: 255})
   title: string;
+
+  // Derived from title on creation (see assignSlug below); StoriesService's
+  // update() regenerates it when the title actually changes, since a plain
+  // @BeforeUpdate hook would reshuffle the slug (and the public URL) on
+  // every save, including edits that never touch the title.
+  @Column({length: 100, unique: true})
+  slug: string;
 
   @Column({length: 300})
   excerpt: string;
@@ -245,6 +253,13 @@ export class Story {
       this.wordCount = this.content.trim()
         ? this.content.trim().split(/\s+/).length
         : 0;
+    }
+  }
+
+  @BeforeInsert()
+  assignSlug() {
+    if (!this.slug) {
+      this.slug = buildSlug(this.title, 'story');
     }
   }
 }
