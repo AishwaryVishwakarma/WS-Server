@@ -24,6 +24,7 @@ import {
   NOTIFICATION_TYPES,
   type NotificationType,
 } from 'src/notifications/notification.types';
+import {buildSlug} from 'src/utils/slug';
 
 @Entity()
 // One Google identity maps to at most one account. Named + nullable-unique so
@@ -44,6 +45,13 @@ export class User {
 
   @Column({length: 100})
   name: string;
+
+  // Derived from name on creation (see assignSlug below); UsersService's
+  // update() regenerates it when the name actually changes, since a plain
+  // @BeforeUpdate hook would reshuffle the profile URL on every save,
+  // including edits that never touch the name.
+  @Column({length: 100, unique: true})
+  slug: string;
 
   @Column({unique: true})
   email: string;
@@ -254,6 +262,13 @@ export class User {
   normalizeEmail() {
     if (this.email) {
       this.email = this.email.trim().toLowerCase();
+    }
+  }
+
+  @BeforeInsert()
+  assignSlug() {
+    if (!this.slug) {
+      this.slug = buildSlug(this.name, 'member');
     }
   }
 }

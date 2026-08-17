@@ -27,6 +27,7 @@ import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
+import {buildSlug} from 'src/utils/slug';
 import {syncReportCount} from 'src/utils/report-count';
 import {
   applyFreeze,
@@ -140,7 +141,17 @@ export class UsersService {
   private async _applyUserUpdates(user: User, updateUserDto: UpdateUserDto) {
     const {password, ...rest} = updateUserDto;
 
+    // Captured before the mutation below so the slug only regenerates when
+    // the name actually changes — not on every save (an admin granting
+    // membership, verifying an account, etc. must not reshuffle the
+    // profile's public URL).
+    const previousName = user.name;
+
     Object.assign(user, rest);
+
+    if (rest.name !== undefined && rest.name !== previousName) {
+      user.slug = buildSlug(rest.name, 'member');
+    }
 
     if (password) {
       user.password = await this.hashPassword(password);
@@ -359,6 +370,14 @@ export class UsersService {
   async findOne(id: string) {
     return this.usersRepository.findOneByOrFail({id}).catch(() => {
       throw new NotFoundException(`User with ID ${id} not found`);
+    });
+  }
+
+  // Backs the public author profile route — a clean cutover, not a dual
+  // id-or-slug lookup, mirroring StoriesService.findOneVisibleBySlug.
+  async findOneBySlug(slug: string) {
+    return this.usersRepository.findOneByOrFail({slug}).catch(() => {
+      throw new NotFoundException(`User '${slug}' not found`);
     });
   }
 
