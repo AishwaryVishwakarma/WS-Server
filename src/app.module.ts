@@ -54,6 +54,7 @@ import {RedisThrottlerStorage} from './common/redis-throttler.storage';
 import {RateLimitModule} from './common/rate-limit.module';
 import {JobsModule} from './jobs/jobs.module';
 import {AdminAnalyticsModule} from './admin-analytics/admin-analytics.module';
+import {BillingModule} from './billing/billing.module';
 import {AnalyticsEvent} from './admin-analytics/entities/analytics-event.entity';
 import {ImageStorageModule} from './image-storage/image-storage.module';
 import {normalizeBooleanEnv} from './common/config/normalize-boolean-env';
@@ -190,6 +191,32 @@ const DEFAULT_DB_POOL_SIZE = 10;
           config.IMAGE_PURGE_ENABLED
         );
 
+        // Unlike Appwrite, none of these are required in any environment —
+        // billing simply stays disabled (LemonSqueezyService.enabled ===
+        // false, checkout/portal/webhook all 503) until a store exists to
+        // configure. But a *partially* configured group is worse than none:
+        // it could create real checkouts with no way to reconcile their
+        // webhooks, or accept webhooks it can never have created checkouts
+        // for. All-or-nothing.
+        const lemonSqueezyKeys = [
+          'LEMONSQUEEZY_API_KEY',
+          'LEMONSQUEEZY_STORE_ID',
+          'LEMONSQUEEZY_PATRON_VARIANT_ID',
+          'LEMONSQUEEZY_WEBHOOK_SECRET',
+        ];
+        const lemonSqueezyConfigured = lemonSqueezyKeys.filter(
+          (key) => !!config[key]
+        );
+        if (
+          lemonSqueezyConfigured.length > 0 &&
+          lemonSqueezyConfigured.length < lemonSqueezyKeys.length
+        ) {
+          const missing = lemonSqueezyKeys.filter((key) => !config[key]);
+          throw new Error(
+            `Incomplete LemonSqueezy config — missing ${missing.join(', ')}`
+          );
+        }
+
         // Fail fast on a typo'd NODE_ENV — it gates cookie security, so a
         // bad value silently weakens production.
         const nodeEnv = config.NODE_ENV;
@@ -279,6 +306,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     SettingsModule,
     PresenceModule,
     AdminAnalyticsModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [
@@ -313,6 +341,10 @@ export class AppModule {
         // Resend has no browser session/CSRF cookie. Authenticity is enforced
         // with its Svix signature over the untouched raw request body.
         '/webhooks/resend',
+        // Same reasoning — LemonSqueezy signs the raw body with an HMAC-
+        // SHA256 X-Signature header instead of Svix, but there's still no
+        // browser session/CSRF cookie to check.
+        '/webhooks/lemonsqueezy',
         // Anonymous read-counter ping — anonymous browsers can't hold a CSRF
         // token, and it's a harmless denormalized counter, not a real mutation.
         {path: 'stories/:id/view', method: RequestMethod.POST},

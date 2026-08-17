@@ -61,6 +61,13 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
   // (null if never), and the banked streak-freeze token (Patron+, see
   // UsersService.recordActivity). Neither drives any public rendering.
   @Expose() premiumSince: Date | null;
+  // Raw mirror of the LemonSqueezy subscription status, and its next
+  // renewal/access-end date — both null if never subscribed. Drives the /me
+  // membership copy (e.g. "renews May 3" vs "cancelled — perks end May 3").
+  // The LemonSqueezy subscription/customer ids themselves are reconciliation
+  // keys only and never leave the backend.
+  @Expose() membershipStatus: string | null;
+  @Expose() membershipRenewsAt: Date | null;
   @Expose() streakFreezeCount: number;
   /** Whether this account can use password sign-in/change-password. */
   @Expose() hasPassword: boolean;

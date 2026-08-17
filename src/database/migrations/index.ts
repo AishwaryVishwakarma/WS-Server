@@ -25,6 +25,7 @@ import {AddMembershipTier1786882214528} from './1786882214528-AddMembershipTier'
 import {AddMembershipFeaturesToggle1786882435043} from './1786882435043-AddMembershipFeaturesToggle';
 import {AddSlugColumns1786953587458} from './1786953587458-AddSlugColumns';
 import {AddNotificationSlugFields1786953880106} from './1786953880106-AddNotificationSlugFields';
+import {AddBillingColumns1786960000000} from './1786960000000-AddBillingColumns';
 
 export const migrations = [
   Baseline1786175459406,
@@ -43,4 +44,5 @@ export const migrations = [
   AddMembershipFeaturesToggle1786882435043,
   AddSlugColumns1786953587458,
   AddNotificationSlugFields1786953880106,
+  AddBillingColumns1786960000000,
 ];

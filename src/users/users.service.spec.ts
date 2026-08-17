@@ -739,6 +739,134 @@ describe('UsersService', () => {
       expect(user.membershipTier).toBe(MembershipTier.Free);
       expect(user.premiumSince).toBe(originalPremiumSince);
     });
+
+    it('restores FoundingPatron from the latch on a re-grant, without recomputing the cap', async () => {
+      // Founding status was awarded once, then the account lapsed to Free —
+      // premiumSince stays set (from the original grant) but
+      // foundingPatronSince is what actually carries the "was founding"
+      // fact forward.
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        premiumSince: new Date('2026-01-01T00:00:00.000Z'),
+        foundingPatronSince: new Date('2026-01-01T00:00:00.000Z'),
+      });
+
+      const user = (await service.update('user-1', {
+        membershipTier: MembershipTier.Patron,
+      })) as unknown as User;
+
+      expect(user.membershipTier).toBe(MembershipTier.FoundingPatron);
+      expect(repository.count).not.toHaveBeenCalled();
+    });
+
+    it('revokes a latched FoundingPatron to Free without the latch overriding it back', async () => {
+      // The latch means "never lost on a later re-grant," not "can never
+      // become Free" — an explicit revoke (or a subscription lapsing) must
+      // go through even though foundingPatronSince stays set.
+      const foundingPatronSince = new Date('2026-01-01T00:00:00.000Z');
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.FoundingPatron,
+        premiumSince: foundingPatronSince,
+        foundingPatronSince,
+      });
+
+      const user = (await service.update('user-1', {
+        membershipTier: MembershipTier.Free,
+      })) as unknown as User;
+
+      expect(user.membershipTier).toBe(MembershipTier.Free);
+      expect(user.foundingPatronSince).toBe(foundingPatronSince);
+    });
+  });
+
+  describe('applyMembershipChange — self-serve billing grant path', () => {
+    it('is a no-op returning null for an unknown user id', async () => {
+      repository.findOneBy.mockResolvedValue(null);
+
+      const result = await service.applyMembershipChange(
+        'unknown-user',
+        MembershipTier.Patron
+      );
+
+      expect(result).toBeNull();
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it('persists the granted tier alongside the billing fields', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        premiumSince: null,
+      });
+      repository.count.mockResolvedValue(MEMBERSHIP_FOUNDING_LIMIT);
+      repository.save.mockImplementation((user: User) => Promise.resolve(user));
+
+      const user = (await service.applyMembershipChange(
+        'user-1',
+        MembershipTier.Patron,
+        {
+          lemonSqueezyCustomerId: 'cust_1',
+          lemonSqueezySubscriptionId: 'sub_1',
+          membershipStatus: 'active',
+          membershipRenewsAt: new Date('2026-06-01T00:00:00.000Z'),
+        }
+      )) as unknown as User;
+
+      expect(user.membershipTier).toBe(MembershipTier.Patron);
+      expect(user.lemonSqueezyCustomerId).toBe('cust_1');
+      expect(user.lemonSqueezySubscriptionId).toBe('sub_1');
+      expect(user.membershipStatus).toBe('active');
+      expect(user.premiumSince).toBeInstanceOf(Date);
+    });
+
+    it('converges with the admin PATCH path at the founding cap boundary', async () => {
+      // Same fixture, same cap count, exercised through both grant sources —
+      // proving _resolveGrantedTier can't drift between them.
+      const freshFree = () => ({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        premiumSince: null,
+      });
+      repository.count.mockResolvedValue(0);
+
+      repository.findOneByOrFail.mockResolvedValue(freshFree());
+      const viaAdmin = (await service.update('user-1', {
+        membershipTier: MembershipTier.Patron,
+      })) as unknown as User;
+
+      repository.findOneBy.mockResolvedValue(freshFree());
+      repository.save.mockImplementation((user: User) => Promise.resolve(user));
+      const viaWebhook = (await service.applyMembershipChange(
+        'user-1',
+        MembershipTier.Patron
+      )) as unknown as User;
+
+      expect(viaAdmin.membershipTier).toBe(MembershipTier.FoundingPatron);
+      expect(viaWebhook.membershipTier).toBe(MembershipTier.FoundingPatron);
+    });
+
+    it('restores FoundingPatron from the latch when a lapsed member resubscribes via checkout', async () => {
+      // A self-serve checkout only ever requests plain Patron — this is the
+      // scenario the latch exists for.
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        premiumSince: new Date('2026-01-01T00:00:00.000Z'),
+        foundingPatronSince: new Date('2026-01-01T00:00:00.000Z'),
+      });
+      repository.save.mockImplementation((user: User) => Promise.resolve(user));
+
+      const user = (await service.applyMembershipChange(
+        'user-1',
+        MembershipTier.Patron,
+        {lemonSqueezySubscriptionId: 'sub_2'}
+      )) as unknown as User;
+
+      expect(user.membershipTier).toBe(MembershipTier.FoundingPatron);
+      expect(repository.count).not.toHaveBeenCalled();
+    });
   });
 
   describe('recordActivity — streak freeze', () => {

@@ -72,13 +72,16 @@ describe('Membership (integration)', () => {
       // Fill the founding headcount directly — cheaper than registering 100
       // real accounts through the OTP flow just to exhaust the cutoff. A bulk
       // .insert() bypasses the entity's @BeforeInsert hooks, so slug (NOT
-      // NULL + unique) needs an explicit value here.
+      // NULL + unique) needs an explicit value here. The cap is counted off
+      // foundingPatronSince (see UsersService._resolveGrantedTier), not the
+      // current membershipTier, so filler rows need the latch set directly.
       const filler = Array.from({length: 100}, (_, i) => ({
         name: `Filler ${i}`,
         slug: `filler-${i}`,
         email: `filler${i}@test.com`,
-        membershipTier: MembershipTier.Patron,
+        membershipTier: MembershipTier.FoundingPatron,
         premiumSince: new Date(),
+        foundingPatronSince: new Date(),
       }));
       await userRepository().insert(filler);
 
@@ -93,19 +96,24 @@ describe('Membership (integration)', () => {
       expect(response.body.membershipTier).toBe('patron');
     });
 
-    it('does not re-elevate to Founding Patron on a re-grant after a lapse', async () => {
+    it('restores Founding Patron from the latch on a re-grant after a lapse', async () => {
       const admin = await seedAdmin(testApp);
       const client = agent();
       const {body: user} = (await registerUser(client, {
         email: 'reader@test.com',
       })) as {body: IdBody};
 
-      await grantTier(admin, user.id, MembershipTier.Patron);
+      const firstGrant = await grantTier(admin, user.id, MembershipTier.Patron);
+      expect(firstGrant.body.membershipTier).toBe('founding_patron');
+
       await grantTier(admin, user.id, MembershipTier.Free);
       const response = await grantTier(admin, user.id, MembershipTier.Patron);
 
+      // The "once granted, never lost" invariant: foundingPatronSince is a
+      // latch, not a recomputed eligibility check, so a lapse-then-re-grant
+      // restores Founding Patron rather than downgrading to plain Patron.
       expect(response.status).toBe(200);
-      expect(response.body.membershipTier).toBe('patron');
+      expect(response.body.membershipTier).toBe('founding_patron');
     });
   });
 
