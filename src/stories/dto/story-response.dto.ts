@@ -3,6 +3,7 @@ import type {StoryStatus} from '../enums/story-status.enum';
 import type {StoryReportReason} from '../enums/story-report-reason.enum';
 import type {ContentWarning} from '../enums/content-warning.enum';
 import type {Story} from '../entities/story.entity';
+import type {MembershipTier} from 'src/users/enums/membership-tier.enum';
 import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
 
 /**
@@ -14,6 +15,9 @@ export class StoryAuthorResponseDto {
   @Expose() id: string;
   @Expose() name: string;
   @Expose() profileImageUrl?: string;
+  // Drives the member badge/avatar ring on the byline — exposed
+  // unconditionally, same as UserPreviewResponseDto's own field.
+  @Expose() membershipTier: MembershipTier;
 
   constructor(partial: Partial<StoryAuthorResponseDto>) {
     Object.assign(this, partial);

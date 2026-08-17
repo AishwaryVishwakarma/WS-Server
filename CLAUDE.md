@@ -106,6 +106,60 @@ production safety checks there.
 - Profanity validation applies to public identity fields, not horror story or
   comment prose. Content moderation for prose uses approval and reporting.
 
+## Membership (Patron / Founding Patron)
+
+- Phase 0 only: `User.membershipTier` (`Free|Patron|FoundingPatron`) is granted
+  and revoked manually by an admin via `PATCH /admin/users/:id`, mirroring how
+  `role`/`isVerified` already work. No payment processor is wired up — do not
+  add real billing without an explicit decision on a provider.
+- `SiteSettings.membershipFeaturesEnabled` (default `false`) is the site-wide
+  kill switch. Every membership-gated behavior checks both
+  `membershipTier !== Free` AND `SettingsService.isMembershipFeaturesEnabled()`
+  — a tier staged on an account before rollout has no effect until the toggle
+  flips.
+- `User.premiumSince`, not the current `membershipTier`, is the "has this
+  account ever been a member" signal. It is stamped once, on a genuine first
+  grant, and never cleared by a later lapse-then-re-grant — checking the
+  current tier instead would make a re-grant after a lapse indistinguishable
+  from a true first grant, since a lapsed member's tier also resets to `Free`.
+- Founding Patron is auto-assigned in `UsersService._resolveGrantedTier`: a
+  genuine first-ever grant to `Patron` while fewer than
+  `MEMBERSHIP_FOUNDING_LIMIT` (100) accounts have ever held Patron+ is
+  upgraded to `FoundingPatron` instead. Once granted it is never re-evaluated
+  or lost. Explicitly requesting `FoundingPatron` directly is always honored
+  as-is, without recomputing eligibility.
+- Guardrails that must hold for any future membership feature: never paywall
+  story content itself; membership must never buy a better spot in organic
+  trending/search rankings; the priority moderation queue changes queue
+  *position* only, never moderation standards (same rules, just reviewed
+  sooner).
+- Gated behaviors, all resolved from the author's own `membershipTier`, never
+  a request-supplied one:
+  - `StoriesService._assertWithinPublishLimit` — the `FREE_PUBLISH_LIMIT` (10)
+    publish cap is skipped entirely for Patron+.
+  - `StoriesService.findAll`'s pending-queue branch — a raw SQL `CASE`
+    expression orders Patron+ authors' stories first, then oldest-first
+    within each tier. A 3-value string enum can't express this priority order
+    via TypeORM's plain find-options `order` object (alphabetical order
+    doesn't line up with priority order), so this path uses a query builder
+    instead. The `CASE` expression must be registered via `addSelect` (with an
+    alias) before being referenced in `orderBy`/`addOrderBy` — a bare raw
+    expression passed straight to `addOrderBy` throws at query time
+    (`"CASE WHEN author" alias was not found`), a failure only the real
+    Postgres driver surfaces, not the mocked query builder in unit tests.
+  - `StoriesService.getStoryDailyStats` — the 7/30/90-day range extends to
+    180/365 for Patron+; a stale/tampered client requesting a wider range is
+    silently clamped back to 90, not rejected.
+  - `UsersService.recordActivity` — grants a monthly streak-freeze token
+    (`streakFreezeCount`, max 1) to Patron+ and spends one automatically to
+    protect `currentStreak` across a single missed day, computed lazily on the
+    next activity (no scheduler exists for streaks or anything else in this
+    codebase).
+  - `achievements.ts`'s `unlockedTier` — a 4th tier is reachable only once
+    real progress clears its threshold AND the account is Patron+; a Free
+    member who already clears it stays capped at tier 3, preserving
+    earned-status integrity.
+
 ## Database and TypeScript rules
 
 - Migrations own the schema; `synchronize` stays off. After changing an entity,

@@ -18,13 +18,23 @@ import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.en
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
-import {ILike, MoreThan, Repository, type FindOptionsWhere} from 'typeorm';
+import {ILike, In, MoreThan, Repository, type FindOptionsWhere} from 'typeorm';
+import {
+  MembershipTier,
+  MEMBERSHIP_FOUNDING_LIMIT,
+} from './enums/membership-tier.enum';
 import {ConfigService} from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import {paginate} from 'src/utils/pagination';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
 import {syncReportCount} from 'src/utils/report-count';
-import {computeStreakUpdate} from './streak';
+import {
+  applyFreeze,
+  computeStreakUpdate,
+  isEligibleForFreezeGrant,
+  isOneDayGap,
+  type StreakState,
+} from './streak';
 import {SettingsService} from 'src/settings/settings.service';
 import {
   ACHIEVEMENT_DEFINITIONS,
@@ -370,10 +380,47 @@ export class UsersService {
     if (!user) return;
 
     const today = new Date().toISOString().slice(0, 10);
-    const updated = computeStreakUpdate(user, today);
-    if (!updated) return;
+    const now = new Date();
 
-    await this.usersRepository.update(userId, updated);
+    // Patron+ streak-freeze perk: gated on the site-wide toggle like every
+    // other membership benefit, checked lazily here since nothing else in
+    // this file runs on a schedule either (see streak.ts).
+    const membershipLive =
+      user.membershipTier !== MembershipTier.Free &&
+      (await this.settingsService.isMembershipFeaturesEnabled());
+
+    let streakFreezeCount = user.streakFreezeCount;
+    let lastStreakFreezeUsedAt = user.lastStreakFreezeUsedAt;
+    let freezeChanged = false;
+    let effectiveState: StreakState = user;
+
+    if (membershipLive) {
+      if (
+        isEligibleForFreezeGrant(streakFreezeCount, lastStreakFreezeUsedAt, now)
+      ) {
+        streakFreezeCount += 1;
+        lastStreakFreezeUsedAt = now;
+        freezeChanged = true;
+      }
+      if (
+        streakFreezeCount > 0 &&
+        user.lastActiveDate &&
+        isOneDayGap(user.lastActiveDate, today)
+      ) {
+        effectiveState = {...user, ...applyFreeze(user, today)};
+        streakFreezeCount -= 1;
+        lastStreakFreezeUsedAt = now;
+        freezeChanged = true;
+      }
+    }
+
+    const updated = computeStreakUpdate(effectiveState, today);
+    if (!updated && !freezeChanged) return;
+
+    await this.usersRepository.update(userId, {
+      ...updated,
+      ...(freezeChanged ? {streakFreezeCount, lastStreakFreezeUsedAt} : {}),
+    });
   }
 
   async computeBadges(userId: string, longestStreak: number): Promise<Badge[]> {
@@ -458,12 +505,23 @@ export class UsersService {
       [AchievementKey.NightExplorer]: completedStories,
     };
 
+    // Tier 4 additionally requires the site-wide toggle live, like every
+    // other membership perk — an account already tagged Patron+ before
+    // rollout doesn't unlock it early.
+    const isMember =
+      user.membershipTier !== MembershipTier.Free &&
+      (await this.settingsService.isMembershipFeaturesEnabled());
+
     return ACHIEVEMENT_DEFINITIONS.map((definition) => {
       const progress = progressByKey[definition.key];
       return {
         ...definition,
         progress,
-        highestUnlockedTier: unlockedTier(progress, definition.thresholds),
+        highestUnlockedTier: unlockedTier(
+          progress,
+          definition.thresholds,
+          isMember
+        ),
       };
     });
   }
@@ -626,7 +684,60 @@ export class UsersService {
       user.verificationLocked = true;
     }
 
-    return this._applyUserUpdates(user, updateUserDto);
+    let effectiveTier = updateUserDto.membershipTier;
+    if (updateUserDto.membershipTier !== undefined) {
+      // premiumSince (not the current tier) is the "ever been a member"
+      // signal — a lapsed member's tier resets to Free too, which would be
+      // indistinguishable from a true first grant if this checked the tier
+      // instead. Immune to a later revoke-then-re-grant cycle.
+      const isGenuineFirstGrant =
+        !user.premiumSince &&
+        updateUserDto.membershipTier !== MembershipTier.Free;
+      effectiveTier = await this._resolveGrantedTier(
+        updateUserDto.membershipTier,
+        isGenuineFirstGrant
+      );
+      // Stamped directly on the entity (mirrors verificationLocked above) —
+      // UpdateUserDto has no premiumSince field, so Object.assign in
+      // _applyUserUpdates below can't touch or overwrite it.
+      if (isGenuineFirstGrant) {
+        user.premiumSince = new Date();
+      }
+    }
+
+    return this._applyUserUpdates(user, {
+      ...updateUserDto,
+      membershipTier: effectiveTier,
+    });
+  }
+
+  // Phase 0: an admin granting/revoking membership manually — no payment
+  // processor exists yet. A genuine first-ever grant to Patron — while fewer
+  // than MEMBERSHIP_FOUNDING_LIMIT accounts have ever held Patron+ — is
+  // auto-upgraded to FoundingPatron, a status that's never re-evaluated or
+  // lost even if membership later lapses and is re-granted. Explicitly
+  // requesting FoundingPatron directly (e.g. a manual override) is always
+  // honored as-is, without recomputing eligibility.
+  private async _resolveGrantedTier(
+    newTier: MembershipTier,
+    isGenuineFirstGrant: boolean
+  ): Promise<MembershipTier> {
+    if (newTier !== MembershipTier.Patron || !isGenuineFirstGrant) {
+      return newTier;
+    }
+
+    const existingMemberCount = await this.usersRepository.count({
+      where: {
+        membershipTier: In([
+          MembershipTier.Patron,
+          MembershipTier.FoundingPatron,
+        ]),
+      },
+    });
+
+    return existingMemberCount < MEMBERSHIP_FOUNDING_LIMIT
+      ? MembershipTier.FoundingPatron
+      : MembershipTier.Patron;
   }
 
   // Latches once — see User.hasPublishedStory. Called only from
