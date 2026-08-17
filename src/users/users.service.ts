@@ -59,7 +59,6 @@ const MONTH_STREAK_DAYS = 30;
 
 @Injectable()
 export class UsersService {
-  // Inject the User repository to interact with the database
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
@@ -138,7 +137,6 @@ export class UsersService {
     return bcrypt.hash(password, saltRounds);
   }
 
-  // Update the user entity with the new data
   private async _applyUserUpdates(user: User, updateUserDto: UpdateUserDto) {
     const {password, ...rest} = updateUserDto;
 
@@ -364,11 +362,6 @@ export class UsersService {
     });
   }
 
-  // Achievement badges for the public profile (GET /users/:id). Computed on
-  // read from stats that already exist elsewhere — approved story count,
-  // likes/comments received, and series ownership — rather than stored and
-  // kept in sync via triggers scattered across StoriesService/LikesService/
-  // CommentsService/SeriesService.
   // Records reading activity for today (UTC), extending/resetting the
   // user's streak via the pure computeStreakUpdate — triggered from
   // StoriesService.recordView on any story view. A no-op (no query beyond
@@ -464,6 +457,11 @@ export class UsersService {
     return badges;
   }
 
+  // Achievement badges for the public profile (GET /users/:id). Computed on
+  // read from stats that already exist elsewhere — approved story count,
+  // likes/comments received, and series ownership — rather than stored and
+  // kept in sync via triggers scattered across StoriesService/LikesService/
+  // CommentsService/SeriesService.
   async computeAchievements(userId: string): Promise<AchievementProgress[]> {
     const user = await this.findOne(userId);
     const [storyStats, seriesCount, completedStories] = await Promise.all([

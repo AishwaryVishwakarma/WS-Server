@@ -62,7 +62,7 @@ export class AuthService {
   async validateUser(loginInfoDto: LoginInfoDto) {
     const user = await this.usersRepository
       .createQueryBuilder('user')
-      .addSelect('user.password') // Ensure password is selected
+      .addSelect('user.password')
       .where('user.email = :email', {
         // User.email is stored lowercased (see User.normalizeEmail) — match
         // regardless of how the visitor typed it.

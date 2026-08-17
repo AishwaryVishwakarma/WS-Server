@@ -223,7 +223,6 @@ export class PublicStoriesController {
     @Query() paginationDto: PaginationDto,
     @Req() req: Request
   ) {
-    // Only expose comments if the story itself is visible to this user
     const story = await this.storiesService.findOneVisible(
       id,
       req.session.userId,
