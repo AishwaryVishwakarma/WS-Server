@@ -23,7 +23,11 @@ import {StoryStatus} from './enums/story-status.enum';
 import {StoryReportReason} from './enums/story-report-reason.enum';
 import {MembershipTier} from 'src/users/enums/membership-tier.enum';
 import {ContentWarning} from './enums/content-warning.enum';
-import {FREE_PUBLISH_LIMIT, StoriesService} from './stories.service';
+import {
+  FREE_DRAFT_LIMIT,
+  FREE_PUBLISH_LIMIT,
+  StoriesService,
+} from './stories.service';
 
 const duplicateEntryError = () => {
   const error = new QueryFailedError('INSERT', [], new Error('dup'));
@@ -1579,6 +1583,80 @@ describe('StoriesService', () => {
           'author-1'
         )
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('draft-cap bypass for Patron+', () => {
+    const draftAuthor = {id: 'author-1'};
+
+    it('still enforces the cap for a Free author', async () => {
+      repository.count.mockResolvedValue(FREE_DRAFT_LIMIT);
+      usersService.findOne.mockResolvedValue({
+        ...draftAuthor,
+        membershipTier: MembershipTier.Free,
+      });
+
+      await expect(
+        service.create(
+          {title: 'A Story', content: 'x'.repeat(500), draft: true},
+          'author-1'
+        )
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('bypasses the cap for a Patron author once membership features are live', async () => {
+      repository.count.mockResolvedValue(FREE_DRAFT_LIMIT);
+      usersService.findOne.mockResolvedValue({
+        ...draftAuthor,
+        membershipTier: MembershipTier.Patron,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+
+      await expect(
+        service.create(
+          {title: 'A Story', content: 'x'.repeat(500), draft: true},
+          'author-1'
+        )
+      ).resolves.toBeDefined();
+      expect(repository.count).not.toHaveBeenCalled();
+    });
+
+    it('still enforces the cap for a Patron author while membership features are staged off', async () => {
+      repository.count.mockResolvedValue(FREE_DRAFT_LIMIT);
+      usersService.findOne.mockResolvedValue({
+        ...draftAuthor,
+        membershipTier: MembershipTier.Patron,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(false);
+
+      await expect(
+        service.create(
+          {title: 'A Story', content: 'x'.repeat(500), draft: true},
+          'author-1'
+        )
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('is a separate bucket from the publish limit — being at the publish cap does not block a new draft', async () => {
+      repository.count.mockImplementation(({where}) => {
+        const status = (where as {status?: unknown})?.status;
+        // The publish-limit probe counts pipeline statuses (an `In(...)`
+        // FindOperator); the draft-limit probe counts a bare Draft status.
+        return Promise.resolve(
+          status === StoryStatus.Draft ? 0 : FREE_PUBLISH_LIMIT
+        );
+      });
+      usersService.findOne.mockResolvedValue({
+        ...draftAuthor,
+        membershipTier: MembershipTier.Free,
+      });
+
+      await expect(
+        service.create(
+          {title: 'A Story', content: 'x'.repeat(500), draft: true},
+          'author-1'
+        )
+      ).resolves.toBeDefined();
     });
   });
 

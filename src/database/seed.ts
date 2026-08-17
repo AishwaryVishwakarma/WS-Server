@@ -834,7 +834,6 @@ async function seed() {
       allowStoryCoverImage: true,
     });
 
-    // Users
     const admin = (await usersService.create({
       name: 'Site Admin',
       ...ADMIN_CREDENTIALS,
@@ -882,7 +881,6 @@ async function seed() {
       lastStreakFreezeUsedAt: new Date(),
     });
 
-    // Tags
     const tagIdsByName = new Map<string, string>();
     for (const name of TAG_NAMES) {
       const tag = await tagsService.create({name});
@@ -907,9 +905,9 @@ async function seed() {
           draft: status === StoryStatus.Draft,
         },
         usersByEmail.get(author)!.id,
-        // Seed authors intentionally exceed the free publish limit (rich
-        // feed/pagination data); the cap is a user-facing guard, not a
-        // system-setup one.
+        // Seed authors intentionally exceed the free publish and draft limits
+        // (rich feed/pagination data); the caps are a user-facing guard, not
+        // a system-setup one.
         {enforcePublishLimit: false}
       );
 
@@ -934,7 +932,6 @@ async function seed() {
       );
     }
 
-    // Comments
     const allComments = [
       ...COMMENTS,
       ...generateComments(),

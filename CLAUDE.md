@@ -137,6 +137,10 @@ production safety checks there.
   a request-supplied one:
   - `StoriesService._assertWithinPublishLimit` — the `FREE_PUBLISH_LIMIT` (10)
     publish cap is skipped entirely for Patron+.
+  - `StoriesService._assertWithinDraftLimit` — a separate `FREE_DRAFT_LIMIT`
+    (10) cap on private drafts, also skipped for Patron+. Independent from the
+    publish cap (a Free author can have up to 10 drafts and 10 pipeline
+    stories at once, 20 total) since drafts are still rows in the database.
   - `StoriesService.findAll`'s pending-queue branch — a raw SQL `CASE`
     expression orders Patron+ authors' stories first, then oldest-first
     within each tier. A 3-value string enum can't express this priority order

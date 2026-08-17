@@ -164,6 +164,64 @@ describe('Membership (integration)', () => {
     });
   });
 
+  describe('Draft-cap bypass for Patron+', () => {
+    const draftStory = (client: Agent, token: string, title: string) =>
+      client
+        .post('/stories')
+        .set('x-csrf-token', token)
+        .send({title, content: 'x'.repeat(500), draft: true});
+
+    it('blocks an 11th draft for a Free author', async () => {
+      const client = agent();
+      await registerUser(client, {email: 'drafter@test.com'});
+      const token = await getCsrfToken(client);
+
+      for (let i = 0; i < 10; i++) {
+        await draftStory(client, token, `Draft ${i}`).expect(201);
+      }
+      const response = await draftStory(client, token, 'Draft 10');
+
+      expect(response.status).toBe(403);
+    });
+
+    it('lets a Patron author exceed the free draft cap once the toggle is on', async () => {
+      const admin = await seedAdmin(testApp);
+      await enableMembershipFeatures(admin);
+
+      const client = agent();
+      const {body: author} = (await registerUser(client, {
+        email: 'drafter@test.com',
+      })) as {body: IdBody};
+      await grantTier(admin, author.id, MembershipTier.Patron);
+      const token = await getCsrfToken(client);
+
+      for (let i = 0; i < 10; i++) {
+        await draftStory(client, token, `Draft ${i}`).expect(201);
+      }
+      const response = await draftStory(client, token, 'Draft 10');
+
+      expect(response.status).toBe(201);
+    });
+
+    it('still enforces the draft cap for a Patron author while the toggle is off', async () => {
+      const admin = await seedAdmin(testApp);
+
+      const client = agent();
+      const {body: author} = (await registerUser(client, {
+        email: 'drafter@test.com',
+      })) as {body: IdBody};
+      await grantTier(admin, author.id, MembershipTier.Patron);
+      const token = await getCsrfToken(client);
+
+      for (let i = 0; i < 10; i++) {
+        await draftStory(client, token, `Draft ${i}`).expect(201);
+      }
+      const response = await draftStory(client, token, 'Draft 10');
+
+      expect(response.status).toBe(403);
+    });
+  });
+
   describe('Priority moderation queue', () => {
     const submitPendingStory = async (email: string, title: string) => {
       const client = agent();

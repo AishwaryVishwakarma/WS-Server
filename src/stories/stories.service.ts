@@ -108,6 +108,13 @@ export const TRENDING_WINDOW_DAYS = 14;
 // keepers, both a fair-use limit and basic spam protection.
 export const FREE_PUBLISH_LIMIT = 10;
 
+// Free accounts can also have up to this many private drafts at once — a
+// separate bucket from FREE_PUBLISH_LIMIT (a free author could have up to 20
+// stories total: 10 drafts + 10 in the pipeline). Drafts are never reviewed,
+// but they're still rows in the database, so they get their own bound rather
+// than being unlimited.
+export const FREE_DRAFT_LIMIT = 10;
+
 const PUBLISH_PIPELINE_STATUSES = [
   StoryStatus.Pending,
   StoryStatus.Approved,
@@ -283,11 +290,39 @@ export class StoriesService {
     }
   }
 
+  // Reject saving a new draft once the author is at the free draft limit —
+  // a separate bucket from the publish limit (see FREE_DRAFT_LIMIT). Patron+
+  // members are exempt, same rule as the publish limit.
+  private async _assertWithinDraftLimit(
+    userId: string,
+    membershipTier: MembershipTier
+  ) {
+    if (
+      membershipTier !== MembershipTier.Free &&
+      (await this.settingsService.isMembershipFeaturesEnabled())
+    ) {
+      return;
+    }
+
+    const count = await this.storiesRepository.count({
+      where: {
+        author: {id: userId},
+        status: StoryStatus.Draft,
+      },
+    });
+    if (count >= FREE_DRAFT_LIMIT) {
+      throw new ForbiddenException(
+        `You've reached the free limit of ${FREE_DRAFT_LIMIT} drafts. ` +
+          'Delete or submit one before starting another.'
+      );
+    }
+  }
+
   async create(
     createStoryDto: CreateStoryDto,
     userId: string,
-    // Trusted callers (the seed) opt out of the user-facing publish limit so
-    // demo/pagination data can exceed it.
+    // Trusted callers (the seed) opt out of the user-facing publish and draft
+    // limits so demo/pagination data can exceed them.
     {enforcePublishLimit = true}: {enforcePublishLimit?: boolean} = {}
   ) {
     const {
@@ -301,10 +336,12 @@ export class StoriesService {
 
     const author = await this.usersService.findOne(userId);
 
-    // Submitting straight to review counts against the publish limit; saving a
-    // private draft does not.
-    if (!draft && enforcePublishLimit) {
-      await this._assertWithinPublishLimit(userId, author.membershipTier);
+    if (enforcePublishLimit) {
+      if (draft) {
+        await this._assertWithinDraftLimit(userId, author.membershipTier);
+      } else {
+        await this._assertWithinPublishLimit(userId, author.membershipTier);
+      }
     }
 
     // Drafts are never in moderation to begin with; a non-draft only skips
