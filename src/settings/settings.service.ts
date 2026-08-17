@@ -31,6 +31,7 @@ export class SettingsService {
         allowStoryCoverImage: false,
         digestEmailGloballyEnabled: false,
         notificationEmailGloballyEnabled: false,
+        membershipFeaturesEnabled: false,
         updatedAt: new Date(),
       }
     );
@@ -59,6 +60,11 @@ export class SettingsService {
   async isNotificationEmailGloballyEnabled(): Promise<boolean> {
     const settings = await this.getSettings();
     return settings.notificationEmailGloballyEnabled;
+  }
+
+  async isMembershipFeaturesEnabled(): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.membershipFeaturesEnabled;
   }
 
   async updateSettings(dto: UpdateSiteSettingsDto): Promise<SiteSettings> {

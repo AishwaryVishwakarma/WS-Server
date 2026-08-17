@@ -23,6 +23,10 @@ import type {UpdateUserDto} from './dto/update-user.dto';
 import type {CreateUserDto} from './dto/create-user.dto';
 import {UsersService} from './users.service';
 import {SettingsService} from 'src/settings/settings.service';
+import {
+  MembershipTier,
+  MEMBERSHIP_FOUNDING_LIMIT,
+} from './enums/membership-tier.enum';
 import {AchievementKey} from './achievements';
 
 const duplicateEntryError = () => {
@@ -38,8 +42,10 @@ describe('UsersService', () => {
     save: jest.Mock;
     update: jest.Mock;
     findOne: jest.Mock;
+    findOneBy: jest.Mock;
     findAndCount: jest.Mock;
     findOneByOrFail: jest.Mock;
+    count: jest.Mock;
     createQueryBuilder: jest.Mock;
     softDelete: jest.Mock;
     restore: jest.Mock;
@@ -86,7 +92,10 @@ describe('UsersService', () => {
     getCount: jest.Mock;
   };
   let readingProgressRepository: {createQueryBuilder: jest.Mock};
-  let settingsService: {allowsProfileImageUpload: jest.Mock};
+  let settingsService: {
+    allowsProfileImageUpload: jest.Mock;
+    isMembershipFeaturesEnabled: jest.Mock;
+  };
 
   beforeEach(async () => {
     userQueryBuilder = {
@@ -99,8 +108,10 @@ describe('UsersService', () => {
       save: jest.fn((user) => Promise.resolve({id: 'user-1', ...user})),
       update: jest.fn(),
       findOne: jest.fn(),
+      findOneBy: jest.fn(),
       findAndCount: jest.fn(),
       findOneByOrFail: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
       createQueryBuilder: jest.fn(() => userQueryBuilder),
       softDelete: jest.fn(),
       restore: jest.fn(),
@@ -157,6 +168,7 @@ describe('UsersService', () => {
     };
     settingsService = {
       allowsProfileImageUpload: jest.fn().mockResolvedValue(true),
+      isMembershipFeaturesEnabled: jest.fn().mockResolvedValue(false),
     };
 
     const module = await Test.createTestingModule({
@@ -603,6 +615,195 @@ describe('UsersService', () => {
     });
   });
 
+  describe('update — membership grants', () => {
+    it('auto-upgrades a first grant to FoundingPatron while under the founding limit', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        premiumSince: null,
+      });
+      repository.count.mockResolvedValue(0);
+
+      const user = (await service.update('user-1', {
+        membershipTier: MembershipTier.Patron,
+      })) as unknown as User;
+
+      expect(user.membershipTier).toBe(MembershipTier.FoundingPatron);
+      expect(user.premiumSince).toBeInstanceOf(Date);
+    });
+
+    it('grants plain Patron once the founding limit is reached', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        premiumSince: null,
+      });
+      repository.count.mockResolvedValue(MEMBERSHIP_FOUNDING_LIMIT);
+
+      const user = (await service.update('user-1', {
+        membershipTier: MembershipTier.Patron,
+      })) as unknown as User;
+
+      expect(user.membershipTier).toBe(MembershipTier.Patron);
+    });
+
+    it('honors an explicit FoundingPatron request without recomputing eligibility', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        premiumSince: null,
+      });
+      repository.count.mockResolvedValue(MEMBERSHIP_FOUNDING_LIMIT);
+
+      const user = (await service.update('user-1', {
+        membershipTier: MembershipTier.FoundingPatron,
+      })) as unknown as User;
+
+      expect(user.membershipTier).toBe(MembershipTier.FoundingPatron);
+      expect(repository.count).not.toHaveBeenCalled();
+    });
+
+    it('does not touch premiumSince on a re-grant after a prior lapse', async () => {
+      const originalPremiumSince = new Date('2026-01-01T00:00:00.000Z');
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        premiumSince: originalPremiumSince,
+      });
+
+      const user = (await service.update('user-1', {
+        membershipTier: MembershipTier.Patron,
+      })) as unknown as User;
+
+      expect(user.premiumSince).toBe(originalPremiumSince);
+      // Already a member once before, so no fresh founding-limit check.
+      expect(repository.count).not.toHaveBeenCalled();
+    });
+
+    it('revoking to Free leaves premiumSince untouched', async () => {
+      const originalPremiumSince = new Date('2026-01-01T00:00:00.000Z');
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Patron,
+        premiumSince: originalPremiumSince,
+      });
+
+      const user = (await service.update('user-1', {
+        membershipTier: MembershipTier.Free,
+      })) as unknown as User;
+
+      expect(user.membershipTier).toBe(MembershipTier.Free);
+      expect(user.premiumSince).toBe(originalPremiumSince);
+    });
+  });
+
+  describe('recordActivity — streak freeze', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+
+    it('grants a freeze to a Patron+ member with none banked', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Patron,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastActiveDate: today,
+        streakFreezeCount: 0,
+        lastStreakFreezeUsedAt: null,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+
+      await service.recordActivity('user-1');
+
+      expect(repository.update).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({streakFreezeCount: 1})
+      );
+    });
+
+    it('does not grant a freeze to a Free member', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastActiveDate: yesterday,
+        streakFreezeCount: 0,
+        lastStreakFreezeUsedAt: null,
+      });
+
+      await service.recordActivity('user-1');
+
+      const [, update] = repository.update.mock.calls[0];
+      expect(update.streakFreezeCount).toBeUndefined();
+    });
+
+    it('does not grant while membership features are staged off', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Patron,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastActiveDate: yesterday,
+        streakFreezeCount: 0,
+        lastStreakFreezeUsedAt: null,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(false);
+
+      await service.recordActivity('user-1');
+
+      const [, update] = repository.update.mock.calls[0];
+      expect(update.streakFreezeCount).toBeUndefined();
+    });
+
+    it('spends a banked freeze to protect a one-day gap instead of resetting', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Patron,
+        currentStreak: 5,
+        longestStreak: 5,
+        lastActiveDate: twoDaysAgo,
+        streakFreezeCount: 1,
+        lastStreakFreezeUsedAt: null,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+
+      await service.recordActivity('user-1');
+
+      const [, update] = repository.update.mock.calls[0];
+      expect(update.currentStreak).toBe(6);
+      expect(update.streakFreezeCount).toBe(0);
+    });
+
+    it('resets normally when the gap is more than one day, even with a freeze banked', async () => {
+      const fourDaysAgo = new Date(Date.now() - 4 * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Patron,
+        currentStreak: 5,
+        longestStreak: 5,
+        lastActiveDate: fourDaysAgo,
+        streakFreezeCount: 1,
+        lastStreakFreezeUsedAt: null,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+
+      await service.recordActivity('user-1');
+
+      const [, update] = repository.update.mock.calls[0];
+      expect(update.currentStreak).toBe(1);
+      // Not spent — the gap it protects is exactly one day, not this one.
+      expect(update.streakFreezeCount).toBeUndefined();
+    });
+  });
+
   describe('markHasPublishedStory', () => {
     it('sets the flag via a targeted update', async () => {
       await service.markHasPublishedStory('user-1');
@@ -768,16 +969,71 @@ describe('UsersService', () => {
       repository.findOneByOrFail.mockResolvedValue({
         id: 'user-1',
         longestStreak: 30,
+        membershipTier: MembershipTier.Free,
       });
     });
 
-    it('returns all six tracks with three thresholds each', async () => {
+    it('returns all six tracks with four thresholds each', async () => {
       const achievements = await service.computeAchievements('user-1');
 
       expect(achievements).toHaveLength(6);
-      expect(achievements.every((item) => item.thresholds.length === 3)).toBe(
+      expect(achievements.every((item) => item.thresholds.length === 4)).toBe(
         true
       );
+    });
+
+    it('unlocks the 4th tier for a Patron+ member once membership features are live', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        longestStreak: 30,
+        membershipTier: MembershipTier.Patron,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '25',
+        totalLikes: '0',
+        totalComments: '0',
+      });
+
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(
+        achievements.find(({key}) => key === AchievementKey.Storyteller)
+      ).toMatchObject({progress: 25, highestUnlockedTier: 4});
+    });
+
+    it('caps a Free member at tier 3 even past the 4th threshold', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '25',
+        totalLikes: '0',
+        totalComments: '0',
+      });
+
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(
+        achievements.find(({key}) => key === AchievementKey.Storyteller)
+      ).toMatchObject({progress: 25, highestUnlockedTier: 3});
+    });
+
+    it('caps a Patron member at tier 3 while membership features are staged off', async () => {
+      repository.findOneByOrFail.mockResolvedValue({
+        id: 'user-1',
+        longestStreak: 30,
+        membershipTier: MembershipTier.Patron,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(false);
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '25',
+        totalLikes: '0',
+        totalComments: '0',
+      });
+
+      const achievements = await service.computeAchievements('user-1');
+
+      expect(
+        achievements.find(({key}) => key === AchievementKey.Storyteller)
+      ).toMatchObject({progress: 25, highestUnlockedTier: 3});
     });
 
     it('tiers current approved-story metrics at their boundaries', async () => {

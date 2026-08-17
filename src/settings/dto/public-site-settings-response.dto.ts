@@ -10,6 +10,9 @@ export class PublicSiteSettingsResponseDto {
   @Expose() digestEmailGloballyEnabled: boolean;
   // Lets account settings hide controls for a globally disabled channel.
   @Expose() notificationEmailGloballyEnabled: boolean;
+  // Lets the frontend hide membership UI entirely while the feature is
+  // being staged, even for accounts an admin has already granted a tier to.
+  @Expose() membershipFeaturesEnabled: boolean;
 
   constructor(partial: Partial<PublicSiteSettingsResponseDto>) {
     Object.assign(this, partial);

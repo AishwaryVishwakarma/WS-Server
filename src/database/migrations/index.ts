@@ -21,6 +21,8 @@ import {AddNotificationEmailGlobalToggle1786630000000} from './1786630000000-Add
 import {AddImageStorageIds1786640000000} from './1786640000000-AddImageStorageIds';
 import {RemoveAvatarCustomization1786650000000} from './1786650000000-RemoveAvatarCustomization';
 import {RemovePendingProfileImageUrl1786660000000} from './1786660000000-RemovePendingProfileImageUrl';
+import {AddMembershipTier1786882214528} from './1786882214528-AddMembershipTier';
+import {AddMembershipFeaturesToggle1786882435043} from './1786882435043-AddMembershipFeaturesToggle';
 
 export const migrations = [
   Baseline1786175459406,
@@ -35,4 +37,6 @@ export const migrations = [
   AddImageStorageIds1786640000000,
   RemoveAvatarCustomization1786650000000,
   RemovePendingProfileImageUrl1786660000000,
+  AddMembershipTier1786882214528,
+  AddMembershipFeaturesToggle1786882435043,
 ];

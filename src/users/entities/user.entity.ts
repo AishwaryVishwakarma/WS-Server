@@ -13,6 +13,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import {Role} from '../enums/role';
+import {MembershipTier} from '../enums/membership-tier.enum';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {UserReport} from './user-report.entity';
 import {Series} from 'src/series/entities/series.entity';
@@ -32,6 +33,11 @@ import {
 // The admin reported-users queue filters reportCount > 0 and sorts by it —
 // index it so the queue is a range scan, not a table scan.
 @Index('IDX_user_reportCount', ['reportCount'])
+// Backs admin-analytics day-bucketed queries over active accounts. Partial
+// (excludes soft-deleted rows) and explicitly named to match the raw SQL that
+// created it in AddAnalyticsEvents — without this, migration:generate can't
+// see the index in entity metadata and proposes dropping it every time.
+@Index('IDX_user_createdAt', ['createdAt'], {where: '"deletedAt" IS NULL'})
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -78,6 +84,21 @@ export class User {
 
   @Column({default: false})
   isBlocked: boolean;
+
+  // Phase 0: granted/revoked manually by an admin (see UsersService.
+  // grantMembership) — no payment processor exists yet. `premiumSince` is
+  // set once on the first-ever grant and never cleared by a later
+  // lapse/re-grant, so it keeps meaning "when this account first became a
+  // member" regardless of any gap in between.
+  @Column({
+    type: 'enum',
+    enum: MembershipTier,
+    default: MembershipTier.Free,
+  })
+  membershipTier: MembershipTier;
+
+  @Column({type: 'timestamp', nullable: true})
+  premiumSince: Date | null;
 
   @Column({type: 'varchar', length: 500, nullable: true})
   profileImageUrl: string | null;
@@ -130,6 +151,15 @@ export class User {
 
   @Column({type: 'varchar', length: 10, nullable: true})
   lastActiveDate: string | null;
+
+  // Patron+ perk: spend one to protect currentStreak on a day with no
+  // activity, instead of it resetting to 0. Replenished monthly (see
+  // UsersService.useStreakFreeze) rather than accumulating indefinitely.
+  @Column({type: 'int', default: 0})
+  streakFreezeCount: number;
+
+  @Column({type: 'timestamp', nullable: true})
+  lastStreakFreezeUsedAt: Date | null;
 
   // Weekly digest delivery is opt-in. New accounts remain unsubscribed until
   // the member explicitly enables it from settings.

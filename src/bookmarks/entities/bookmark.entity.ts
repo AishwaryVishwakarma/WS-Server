@@ -23,6 +23,11 @@ import {
 @Entity()
 @Unique('IDX_bookmark_user_story', ['user', 'story'])
 @Index('IDX_bookmark_user_createdAt', ['user', 'createdAt'])
+// Backs admin-analytics day-bucketed queries across all bookmarks. Explicitly
+// named to match the raw SQL that created it in AddAnalyticsEvents — without
+// this, migration:generate can't see the index in entity metadata and
+// proposes dropping it every time.
+@Index('IDX_bookmark_createdAt', ['createdAt'])
 export class Bookmark {
   @PrimaryGeneratedColumn('uuid')
   id: string;

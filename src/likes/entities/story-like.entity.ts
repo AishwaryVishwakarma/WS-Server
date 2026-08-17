@@ -23,6 +23,11 @@ import {
 @Entity()
 @Unique('IDX_story_like_user_story', ['user', 'story'])
 @Index('IDX_story_like_user', ['user'])
+// Backs admin-analytics day-bucketed queries across all likes. Explicitly
+// named to match the raw SQL that created it in AddAnalyticsEvents — without
+// this, migration:generate can't see the index in entity metadata and
+// proposes dropping it every time.
+@Index('IDX_story_like_createdAt', ['createdAt'])
 export class StoryLike {
   @PrimaryGeneratedColumn('uuid')
   id: string;

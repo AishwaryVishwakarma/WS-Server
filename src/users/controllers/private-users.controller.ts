@@ -27,6 +27,7 @@ import {plainToInstance} from 'class-transformer';
 import {SessionService} from 'src/session/session.service';
 import {SearchPaginationDto} from 'src/common/dto/search-pagination.dto';
 import {MyStoriesQueryDto} from 'src/stories/dto/my-stories-query.dto';
+import {StoryStatsQueryDto} from 'src/stories/dto/story-stats-query.dto';
 import {CommentsService} from 'src/comments/comments.service';
 import {MyCommentActivityResponseDto} from 'src/comments/dto/comment-response.dto';
 import {StoriesService} from 'src/stories/stories.service';
@@ -105,6 +106,11 @@ export class PrivateUsersController {
     return this.usersService.computeAchievements(req.session.userId!);
   }
 
+  @Get('stats/stories')
+  async myStoryBreakdown(@Req() req: Request) {
+    return this.storiesService.getAuthorStoryBreakdown(req.session.userId!);
+  }
+
   @Get('sessions')
   @ApiOkResponse({type: SessionResponseDto, isArray: true})
   async sessions(@Req() req: Request) {
@@ -142,6 +148,19 @@ export class PrivateUsersController {
       query.limit,
       query.search,
       query.status
+    );
+  }
+
+  @Get('stories/:id/stats')
+  async myStoryDailyStats(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Query() query: StoryStatsQueryDto
+  ) {
+    return this.storiesService.getStoryDailyStats(
+      id,
+      req.session.userId!,
+      query.days
     );
   }
 

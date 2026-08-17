@@ -1,5 +1,6 @@
 import {Exclude, Expose, Type} from 'class-transformer';
 import {Role} from '../enums/role';
+import type {MembershipTier} from '../enums/membership-tier.enum';
 import type {ReportReason} from '../enums/report-reason.enum';
 import type {Badge} from '../enums/badge.enum';
 import type {AchievementBadge} from '../achievements';
@@ -15,6 +16,11 @@ export class UserPreviewResponseDto {
   @Expose() profileImageUrl?: string;
   @Expose() bio?: string;
   @Expose() isVerified: boolean;
+  // Public: drives the member badge/avatar ring wherever this DTO renders
+  // (bylines, comments, profile). The site-wide membershipFeaturesEnabled
+  // toggle is checked by the frontend before showing any of it — this field
+  // itself is exposed unconditionally, same as isVerified.
+  @Expose() membershipTier: MembershipTier;
   @Expose() createdAt: Date;
   @Expose() updatedAt: Date;
 
@@ -50,6 +56,11 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
   @Expose() currentStreak: number;
   @Expose() longestStreak: number;
   @Expose() digestEmailEnabled: boolean;
+  // Self-only membership state: when this account first became a member
+  // (null if never), and the banked streak-freeze token (Patron+, see
+  // UsersService.recordActivity). Neither drives any public rendering.
+  @Expose() premiumSince: Date | null;
+  @Expose() streakFreezeCount: number;
   /** Whether this account can use password sign-in/change-password. */
   @Expose() hasPassword: boolean;
   @Expose() notificationInAppTypes: NotificationType[];

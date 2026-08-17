@@ -35,11 +35,13 @@ describe('groupNotifications', () => {
 
   it('bundles several replies to the same thread from different actors', () => {
     const older = makeNotification({
+      actorId: 'actor-alice',
       actorName: 'Alice',
       commentId: 'reply-old',
       createdAt: new Date('2026-07-24T10:00:00.000Z'),
     });
     const newer = makeNotification({
+      actorId: 'actor-bob',
       actorName: 'Bob',
       commentId: 'reply-new',
       createdAt: new Date('2026-07-24T10:05:00.000Z'),
@@ -55,6 +57,26 @@ describe('groupNotifications', () => {
     // deep-links to a real, recent comment.
     expect(group.commentId).toBe('reply-new');
     expect(group.actorName).toBe('Bob');
+  });
+
+  it('keeps two different actors distinct even when they share a display name', () => {
+    const older = makeNotification({
+      actorId: 'actor-alice-1',
+      actorName: 'Alice',
+      createdAt: new Date('2026-07-24T10:00:00.000Z'),
+    });
+    const newer = makeNotification({
+      actorId: 'actor-alice-2',
+      actorName: 'Alice',
+      createdAt: new Date('2026-07-24T10:05:00.000Z'),
+    });
+
+    const [group] = groupNotifications([newer, older]);
+
+    // Same name, but genuinely two people — must count as 2, not collapse
+    // to 1 the way a name-only dedup would.
+    expect(group.actorNames).toEqual(['Alice', 'Alice']);
+    expect(group.count).toBe(2);
   });
 
   it('does not merge replies to different threads on the same story', () => {

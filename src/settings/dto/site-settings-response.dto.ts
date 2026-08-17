@@ -6,6 +6,7 @@ export class SiteSettingsResponseDto {
   @Expose() allowStoryCoverImage: boolean;
   @Expose() digestEmailGloballyEnabled: boolean;
   @Expose() notificationEmailGloballyEnabled: boolean;
+  @Expose() membershipFeaturesEnabled: boolean;
   @Expose() updatedAt: Date;
 
   constructor(partial: Partial<SiteSettingsResponseDto>) {

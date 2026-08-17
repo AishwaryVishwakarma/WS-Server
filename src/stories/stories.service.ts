@@ -32,6 +32,7 @@ import {syncReportCount} from 'src/utils/report-count';
 import {TagsService} from 'src/tags/tags.service';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
+import {MembershipTier} from 'src/users/enums/membership-tier.enum';
 import {SeriesService} from 'src/series/series.service';
 import {MutesService} from 'src/mutes/mutes.service';
 import {SettingsService} from 'src/settings/settings.service';
@@ -254,7 +255,20 @@ export class StoriesService {
 
   // Reject a publish (submit for review) once the author is at the free limit.
   // Drafts are exempt — the cap is on the publication pipeline, not private work.
-  private async _assertWithinPublishLimit(userId: string) {
+  // Patron+ members are exempt entirely — but only once the site-wide
+  // membershipFeaturesEnabled toggle is on, so a tier already staged on an
+  // account before rollout has no effect until launch.
+  private async _assertWithinPublishLimit(
+    userId: string,
+    membershipTier: MembershipTier
+  ) {
+    if (
+      membershipTier !== MembershipTier.Free &&
+      (await this.settingsService.isMembershipFeaturesEnabled())
+    ) {
+      return;
+    }
+
     const count = await this.storiesRepository.count({
       where: {
         author: {id: userId},
@@ -285,13 +299,13 @@ export class StoriesService {
       ...rest
     } = createStoryDto;
 
+    const author = await this.usersService.findOne(userId);
+
     // Submitting straight to review counts against the publish limit; saving a
     // private draft does not.
     if (!draft && enforcePublishLimit) {
-      await this._assertWithinPublishLimit(userId);
+      await this._assertWithinPublishLimit(userId, author.membershipTier);
     }
-
-    const author = await this.usersService.findOne(userId);
 
     // Drafts are never in moderation to begin with; a non-draft only skips
     // the pending queue when the site-wide approval requirement is off.
@@ -393,6 +407,51 @@ export class StoriesService {
         {...base, title: like},
         {...base, excerpt: like},
       ];
+    }
+
+    // The pending queue orders Patron+ authors' stories first — queue
+    // *position* only, never a different bar for approval (see CLAUDE.md) —
+    // oldest-first within each tier so no one's wait is unbounded, matching
+    // the existing tiebreak. This needs a query builder: a 3-value string
+    // enum can't express "any non-free tier outranks free" via the plain
+    // find-options order object (alphabetical order doesn't line up with
+    // priority order), so it's a raw CASE expression instead. Only taken for
+    // the actual review queue — every other status/the reported queue keeps
+    // the find-options path below unchanged, including its narrow SELECT.
+    if (
+      status === StoryStatus.Pending &&
+      !reported &&
+      (await this.settingsService.isMembershipFeaturesEnabled())
+    ) {
+      const qb = this.storiesRepository
+        .createQueryBuilder('story')
+        .leftJoinAndSelect('story.author', 'author')
+        .leftJoinAndSelect('story.tags', 'tags')
+        .where('story.status = :status', {status})
+        .withDeleted();
+
+      if (search) {
+        qb.andWhere('(story.title ILIKE :like OR story.excerpt ILIKE :like)', {
+          like: `%${search.replace(/[\\%_]/g, '\\$&')}%`,
+        });
+      }
+
+      // Selected (not just ordered-by) under its own alias — TypeORM's order-by
+      // combiner tries to resolve bare raw CASE expressions against known
+      // aliases and errors ("author" alias was not found) unless the
+      // expression is first registered as a select.
+      const [stories, total] = await qb
+        .addSelect(
+          `CASE WHEN author."membershipTier" = 'free' THEN 1 ELSE 0 END`,
+          'priority_rank'
+        )
+        .orderBy('priority_rank', 'ASC')
+        .addOrderBy('story.createdAt', 'DESC')
+        .skip(skip)
+        .take(take)
+        .getManyAndCount();
+
+      return getPaginatedResponse<Story>(stories, total, page, limit);
     }
 
     const [stories, total] = await this.storiesRepository.findAndCount({
@@ -1200,7 +1259,10 @@ export class StoriesService {
       throw new BadRequestException('Only drafts can be submitted for review');
     }
 
-    await this._assertWithinPublishLimit(userId);
+    await this._assertWithinPublishLimit(
+      userId,
+      story.author?.membershipTier ?? MembershipTier.Free
+    );
 
     const requireApproval = await this.settingsService.requiresApproval();
     story.status = requireApproval ? StoryStatus.Pending : StoryStatus.Approved;
@@ -1357,5 +1419,108 @@ export class StoriesService {
     if (result.affected === 0) {
       throw new NotFoundException(`Story with ID ${id} not found`);
     }
+  }
+
+  // Per-story lifetime totals for the author's own "Stats" tab — the
+  // existing denormalized counters, no new query complexity. Capped rather
+  // than paginated: a breakdown table this long would need pagination UI
+  // before a limit here matters.
+  async getAuthorStoryBreakdown(
+    authorId: string
+  ): Promise<
+    Pick<
+      Story,
+      'id' | 'title' | 'viewCount' | 'likeCount' | 'commentCount' | 'createdAt'
+    >[]
+  > {
+    return this.storiesRepository.find({
+      where: {author: {id: authorId}, status: StoryStatus.Approved},
+      select: {
+        id: true,
+        title: true,
+        viewCount: true,
+        likeCount: true,
+        commentCount: true,
+        createdAt: true,
+      },
+      order: {viewCount: 'DESC'},
+      take: 50,
+    });
+  }
+
+  // Day-bucketed views/likes/comments for one of the author's own stories,
+  // for the "Stats" tab's per-story trend chart. Mirrors
+  // AdminAnalyticsService.getOverview's zero-filled generate_series pattern,
+  // but scoped to one story: views come from `analytics_event` (recorded on
+  // every deduped public view, see recordView below), likes/comments come
+  // straight from `story_like`/`comment`'s own createdAt — no new table, so
+  // history only goes back as far as those rows already do. Ownership is
+  // 404'd rather than 403'd, matching `_assertStoryVisible`'s existing
+  // "don't leak existence" stance — this is a strictly-mine view, not a
+  // public/admin one, so there's no role bypass either.
+  async getStoryDailyStats(
+    storyId: string,
+    requesterId: string,
+    // Validated to 7/30/90/180/365 by StoryStatsQueryDto at the controller
+    // boundary — the wider windows are clamped back to 90 below unless the
+    // requester is Patron+ and membership features are live.
+    days: number
+  ): Promise<{date: string; views: number; likes: number; comments: number}[]> {
+    const story = await this.storiesRepository.findOne({
+      where: {id: storyId},
+      select: {id: true, author: {id: true, membershipTier: true}},
+      relations: {author: true},
+    });
+    if (!story || story.author?.id !== requesterId) {
+      throw new NotFoundException(`Story with ID ${storyId} not found`);
+    }
+
+    // Silently clamp rather than reject — mirrors how other toggle-gated
+    // fields in this codebase degrade a stale/tampered client instead of
+    // erroring.
+    const hasExtendedInsights =
+      story.author.membershipTier !== MembershipTier.Free &&
+      (await this.settingsService.isMembershipFeaturesEnabled());
+    const effectiveDays = hasExtendedInsights ? days : Math.min(days, 90);
+
+    const end = new Date();
+    const start = new Date(end.getTime() - (effectiveDays - 1) * 86_400_000);
+
+    const rows = await this.storiesRepository.query<
+      {date: string; views: string; likes: string; comments: string}[]
+    >(
+      `WITH days AS (
+        SELECT generate_series($2::date, $3::date, interval '1 day')::date AS day
+      ), events AS (
+        SELECT "createdAt"::date AS day, COUNT(*)::int AS views, 0 AS likes, 0 AS comments
+          FROM analytics_event
+          WHERE type = $4 AND "storyId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3 + interval '1 day'
+          GROUP BY 1
+        UNION ALL
+        SELECT "createdAt"::date, 0, COUNT(*)::int, 0
+          FROM story_like
+          WHERE "storyId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3 + interval '1 day'
+          GROUP BY 1
+        UNION ALL
+        SELECT "createdAt"::date, 0, 0, COUNT(*)::int
+          FROM comment
+          WHERE "storyId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3 + interval '1 day'
+          GROUP BY 1
+      )
+      SELECT to_char(days.day, 'YYYY-MM-DD') AS date,
+        COALESCE(SUM(views), 0)::int AS views,
+        COALESCE(SUM(likes), 0)::int AS likes,
+        COALESCE(SUM(comments), 0)::int AS comments
+      FROM days LEFT JOIN events ON events.day = days.day
+      GROUP BY days.day ORDER BY days.day`,
+      [storyId, start, end, AnalyticsEventType.StoryViewed]
+    );
+
+    return rows.map((row) => ({
+      date: row.date,
+      views: Number(row.views),
+      likes: Number(row.likes),
+      comments: Number(row.comments),
+    }));
   }
 }

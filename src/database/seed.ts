@@ -16,6 +16,7 @@ import {TagsService} from 'src/tags/tags.service';
 import {CreateUserDto} from 'src/users/dto/create-user.dto';
 import {User} from 'src/users/entities/user.entity';
 import {Role} from 'src/users/enums/role';
+import {MembershipTier} from 'src/users/enums/membership-tier.enum';
 import {ReportReason} from 'src/users/enums/report-reason.enum';
 import {StoryReportReason} from 'src/stories/enums/story-report-reason.enum';
 import {UsersService} from 'src/users/users.service';
@@ -375,6 +376,34 @@ function generateLongStory(index: number): (typeof STORIES)[number] {
 
 function generateLongStories(): typeof STORIES {
   return LONG_STORY_TITLES.map((_, index) => generateLongStory(index));
+}
+
+// The Storyteller achievement's 4th (Obsidian) tier needs 25 approved
+// stories — the handcrafted + generated fixtures above only land Alice at
+// 20 through the normal author rotation. Top up the remaining 5 directly
+// (reusing the same OPENINGS/MIDDLES/QUOTES/ENDINGS fragments) rather than
+// reshuffling that rotation and risking disturbing every other author's
+// counts. " Redux" keeps titles distinct from generateStories()'s 36
+// adjective x noun combinations.
+const ALICE_OBSIDIAN_TOPUP = 5;
+
+function generateAliceTopUpStories(): typeof STORIES {
+  return Array.from({length: ALICE_OBSIDIAN_TOPUP}, (_, i) => {
+    const seed = 50 + i;
+    return {
+      author: 'alice@whisperingshadows.dev',
+      title: `${TITLE_ADJECTIVES[i % 6]} ${TITLE_NOUNS[(i + 3) % 6]} Redux`,
+      content: [
+        OPENINGS[seed % OPENINGS.length],
+        MIDDLES[seed % MIDDLES.length],
+        QUOTES[seed % QUOTES.length],
+        ENDINGS[seed % ENDINGS.length],
+      ].join('\n\n'),
+      scareLevel: (seed % 5) + 1,
+      tags: [TAG_NAMES[seed % TAG_NAMES.length]],
+      status: StoryStatus.Approved,
+    };
+  });
 }
 
 const COMMENT_REACTIONS = [
@@ -815,13 +844,43 @@ async function seed() {
 
     const usersByEmail = new Map<string, User>([[admin.email, admin]]);
 
-    for (const writer of WRITERS) {
+    for (const {isVerified, ...writer} of WRITERS) {
       const user = (await usersService.create({
         ...writer,
         password: WRITER_PASSWORD,
       })) as User;
       usersByEmail.set(user.email, user);
+
+      // create() never sets isVerified (see UsersService._createUserWithHash)
+      // — apply it through the same real admin-verify path a moderator would
+      // use, so the writers array's isVerified flag actually takes effect.
+      if (isVerified) {
+        await usersService.update(user.id, {isVerified: true});
+      }
     }
+
+    // Membership (Phase 0: admin-granted only — see UsersService.update).
+    // Alice is the seed's first-ever grant, so she becomes Founding Patron
+    // through the real founding-headcount check, exactly as an early admin
+    // action would play out. membershipFeaturesEnabled itself is left at its
+    // real launch-default (off) — a fresh seed shows the kill switch's exact
+    // purpose: a tier can be granted and staged before membership goes live.
+    // Flip it on in Admin Settings to see the perks (ring, badge, publish-cap
+    // bypass, priority queue, deeper Story Insights, Obsidian tier) live.
+    // Her 25 approved stories (see generateAliceTopUpStories) already clear
+    // the Storyteller achievement's Obsidian (tier 4) threshold, so it shows
+    // as completed the moment the toggle goes live — same staged pattern.
+    const aliceForMembership = usersByEmail.get('alice@whisperingshadows.dev')!;
+    await usersService.update(aliceForMembership.id, {
+      membershipTier: MembershipTier.Patron,
+    });
+    // A banked streak-freeze token, so the /me Membership section has
+    // something to show beyond a bare tier badge — set directly since
+    // recordActivity (the only real path to a freeze) needs a live session.
+    await dataSource.getRepository(User).update(aliceForMembership.id, {
+      streakFreezeCount: 1,
+      lastStreakFreezeUsedAt: new Date(),
+    });
 
     // Tags
     const tagIdsByName = new Map<string, string>();
@@ -839,6 +898,7 @@ async function seed() {
       ...STORIES,
       ...generateStories(),
       ...generateLongStories(),
+      ...generateAliceTopUpStories(),
     ]) {
       const story = await storiesService.create(
         {
@@ -1067,6 +1127,15 @@ async function seed() {
     );
     log(
       `Writer login: alice|bob|carol@whisperingshadows.dev / ${WRITER_PASSWORD} (dave is blocked)`
+    );
+    log(
+      'Membership: alice granted Founding Patron (membershipFeaturesEnabled ' +
+        'is off by default — flip it in Admin Settings to see the perks live)'
+    );
+    log(
+      "Achievements: alice's 25 approved stories clear the Storyteller " +
+        'achievement Obsidian (tier 4) threshold — unlocks once ' +
+        'membershipFeaturesEnabled is live'
     );
   } finally {
     await app.close();

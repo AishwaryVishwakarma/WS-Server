@@ -20,4 +20,8 @@ export class UpdateSiteSettingsDto {
   @IsOptional()
   @IsBoolean()
   notificationEmailGloballyEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  membershipFeaturesEnabled?: boolean;
 }

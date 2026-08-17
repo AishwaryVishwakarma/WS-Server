@@ -21,8 +21,9 @@ import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {StoryReportReason} from './enums/story-report-reason.enum';
+import {MembershipTier} from 'src/users/enums/membership-tier.enum';
 import {ContentWarning} from './enums/content-warning.enum';
-import {StoriesService} from './stories.service';
+import {FREE_PUBLISH_LIMIT, StoriesService} from './stories.service';
 
 const duplicateEntryError = () => {
   const error = new QueryFailedError('INSERT', [], new Error('dup'));
@@ -44,6 +45,7 @@ describe('StoriesService', () => {
     update: jest.Mock;
     delete: jest.Mock;
     createQueryBuilder: jest.Mock;
+    query: jest.Mock;
     manager: {transaction: jest.Mock};
   };
   let reportsRepository: {
@@ -72,6 +74,7 @@ describe('StoriesService', () => {
   let settingsService: {
     requiresApproval: jest.Mock;
     allowsStoryCoverImage: jest.Mock;
+    isMembershipFeaturesEnabled: jest.Mock;
   };
   // Shared by findRandomApprovedId (select/where/orderBy/getOne) and
   // _assignSeries's MAX(seriesPosition) aggregate (select/where/getRawOne).
@@ -81,9 +84,17 @@ describe('StoriesService', () => {
     orderBy: jest.Mock;
     getOne: jest.Mock;
     getRawOne: jest.Mock;
+    leftJoinAndSelect: jest.Mock;
+    andWhere: jest.Mock;
+    withDeleted: jest.Mock;
+    addSelect: jest.Mock;
+    addOrderBy: jest.Mock;
+    skip: jest.Mock;
+    take: jest.Mock;
+    getManyAndCount: jest.Mock;
   };
 
-  const author = {id: 'author-1'};
+  const author = {id: 'author-1', membershipTier: MembershipTier.Free};
 
   beforeEach(async () => {
     randomQueryBuilder = {
@@ -92,6 +103,14 @@ describe('StoriesService', () => {
       orderBy: jest.fn().mockReturnThis(),
       getOne: jest.fn(),
       getRawOne: jest.fn().mockResolvedValue({max: null}),
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      withDeleted: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
     repository = {
       create: jest.fn((data) => data),
@@ -106,6 +125,7 @@ describe('StoriesService', () => {
       update: jest.fn(),
       delete: jest.fn(),
       createQueryBuilder: jest.fn(() => randomQueryBuilder),
+      query: jest.fn().mockResolvedValue([]),
       // bulkUpdateStatus runs inside a transaction; withRepository() just
       // hands back this same mock, so its find/save calls behave identically
       // whether or not a "real" transaction is in play.
@@ -145,6 +165,9 @@ describe('StoriesService', () => {
       // Defaults to true (allowed) so every pre-existing test that sets
       // coverImageUrl keeps asserting today's behavior unchanged.
       allowsStoryCoverImage: jest.fn().mockResolvedValue(true),
+      // Off by default, matching the entity's own default — membership perks
+      // stay inert unless a test explicitly turns this on.
+      isMembershipFeaturesEnabled: jest.fn().mockResolvedValue(false),
     };
 
     const module = await Test.createTestingModule({
@@ -1373,6 +1396,246 @@ describe('StoriesService', () => {
           }),
         })
       );
+    });
+  });
+
+  describe('getAuthorStoryBreakdown', () => {
+    it("queries only the author's own approved stories, most-viewed first", async () => {
+      const rows = [
+        {
+          id: 'story-1',
+          title: 'A',
+          viewCount: 10,
+          likeCount: 2,
+          commentCount: 1,
+          createdAt: new Date(),
+        },
+      ];
+      repository.find.mockResolvedValue(rows);
+
+      const result = await service.getAuthorStoryBreakdown('author-1');
+
+      expect(repository.find).toHaveBeenCalledWith({
+        where: {author: {id: 'author-1'}, status: StoryStatus.Approved},
+        select: {
+          id: true,
+          title: true,
+          viewCount: true,
+          likeCount: true,
+          commentCount: true,
+          createdAt: true,
+        },
+        order: {viewCount: 'DESC'},
+        take: 50,
+      });
+      expect(result).toBe(rows);
+    });
+  });
+
+  describe('getStoryDailyStats', () => {
+    it('404s when the story does not exist', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.getStoryDailyStats('story-1', 'author-1', 30)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(repository.query).not.toHaveBeenCalled();
+    });
+
+    it("404s rather than 403s when the requester isn't the story's author", async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        author: {id: 'someone-else'},
+      });
+
+      await expect(
+        service.getStoryDailyStats('story-1', 'author-1', 30)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(repository.query).not.toHaveBeenCalled();
+    });
+
+    it("returns the owner's day-bucketed views/likes/comments", async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        author: {id: 'author-1'},
+      });
+      repository.query.mockResolvedValue([
+        {date: '2026-08-01', views: '3', likes: '1', comments: '0'},
+        {date: '2026-08-02', views: '0', likes: '0', comments: '2'},
+      ]);
+
+      const result = await service.getStoryDailyStats(
+        'story-1',
+        'author-1',
+        30
+      );
+
+      expect(result).toEqual([
+        {date: '2026-08-01', views: 3, likes: 1, comments: 0},
+        {date: '2026-08-02', views: 0, likes: 0, comments: 2},
+      ]);
+      // Filtered to the one story, and the view event type is parameterized
+      // rather than string-concatenated into the SQL.
+      const [, params] = repository.query.mock.calls[0];
+      expect(params[0]).toBe('story-1');
+      expect(params[3]).toBe('story_viewed');
+    });
+
+    it('clamps a Free requester to 90 days even if they ask for more', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        author: {id: 'author-1', membershipTier: MembershipTier.Free},
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+      repository.query.mockResolvedValue([]);
+
+      await service.getStoryDailyStats('story-1', 'author-1', 365);
+
+      const [, params] = repository.query.mock.calls[0];
+      const daysRequested =
+        (params[2].getTime() - params[1].getTime()) / 86_400_000 + 1;
+      expect(daysRequested).toBe(90);
+    });
+
+    it('honors the full range for a Patron+ requester once membership features are live', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        author: {id: 'author-1', membershipTier: MembershipTier.Patron},
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+      repository.query.mockResolvedValue([]);
+
+      await service.getStoryDailyStats('story-1', 'author-1', 365);
+
+      const [, params] = repository.query.mock.calls[0];
+      const daysRequested =
+        (params[2].getTime() - params[1].getTime()) / 86_400_000 + 1;
+      expect(daysRequested).toBe(365);
+    });
+
+    it('clamps a Patron+ requester too while membership features are staged off', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-1',
+        author: {id: 'author-1', membershipTier: MembershipTier.Patron},
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(false);
+      repository.query.mockResolvedValue([]);
+
+      await service.getStoryDailyStats('story-1', 'author-1', 365);
+
+      const [, params] = repository.query.mock.calls[0];
+      const daysRequested =
+        (params[2].getTime() - params[1].getTime()) / 86_400_000 + 1;
+      expect(daysRequested).toBe(90);
+    });
+  });
+
+  describe('publish-cap bypass for Patron+', () => {
+    const draftAuthor = {id: 'author-1'};
+
+    it('still enforces the cap for a Free author', async () => {
+      repository.count.mockResolvedValue(FREE_PUBLISH_LIMIT);
+      usersService.findOne.mockResolvedValue({
+        ...draftAuthor,
+        membershipTier: MembershipTier.Free,
+      });
+
+      await expect(
+        service.create(
+          {title: 'A Story', content: 'x'.repeat(500), draft: false},
+          'author-1'
+        )
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('bypasses the cap for a Patron author once membership features are live', async () => {
+      repository.count.mockResolvedValue(FREE_PUBLISH_LIMIT);
+      usersService.findOne.mockResolvedValue({
+        ...draftAuthor,
+        membershipTier: MembershipTier.Patron,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+
+      await expect(
+        service.create(
+          {title: 'A Story', content: 'x'.repeat(500), draft: false},
+          'author-1'
+        )
+      ).resolves.toBeDefined();
+      expect(repository.count).not.toHaveBeenCalled();
+    });
+
+    it('still enforces the cap for a Patron author while membership features are staged off', async () => {
+      repository.count.mockResolvedValue(FREE_PUBLISH_LIMIT);
+      usersService.findOne.mockResolvedValue({
+        ...draftAuthor,
+        membershipTier: MembershipTier.Patron,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(false);
+
+      await expect(
+        service.create(
+          {title: 'A Story', content: 'x'.repeat(500), draft: false},
+          'author-1'
+        )
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('findAll — priority moderation queue', () => {
+    it('uses the plain find-options path (unaffected) for a non-pending status', async () => {
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+      repository.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(1, 20, StoryStatus.Approved);
+
+      expect(repository.findAndCount).toHaveBeenCalled();
+      expect(randomQueryBuilder.getManyAndCount).not.toHaveBeenCalled();
+    });
+
+    it('uses the plain find-options path when membership features are staged off', async () => {
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(false);
+      repository.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(1, 20, StoryStatus.Pending);
+
+      expect(repository.findAndCount).toHaveBeenCalled();
+      expect(randomQueryBuilder.getManyAndCount).not.toHaveBeenCalled();
+    });
+
+    it('orders the pending queue by Patron+ first, then oldest, once membership features are live', async () => {
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+      randomQueryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(1, 20, StoryStatus.Pending);
+
+      expect(repository.findAndCount).not.toHaveBeenCalled();
+      expect(randomQueryBuilder.where).toHaveBeenCalledWith(
+        'story.status = :status',
+        {status: StoryStatus.Pending}
+      );
+      expect(randomQueryBuilder.addSelect).toHaveBeenCalledWith(
+        expect.stringContaining('membershipTier'),
+        'priority_rank'
+      );
+      expect(randomQueryBuilder.orderBy).toHaveBeenCalledWith(
+        'priority_rank',
+        'ASC'
+      );
+      expect(randomQueryBuilder.addOrderBy).toHaveBeenCalledWith(
+        'story.createdAt',
+        'DESC'
+      );
+    });
+
+    it('does not use the priority path for the reported queue', async () => {
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+      repository.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(1, 20, StoryStatus.Pending, undefined, true);
+
+      expect(repository.findAndCount).toHaveBeenCalled();
+      expect(randomQueryBuilder.getManyAndCount).not.toHaveBeenCalled();
     });
   });
 });
