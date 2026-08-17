@@ -179,8 +179,7 @@ export class PublicStoriesController {
   @Throttle(PUBLIC_READ_THROTTLE)
   @UseGuards(OptionalSessionAuthGuard)
   async findRandom() {
-    const id = await this.storiesService.findRandomApprovedId();
-    return {id};
+    return await this.storiesService.findRandomApproved();
   }
 
   // The signed-in reader's personalized feed — same reason as `random`,
@@ -203,12 +202,12 @@ export class PublicStoriesController {
     };
   }
 
-  @Get(':id')
+  @Get(':slug')
   @Throttle(PUBLIC_READ_THROTTLE)
   @UseGuards(OptionalSessionAuthGuard)
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
-    const story = await this.storiesService.findOneVisible(
-      id,
+  async findOne(@Param('slug') slug: string, @Req() req: Request) {
+    const story = await this.storiesService.findOneVisibleBySlug(
+      slug,
       req.session.userId,
       req.session.role
     );

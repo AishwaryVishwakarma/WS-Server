@@ -41,6 +41,7 @@ import {AnalyticsEventType} from 'src/admin-analytics/entities/analytics-event.e
 import type {User} from 'src/users/entities/user.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {handleQueryFailedError} from 'src/utils/handle-query-error';
+import {buildSlug} from 'src/utils/slug';
 import type {StorySortOption} from './dto/story-query.dto';
 import {
   decodeStoryCursor,
@@ -124,6 +125,7 @@ const PUBLISH_PIPELINE_STATUSES = [
 const SELECTED_FIELDS = {
   id: true,
   title: true,
+  slug: true,
   coverImageUrl: true,
   scareLevel: true,
   contentWarnings: true,
@@ -571,10 +573,10 @@ export class StoriesService {
   // whole filtered set to pick — fine at the story counts this app runs at
   // today; a much larger table would want an offset/gap-sampling scheme
   // instead.
-  async findRandomApprovedId(): Promise<string> {
+  async findRandomApproved(): Promise<{id: string; slug: string}> {
     const story = await this.storiesRepository
       .createQueryBuilder('story')
-      .select('story.id')
+      .select(['story.id', 'story.slug'])
       .where('story.status = :status', {status: StoryStatus.Approved})
       .orderBy('RANDOM()')
       .getOne();
@@ -583,7 +585,7 @@ export class StoriesService {
       throw new NotFoundException('No approved stories yet');
     }
 
-    return story.id;
+    return {id: story.id, slug: story.slug};
   }
 
   async findOne(id: string) {
@@ -607,6 +609,25 @@ export class StoriesService {
     const story = await this.findOne(id);
 
     this._assertStoryVisible(story, id, userId, role);
+
+    return story;
+  }
+
+  // The only slug-based lookup — backs the public reader route. This is a
+  // clean cutover, not a dual id-or-slug lookup: the story's real UUID (used
+  // by every other route on this controller) never resolves here.
+  async findOneVisibleBySlug(slug: string, userId?: string, role?: Role) {
+    const story = await this.storiesRepository
+      .findOneOrFail({
+        where: {slug},
+        relations: ['author', 'tags', 'series'],
+        withDeleted: true,
+      })
+      .catch(() => {
+        throw new NotFoundException(`Story '${slug}' not found`);
+      });
+
+    this._assertStoryVisible(story, story.id, userId, role);
 
     return story;
   }
@@ -1242,7 +1263,16 @@ export class StoriesService {
       }
     }
 
+    // Captured before the mutation below so the slug only regenerates when
+    // the title actually changes — not on every save (an admin resolving a
+    // report, approving a story, etc. must not reshuffle its public URL).
+    const previousTitle = story.title;
+
     Object.assign(story, rest);
+
+    if (rest.title !== undefined && rest.title !== previousTitle) {
+      story.slug = buildSlug(rest.title, 'story');
+    }
 
     if (scheduledFor !== undefined) {
       story.scheduledFor = scheduledFor ? new Date(scheduledFor) : null;
@@ -1467,7 +1497,13 @@ export class StoriesService {
   ): Promise<
     Pick<
       Story,
-      'id' | 'title' | 'viewCount' | 'likeCount' | 'commentCount' | 'createdAt'
+      | 'id'
+      | 'title'
+      | 'slug'
+      | 'viewCount'
+      | 'likeCount'
+      | 'commentCount'
+      | 'createdAt'
     >[]
   > {
     return this.storiesRepository.find({
@@ -1475,6 +1511,7 @@ export class StoriesService {
       select: {
         id: true,
         title: true,
+        slug: true,
         viewCount: true,
         likeCount: true,
         commentCount: true,

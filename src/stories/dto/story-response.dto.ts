@@ -14,6 +14,7 @@ import {TagResponseDto} from 'src/tags/dto/tag-response.dto';
 export class StoryAuthorResponseDto {
   @Expose() id: string;
   @Expose() name: string;
+  @Expose() slug: string;
   @Expose() profileImageUrl?: string;
   // Drives the member badge/avatar ring on the byline — exposed
   // unconditionally, same as UserPreviewResponseDto's own field.
@@ -33,6 +34,7 @@ export class StoryAuthorResponseDto {
 export class StorySeriesResponseDto {
   @Expose() id: string;
   @Expose() title: string;
+  @Expose() slug: string;
   @Expose() position: number | null;
 
   constructor(partial: Partial<StorySeriesResponseDto>) {
@@ -46,6 +48,7 @@ export class StorySeriesResponseDto {
 export class StoryPreviewResponseDto {
   @Expose() id: string;
   @Expose() title: string;
+  @Expose() slug: string;
   @Expose() coverImageUrl?: string;
   @Expose() scareLevel: number;
   /** Safety labels the reader should see before/while reading — a fixed
@@ -93,6 +96,7 @@ export class StoryPreviewResponseDto {
       ? new StorySeriesResponseDto({
           id: obj.series.id,
           title: obj.series.title,
+          slug: obj.series.slug,
           position: obj.seriesPosition,
         })
       : undefined

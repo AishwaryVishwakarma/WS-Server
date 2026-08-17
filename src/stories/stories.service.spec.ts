@@ -490,6 +490,68 @@ describe('StoriesService', () => {
 
       expect(story.coverImageUrl).toBe('https://example.com/new.png');
     });
+
+    it('regenerates the slug when the title actually changes', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        slug: 'old-title-abc123',
+        author,
+        tags: [],
+        contentWarnings: [],
+      });
+
+      const story = await service.update(
+        'story-1',
+        {title: 'New title'},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.slug).not.toBe('old-title-abc123');
+      expect(story.slug).toMatch(/^new-title-/);
+    });
+
+    it('leaves the slug untouched when the title is not part of the update', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        slug: 'old-title-abc123',
+        author,
+        tags: [],
+        contentWarnings: [],
+        coverImageUrl: null,
+      });
+
+      const story = await service.update(
+        'story-1',
+        {coverImageUrl: 'https://example.com/new.png'},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.slug).toBe('old-title-abc123');
+    });
+
+    it('leaves the slug untouched when the title is resubmitted unchanged', async () => {
+      repository.findOneOrFail.mockResolvedValue({
+        id: 'story-1',
+        title: 'Old title',
+        slug: 'old-title-abc123',
+        author,
+        tags: [],
+        contentWarnings: [],
+      });
+
+      const story = await service.update(
+        'story-1',
+        {title: 'Old title'},
+        'author-1',
+        Role.User
+      );
+
+      expect(story.slug).toBe('old-title-abc123');
+    });
   });
 
   describe('update — scheduled publishing', () => {
@@ -1300,13 +1362,16 @@ describe('StoriesService', () => {
     });
   });
 
-  describe('findRandomApprovedId', () => {
-    it('returns the id of the story RANDOM() picked', async () => {
-      randomQueryBuilder.getOne.mockResolvedValue({id: 'story-7'});
+  describe('findRandomApproved', () => {
+    it('returns the id and slug of the story RANDOM() picked', async () => {
+      randomQueryBuilder.getOne.mockResolvedValue({
+        id: 'story-7',
+        slug: 'a-story-abc123',
+      });
 
-      const id = await service.findRandomApprovedId();
+      const result = await service.findRandomApproved();
 
-      expect(id).toBe('story-7');
+      expect(result).toEqual({id: 'story-7', slug: 'a-story-abc123'});
       expect(randomQueryBuilder.where).toHaveBeenCalledWith(
         'story.status = :status',
         {status: StoryStatus.Approved}
@@ -1317,7 +1382,7 @@ describe('StoriesService', () => {
     it('throws NotFoundException when there are no approved stories', async () => {
       randomQueryBuilder.getOne.mockResolvedValue(null);
 
-      await expect(service.findRandomApprovedId()).rejects.toThrow(
+      await expect(service.findRandomApproved()).rejects.toThrow(
         NotFoundException
       );
     });
@@ -1409,6 +1474,7 @@ describe('StoriesService', () => {
         {
           id: 'story-1',
           title: 'A',
+          slug: 'a-abc123',
           viewCount: 10,
           likeCount: 2,
           commentCount: 1,
@@ -1424,6 +1490,7 @@ describe('StoriesService', () => {
         select: {
           id: true,
           title: true,
+          slug: true,
           viewCount: true,
           likeCount: true,
           commentCount: true,
