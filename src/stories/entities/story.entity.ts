@@ -54,6 +54,11 @@ import {Series} from 'src/series/entities/series.entity';
 // hand-patched `USING GIN` in the migration (TypeORM's @Index has no
 // first-class GIN option, so double-check the generated migration).
 @Index('IDX_story_fulltext', ['searchVector'])
+// Backs admin-analytics day-bucketed queries across all stories regardless of
+// status. Explicitly named to match the raw SQL that created it in
+// AddAnalyticsEvents — without this, migration:generate can't see the index
+// in entity metadata and proposes dropping it every time.
+@Index('IDX_story_createdAt', ['createdAt'])
 export class Story {
   @PrimaryGeneratedColumn('uuid')
   id: string;

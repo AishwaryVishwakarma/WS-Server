@@ -18,6 +18,11 @@ import {CommentReport} from './comment-report.entity';
 // the whole comment table.
 @Index('IDX_comment_isFlagged_reportCount', ['isFlagged', 'reportCount'])
 @Index('IDX_comment_story_createdAt', ['story', 'createdAt'])
+// Backs admin-analytics day-bucketed queries across all comments. Explicitly
+// named to match the raw SQL that created it in AddAnalyticsEvents — without
+// this, migration:generate can't see the index in entity metadata and
+// proposes dropping it every time.
+@Index('IDX_comment_createdAt', ['createdAt'])
 export class Comment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
