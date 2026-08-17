@@ -346,7 +346,7 @@ describe('Comments (integration)', () => {
         .expect(201);
     }
 
-    const before = await client.get(`/stories/${story.id}`).expect(200);
+    const before = await client.get(`/stories/${story.slug}`).expect(200);
     expect(before.body.commentCount).toBe(3);
 
     // Deleting the parent cascades its two replies; the count sheds all three.
@@ -355,7 +355,7 @@ describe('Comments (integration)', () => {
       .set('x-csrf-token', token)
       .expect(204);
 
-    const after = await client.get(`/stories/${story.id}`).expect(200);
+    const after = await client.get(`/stories/${story.slug}`).expect(200);
     expect(after.body.commentCount).toBe(0);
 
     const topLevel = await client

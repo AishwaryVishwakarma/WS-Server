@@ -70,7 +70,7 @@ describe('Likes (integration)', () => {
       .set('x-csrf-token', token)
       .expect(204);
 
-    const detail = await agent().get(`/stories/${story.id}`).expect(200);
+    const detail = await agent().get(`/stories/${story.slug}`).expect(200);
     expect(detail.body.likeCount).toBe(1);
 
     const ids = await client.get('/users/me/likes/ids').expect(200);
@@ -86,7 +86,7 @@ describe('Likes (integration)', () => {
     await like().expect(204);
     await like().expect(204);
 
-    const detail = await agent().get(`/stories/${story.id}`).expect(200);
+    const detail = await agent().get(`/stories/${story.slug}`).expect(200);
     expect(detail.body.likeCount).toBe(1);
   });
 
@@ -104,7 +104,7 @@ describe('Likes (integration)', () => {
     await unlike().expect(204);
     await unlike().expect(204);
 
-    const detail = await agent().get(`/stories/${story.id}`).expect(200);
+    const detail = await agent().get(`/stories/${story.slug}`).expect(200);
     expect(detail.body.likeCount).toBe(0);
     const ids = await client.get('/users/me/likes/ids').expect(200);
     expect(ids.body).toEqual([]);

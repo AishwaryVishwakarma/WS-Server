@@ -70,9 +70,12 @@ describe('Membership (integration)', () => {
       const admin = await seedAdmin(testApp);
 
       // Fill the founding headcount directly — cheaper than registering 100
-      // real accounts through the OTP flow just to exhaust the cutoff.
+      // real accounts through the OTP flow just to exhaust the cutoff. A bulk
+      // .insert() bypasses the entity's @BeforeInsert hooks, so slug (NOT
+      // NULL + unique) needs an explicit value here.
       const filler = Array.from({length: 100}, (_, i) => ({
         name: `Filler ${i}`,
+        slug: `filler-${i}`,
         email: `filler${i}@test.com`,
         membershipTier: MembershipTier.Patron,
         premiumSince: new Date(),
@@ -356,9 +359,9 @@ describe('Membership (integration)', () => {
         .post('/stories')
         .set('x-csrf-token', token)
         .send({title: 'A Story', content: 'x'.repeat(500)})
-        .expect(201)) as {body: IdBody};
+        .expect(201)) as {body: IdBody & {slug: string}};
 
-      const response = await client.get(`/stories/${story.id}`).expect(200);
+      const response = await client.get(`/stories/${story.slug}`).expect(200);
 
       expect(response.body.author.membershipTier).toBe('founding_patron');
     });
