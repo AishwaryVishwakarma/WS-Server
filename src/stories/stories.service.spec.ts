@@ -19,6 +19,7 @@ import {StoryRevision} from './entities/story-revision.entity';
 import {StoryLike} from 'src/likes/entities/story-like.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
+import {RecommendationFeedback} from './entities/recommendation-feedback.entity';
 import {StoryStatus} from './enums/story-status.enum';
 import {StoryReportReason} from './enums/story-report-reason.enum';
 import {MembershipTier} from 'src/users/enums/membership-tier.enum';
@@ -67,13 +68,20 @@ describe('StoriesService', () => {
   let storyLikeRepository: {find: jest.Mock};
   let bookmarkRepository: {find: jest.Mock};
   let readingProgressRepository: {find: jest.Mock};
+  let recommendationFeedbackRepository: {
+    find: jest.Mock;
+    upsert: jest.Mock;
+  };
   let usersService: {
     findOne: jest.Mock;
     markHasPublishedStory: jest.Mock;
     recordActivity: jest.Mock;
   };
   let tagsService: {findManyByIds: jest.Mock};
-  let seriesService: {findOrCreateForAuthor: jest.Mock};
+  let seriesService: {
+    findOrCreateForAuthor: jest.Mock;
+    notifySubscribers: jest.Mock;
+  };
   let mutesService: {mutedAuthorIds: jest.Mock};
   let settingsService: {
     requiresApproval: jest.Mock;
@@ -154,13 +162,20 @@ describe('StoriesService', () => {
     storyLikeRepository = {find: jest.fn().mockResolvedValue([])};
     bookmarkRepository = {find: jest.fn().mockResolvedValue([])};
     readingProgressRepository = {find: jest.fn().mockResolvedValue([])};
+    recommendationFeedbackRepository = {
+      find: jest.fn().mockResolvedValue([]),
+      upsert: jest.fn(),
+    };
     usersService = {
       findOne: jest.fn().mockResolvedValue(author),
       markHasPublishedStory: jest.fn().mockResolvedValue(undefined),
       recordActivity: jest.fn().mockResolvedValue(undefined),
     };
     tagsService = {findManyByIds: jest.fn()};
-    seriesService = {findOrCreateForAuthor: jest.fn()};
+    seriesService = {
+      findOrCreateForAuthor: jest.fn(),
+      notifySubscribers: jest.fn().mockResolvedValue(undefined),
+    };
     mutesService = {mutedAuthorIds: jest.fn().mockResolvedValue([])};
     // Defaults to true (approval required) so every pre-existing test keeps
     // asserting today's behavior without needing to know about the setting.
@@ -188,6 +203,10 @@ describe('StoriesService', () => {
         {
           provide: getRepositoryToken(ReadingProgress),
           useValue: readingProgressRepository,
+        },
+        {
+          provide: getRepositoryToken(RecommendationFeedback),
+          useValue: recommendationFeedbackRepository,
         },
         {provide: UsersService, useValue: usersService},
         {provide: TagsService, useValue: tagsService},

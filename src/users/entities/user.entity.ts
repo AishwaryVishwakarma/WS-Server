@@ -198,6 +198,9 @@ export class User {
   @Column({type: 'int', default: 0})
   longestStreak: number;
 
+  @Column({type: 'smallint', default: 3})
+  weeklyReadingGoal: number;
+
   @Column({type: 'varchar', length: 10, nullable: true})
   lastActiveDate: string | null;
 

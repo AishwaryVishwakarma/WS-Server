@@ -21,6 +21,7 @@ import {StoriesModule} from './stories/stories.module';
 import {Story} from './stories/entities/story.entity';
 import {StoryReport} from './stories/entities/story-report.entity';
 import {StoryRevision} from './stories/entities/story-revision.entity';
+import {RecommendationFeedback} from './stories/entities/recommendation-feedback.entity';
 import {TagsModule} from './tags/tags.module';
 import {Tag} from './tags/entities/tag.entity';
 import {CommentsModule} from './comments/comments.module';
@@ -40,6 +41,7 @@ import {ScareVote} from './scare-ratings/entities/scare-vote.entity';
 import {MutedAuthor} from './mutes/entities/muted-author.entity';
 import {ScareRatingsModule} from './scare-ratings/scare-ratings.module';
 import {Series} from './series/entities/series.entity';
+import {SeriesSubscription} from './series/entities/series-subscription.entity';
 import {SeriesModule} from './series/series.module';
 import {ReadingProgress} from './reading-progress/entities/reading-progress.entity';
 import {ReadingProgressModule} from './reading-progress/reading-progress.module';
@@ -263,6 +265,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           Story,
           StoryReport,
           StoryRevision,
+          RecommendationFeedback,
           Tag,
           Comment,
           CommentReport,
@@ -273,6 +276,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           PasswordResetToken,
           PendingRegistration,
           Series,
+          SeriesSubscription,
           ReadingProgress,
           ScareVote,
           MutedAuthor,

@@ -115,6 +115,7 @@ export class StoryPreviewResponseDto {
  */
 export class StoryWithAuthorPreviewResponseDto extends StoryPreviewResponseDto {
   @Expose() content: string;
+  @Expose() discussionPrompt: string | null;
   @Expose() status: StoryStatus;
   /** Set only when status is rejected (see StoriesService.updateStatus) —
    *  a rejected story is only ever visible here to its own author/an admin. */

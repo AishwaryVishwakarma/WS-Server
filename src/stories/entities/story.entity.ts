@@ -80,6 +80,9 @@ export class Story {
   @Column('text')
   content: string;
 
+  @Column({type: 'varchar', length: 180, nullable: true})
+  discussionPrompt: string | null;
+
   // Auto-maintained by Postgres on every insert/update (STORED generated
   // column) — no app-side sync code needed, same as the MySQL FULLTEXT index
   // it replaces. Title is weighted 'A' (highest) so title matches rank above
@@ -145,6 +148,9 @@ export class Story {
   // findOneVisible/_buildApprovedQuery — no scheduler/cron involved).
   @Column({type: 'timestamp', nullable: true})
   scheduledFor: Date | null;
+
+  @Column({type: 'timestamp', nullable: true})
+  seriesNotifiedAt: Date | null;
 
   /** Kept in sync by the hook below; powers reading-time estimates. */
   @Column({type: 'int', default: 0})

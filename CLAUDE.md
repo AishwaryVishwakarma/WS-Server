@@ -153,7 +153,7 @@ production safety checks there.
   genuine first-ever grant to `Patron` while fewer than
   `MEMBERSHIP_FOUNDING_LIMIT` (100) accounts have ever held Patron+ is
   upgraded to `FoundingPatron` instead. `User.foundingPatronSince` is the
-  latch that carries this forward — checked *first*, before any other rule,
+  latch that carries this forward — checked _first_, before any other rule,
   so a lapsed Founding Patron who resubscribes (self-serve checkout can only
   ever request plain `Patron`, never `FoundingPatron` directly) comes back
   Founding rather than losing the status permanently. The cap itself is
@@ -194,7 +194,7 @@ production safety checks there.
 - Guardrails that must hold for any future membership feature: never paywall
   story content itself; membership must never buy a better spot in organic
   trending/search rankings; the priority moderation queue changes queue
-  *position* only, never moderation standards (same rules, just reviewed
+  _position_ only, never moderation standards (same rules, just reviewed
   sooner).
 - Gated behaviors, all resolved from the author's own `membershipTier`, never
   a request-supplied one:
@@ -226,6 +226,23 @@ production safety checks there.
     real progress clears its threshold AND the account is Patron+; a Free
     member who already clears it stays capped at tier 3, preserving
     earned-status integrity.
+
+## Retention features
+
+- `ReadingProgressService.weeklyGoal` uses Monday-based UTC weeks and counts
+  completed progress rows; the user's 1-14 target is cross-device state.
+- Seasonal events are developer-owned windows in `seasonal-events.ts`. They
+  derive progress from completed stories with matching tags and do not grant
+  permanent achievement tiers.
+- Series subscriptions are distinct from author follows. `seriesNotifiedAt`
+  prevents repeat notifications; future-scheduled parts are picked up by
+  `SeriesService.notifyScheduledParts` only once publicly available. The full
+  `/users/me/series-subscriptions` list includes author metadata; its `/ids`
+  variant remains the lightweight toggle-state endpoint.
+- Recommendation feedback is one durable row per user/story. `more_like_this`
+  contributes affinity; `not_for_me` excludes that story from For You results.
+- `Story.discussionPrompt` is optional author copy exposed on story detail;
+  an explicit `null` clears it.
 
 ## Database and TypeScript rules
 

@@ -8,8 +8,10 @@ describe('ReadingProgressService', () => {
     createQueryBuilder: jest.fn(),
   };
   const stories = {assertVisible: jest.fn()};
+  const users = {};
   const service = new ReadingProgressService(
     repository as never,
+    users as never,
     stories as never
   );
 

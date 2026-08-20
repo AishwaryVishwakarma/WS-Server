@@ -17,6 +17,7 @@ import {MutesModule} from 'src/mutes/mutes.module';
 import {SettingsModule} from 'src/settings/settings.module';
 import {AdminAnalyticsModule} from 'src/admin-analytics/admin-analytics.module';
 import {ImageStorageModule} from 'src/image-storage/image-storage.module';
+import {RecommendationFeedback} from './entities/recommendation-feedback.entity';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import {ImageStorageModule} from 'src/image-storage/image-storage.module';
       StoryLike,
       Bookmark,
       ReadingProgress,
+      RecommendationFeedback,
     ]),
     forwardRef(() => UsersModule),
     TagsModule,

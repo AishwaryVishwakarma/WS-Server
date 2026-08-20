@@ -34,6 +34,11 @@ export class CreateStoryDto {
   content: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  discussionPrompt?: string | null;
+
+  @IsOptional()
   @IsUrl({
     max_allowed_length: 500,
   })

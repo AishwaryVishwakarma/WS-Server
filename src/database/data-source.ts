@@ -7,6 +7,7 @@ import {PendingRegistration} from 'src/auth/entities/pending-registration.entity
 import {Story} from 'src/stories/entities/story.entity';
 import {StoryReport} from 'src/stories/entities/story-report.entity';
 import {StoryRevision} from 'src/stories/entities/story-revision.entity';
+import {RecommendationFeedback} from 'src/stories/entities/recommendation-feedback.entity';
 import {Tag} from 'src/tags/entities/tag.entity';
 import {Comment} from 'src/comments/entities/comment.entity';
 import {CommentReport} from 'src/comments/entities/comment-report.entity';
@@ -15,6 +16,7 @@ import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
 import {StoryLike} from 'src/likes/entities/story-like.entity';
 import {Series} from 'src/series/entities/series.entity';
+import {SeriesSubscription} from 'src/series/entities/series-subscription.entity';
 import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
 import {ScareVote} from 'src/scare-ratings/entities/scare-vote.entity';
 import {MutedAuthor} from 'src/mutes/entities/muted-author.entity';
@@ -41,6 +43,7 @@ export default new DataSource({
     Story,
     StoryReport,
     StoryRevision,
+    RecommendationFeedback,
     Tag,
     Comment,
     CommentReport,
@@ -51,6 +54,7 @@ export default new DataSource({
     PasswordResetToken,
     PendingRegistration,
     Series,
+    SeriesSubscription,
     ReadingProgress,
     ScareVote,
     MutedAuthor,
