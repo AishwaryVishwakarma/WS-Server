@@ -422,4 +422,44 @@ describe('Series (integration)', () => {
       ).toEqual(['Part Two', 'Part One']);
     });
   });
+
+  describe('series subscriptions', () => {
+    it('subscribes, lists the membership, and unsubscribes', async () => {
+      const {story} = await createStory({
+        ...STORY_PAYLOAD,
+        seriesTitle: 'Hollow Lane',
+      });
+      const reader = agent();
+      await registerUser(reader, {email: 'series-reader@test.com'});
+      const token = await getCsrfToken(reader);
+
+      await reader
+        .put(`/series/${story.series!.id}/subscription`)
+        .set('x-csrf-token', token)
+        .expect(204);
+
+      const ids = await reader
+        .get('/users/me/series-subscriptions/ids')
+        .expect(200);
+      expect(ids.body).toEqual([story.series!.id]);
+
+      const memberships = await reader
+        .get('/users/me/series-subscriptions')
+        .expect(200);
+      expect(memberships.body).toEqual([
+        expect.objectContaining({id: story.series!.id, title: 'Hollow Lane'}),
+      ]);
+
+      await reader
+        .delete(`/series/${story.series!.id}/subscription`)
+        .set('x-csrf-token', token)
+        .expect(204);
+      await reader.get('/users/me/series-subscriptions/ids').expect(200, []);
+    });
+
+    it('requires a session', async () => {
+      await agent().get('/users/me/series-subscriptions').expect(401);
+      await agent().get('/users/me/series-subscriptions/ids').expect(401);
+    });
+  });
 });

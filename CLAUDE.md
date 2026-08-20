@@ -274,6 +274,10 @@ production safety checks there.
 - Before handing off a change, run the narrowest relevant tests, then
   `npm run typecheck` and `npm run lint`. Run `npm run build` for changes that
   affect startup, packaging, decorators, or generated output.
+- For large, cross-cutting, or cross-stack changes, run the complete integration
+  suite and the web repository's complete Playwright E2E suite before handoff.
+  Add or update integration/E2E coverage when a changed API or user journey is
+  not already exercised.
 
 ## Git
 

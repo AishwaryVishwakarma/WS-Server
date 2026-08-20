@@ -270,5 +270,28 @@ describe('Reading progress (integration)', () => {
     await anon.delete(`/stories/${story.id}/reading-progress`).expect(403);
     await anon.get('/users/me/reading-progress').expect(401);
     await anon.get('/users/me/reading-history').expect(401);
+    await anon.get('/users/me/reading-goal').expect(401);
+    await anon.patch('/users/me/reading-goal').send({goal: 5}).expect(403);
+    await anon.get('/users/me/seasonal-event').expect(401);
+  });
+
+  it('reads and updates the weekly reading goal', async () => {
+    const {client, token} = await reader();
+
+    const initial = await client.get('/users/me/reading-goal').expect(200);
+    expect(initial.body).toMatchObject({goal: 3, completed: 0});
+
+    const updated = await client
+      .patch('/users/me/reading-goal')
+      .set('x-csrf-token', token)
+      .send({goal: 7})
+      .expect(200);
+    expect(updated.body).toMatchObject({goal: 7, completed: 0});
+
+    await client
+      .patch('/users/me/reading-goal')
+      .set('x-csrf-token', token)
+      .send({goal: 15})
+      .expect(400);
   });
 });
