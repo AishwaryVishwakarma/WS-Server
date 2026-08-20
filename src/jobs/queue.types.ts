@@ -14,6 +14,16 @@ export interface WinbackJobData {
   userId: string;
 }
 
+export interface SeriesNotifyJobData {
+  recipientId: string;
+  actorId: string;
+  actorName: string;
+  actorSlug: string;
+  storyId: string;
+  storySlug: string;
+  storyTitle: string;
+}
+
 export interface ImagePurgeJobData {
   requestedBy: string;
 }
