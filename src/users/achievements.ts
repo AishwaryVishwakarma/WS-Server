@@ -5,6 +5,7 @@ export enum AchievementKey {
   SerialStoryteller = 'serial-storyteller',
   ReadingRitual = 'reading-ritual',
   NightExplorer = 'night-explorer',
+  EventSeeker = 'event-seeker',
 }
 
 export type AchievementCategory = 'author' | 'reader';
@@ -60,6 +61,11 @@ export const ACHIEVEMENT_DEFINITIONS: readonly AchievementDefinition[] = [
     key: AchievementKey.NightExplorer,
     category: 'reader',
     thresholds: [5, 25, 100, 250],
+  },
+  {
+    key: AchievementKey.EventSeeker,
+    category: 'reader',
+    thresholds: [1, 3, 5, 10],
   },
 ] as const;
 

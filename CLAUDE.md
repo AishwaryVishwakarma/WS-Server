@@ -231,9 +231,11 @@ production safety checks there.
 
 - `ReadingProgressService.weeklyGoal` uses Monday-based UTC weeks and counts
   completed progress rows; the user's 1-14 target is cross-device state.
-- Seasonal events are developer-owned windows in `seasonal-events.ts`. They
-  derive progress from completed stories with matching tags and do not grant
-  permanent achievement tiers.
+- Seasonal events are persisted, admin-managed windows in `seasonal-events/`.
+  Drafts stay private, future published windows are scheduled, and published
+  windows cannot overlap. Progress is derived from completed stories carrying
+  any selected tag. Crossing the goal writes one durable per-user/event ledger
+  row, which powers the tiered Event Seeker achievement after the event ends.
 - Series subscriptions are distinct from author follows. `seriesNotifiedAt`
   prevents repeat notifications; future-scheduled parts are picked up by
   `SeriesService.notifyScheduledParts` only once publicly available. The full

@@ -1,5 +1,6 @@
 import request from 'supertest';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
+import {SeasonalEvent} from 'src/seasonal-events/entities/seasonal-event.entity';
 import {
   cleanDatabase,
   closeTestApp,
@@ -42,7 +43,8 @@ describe('Reading progress (integration)', () => {
     existingAdmin?: {
       admin: Awaited<ReturnType<typeof seedAdmin>>;
       adminToken: string;
-    }
+    },
+    tags: string[] = []
   ) => {
     const author = agent();
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -51,7 +53,7 @@ describe('Reading progress (integration)', () => {
     const {body: story} = await author
       .post('/stories')
       .set('x-csrf-token', authorToken)
-      .send({...STORY_PAYLOAD, title})
+      .send({...STORY_PAYLOAD, title, tags})
       .expect(201);
 
     const admin = existingAdmin?.admin ?? (await seedAdmin(testApp));
@@ -166,6 +168,48 @@ describe('Reading progress (integration)', () => {
     expect(history.body).toHaveLength(1);
     expect(history.body[0].story.id).toBe(story.id);
     expect(history.body[0].completedAt).toBeDefined();
+  });
+
+  it('permanently records an event completion as achievement progress', async () => {
+    const admin = await seedAdmin(testApp);
+    const adminToken = await getCsrfToken(admin);
+    const tagResponse = await admin
+      .post('/admin/tags')
+      .set('x-csrf-token', adminToken)
+      .send({name: 'event-horror'})
+      .expect(201);
+    const tag = tagResponse.body as {id: string; name: string; slug: string};
+    const {story} = await approvedStory('Event Story', {admin, adminToken}, [
+      tag.id,
+    ]);
+    const now = Date.now();
+    await testApp.dataSource.getRepository(SeasonalEvent).save({
+      title: 'The Midnight Trial',
+      description: 'Finish one story before the door closes.',
+      goal: 1,
+      startsAt: new Date(now - 24 * 60 * 60_000),
+      endsAt: new Date(now + 24 * 60 * 60_000),
+      isPublished: true,
+      tags: [tag],
+    });
+    const {client, token} = await reader();
+
+    await client
+      .put(`/stories/${story.id}/reading-progress`)
+      .set('x-csrf-token', token)
+      .send({percent: 100})
+      .expect(204);
+
+    await client
+      .get('/users/me/seasonal-event')
+      .expect(200)
+      .expect(({body}) => expect(body).toMatchObject({completed: 1, goal: 1}));
+    const achievements = await client.get('/users/me/achievements').expect(200);
+    expect(
+      achievements.body.find(
+        (achievement: {key: string}) => achievement.key === 'event-seeker'
+      )
+    ).toMatchObject({progress: 1, highestUnlockedTier: 1});
   });
 
   it('upserts — a second write in range updates the same row', async () => {

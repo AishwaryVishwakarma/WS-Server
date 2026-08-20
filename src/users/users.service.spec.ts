@@ -1148,7 +1148,7 @@ describe('UsersService', () => {
     it('returns all six tracks with four thresholds each', async () => {
       const achievements = await service.computeAchievements('user-1');
 
-      expect(achievements).toHaveLength(6);
+      expect(achievements).toHaveLength(7);
       expect(achievements.every((item) => item.thresholds.length === 4)).toBe(
         true
       );

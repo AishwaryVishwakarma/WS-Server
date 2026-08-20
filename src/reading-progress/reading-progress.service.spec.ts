@@ -8,11 +8,21 @@ describe('ReadingProgressService', () => {
     createQueryBuilder: jest.fn(),
   };
   const stories = {assertVisible: jest.fn()};
+  const events = {active: jest.fn()};
+  const completionQuery = {
+    insert: jest.fn().mockReturnThis(),
+    values: jest.fn().mockReturnThis(),
+    orIgnore: jest.fn().mockReturnThis(),
+    execute: jest.fn(),
+  };
+  const completions = {createQueryBuilder: jest.fn(() => completionQuery)};
   const users = {};
   const service = new ReadingProgressService(
     repository as never,
     users as never,
-    stories as never
+    completions as never,
+    stories as never,
+    events as never
   );
 
   beforeEach(() => jest.clearAllMocks());
@@ -40,5 +50,32 @@ describe('ReadingProgressService', () => {
       },
       {conflictPaths: ['user', 'story']}
     );
+  });
+
+  it('records an event achievement when a finished story meets the goal', async () => {
+    const progressQuery = {
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({completed: '1'}),
+    };
+    repository.createQueryBuilder.mockReturnValue(progressQuery);
+    events.active.mockResolvedValue({
+      id: 'event-1',
+      goal: 1,
+      startsAt: new Date('2026-08-01T00:00:00Z'),
+      endsAt: new Date('2026-09-01T00:00:00Z'),
+      tags: [{id: 'tag-1'}],
+    });
+
+    await service.set('user-1', 'story-1', 100, Role.User);
+
+    expect(completionQuery.values).toHaveBeenCalledWith({
+      user: {id: 'user-1'},
+      event: {id: 'event-1'},
+    });
+    expect(completionQuery.orIgnore).toHaveBeenCalled();
+    expect(completionQuery.execute).toHaveBeenCalled();
   });
 });

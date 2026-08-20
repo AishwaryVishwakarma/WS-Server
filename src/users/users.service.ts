@@ -15,6 +15,7 @@ import {Story} from 'src/stories/entities/story.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
 import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
+import {SeasonalEventCompletion} from 'src/seasonal-events/entities/seasonal-event-completion.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
@@ -90,7 +91,10 @@ export class UsersService {
     private readonly readingProgressRepository: Repository<ReadingProgress>,
     private readonly configService: ConfigService,
     private readonly settingsService: SettingsService,
-    @Optional() private readonly imageStorage?: ImageStorageService
+    @Optional() private readonly imageStorage?: ImageStorageService,
+    @Optional()
+    @InjectRepository(SeasonalEventCompletion)
+    private readonly eventCompletionsRepository?: Repository<SeasonalEventCompletion>
   ) {}
 
   async replaceProfileImage(userId: string, file: UploadedImage) {
@@ -483,42 +487,42 @@ export class UsersService {
     return badges;
   }
 
-  // Achievement badges for the public profile (GET /users/:id). Computed on
-  // read from stats that already exist elsewhere — approved story count,
-  // likes/comments received, and series ownership — rather than stored and
-  // kept in sync via triggers scattered across StoriesService/LikesService/
-  // CommentsService/SeriesService.
+  // Achievement progress for the private achievements view. Most progress is
+  // computed from existing stats; event completions use the durable ledger so
+  // an earned tier remains after its limited event ends.
   async computeAchievements(userId: string): Promise<AchievementProgress[]> {
     const user = await this.findOne(userId);
-    const [storyStats, seriesCount, completedStories] = await Promise.all([
-      this.storiesRepository
-        .createQueryBuilder('story')
-        .select('COUNT(*)', 'approvedCount')
-        .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
-        .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
-        .where('story.author = :authorId', {authorId: userId})
-        .andWhere('story.status = :status', {status: StoryStatus.Approved})
-        .getRawOne<{
-          approvedCount: string;
-          totalLikes: string;
-          totalComments: string;
-        }>(),
-      this.seriesRepository
-        .createQueryBuilder('series')
-        .innerJoin('series.stories', 'story')
-        .where('series.author = :authorId', {authorId: userId})
-        .andWhere('story.status = :status', {status: StoryStatus.Approved})
-        .getCount(),
-      this.readingProgressRepository
-        .createQueryBuilder('progress')
-        .innerJoin('progress.story', 'story')
-        .where('progress.user = :userId', {userId})
-        .andWhere('progress.percent = :completePercent', {
-          completePercent: 100,
-        })
-        .andWhere('story.status = :status', {status: StoryStatus.Approved})
-        .getCount(),
-    ]);
+    const [storyStats, seriesCount, completedStories, completedEvents] =
+      await Promise.all([
+        this.storiesRepository
+          .createQueryBuilder('story')
+          .select('COUNT(*)', 'approvedCount')
+          .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
+          .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
+          .where('story.author = :authorId', {authorId: userId})
+          .andWhere('story.status = :status', {status: StoryStatus.Approved})
+          .getRawOne<{
+            approvedCount: string;
+            totalLikes: string;
+            totalComments: string;
+          }>(),
+        this.seriesRepository
+          .createQueryBuilder('series')
+          .innerJoin('series.stories', 'story')
+          .where('series.author = :authorId', {authorId: userId})
+          .andWhere('story.status = :status', {status: StoryStatus.Approved})
+          .getCount(),
+        this.readingProgressRepository
+          .createQueryBuilder('progress')
+          .innerJoin('progress.story', 'story')
+          .where('progress.user = :userId', {userId})
+          .andWhere('progress.percent = :completePercent', {
+            completePercent: 100,
+          })
+          .andWhere('story.status = :status', {status: StoryStatus.Approved})
+          .getCount(),
+        this.eventCompletionsRepository?.countBy({user: {id: userId}}) ?? 0,
+      ]);
 
     const progressByKey: Record<AchievementKey, number> = {
       [AchievementKey.Storyteller]: Number(storyStats?.approvedCount) || 0,
@@ -527,6 +531,7 @@ export class UsersService {
       [AchievementKey.SerialStoryteller]: seriesCount,
       [AchievementKey.ReadingRitual]: user.longestStreak,
       [AchievementKey.NightExplorer]: completedStories,
+      [AchievementKey.EventSeeker]: completedEvents,
     };
 
     // Tier 4 additionally requires the site-wide toggle live, like every

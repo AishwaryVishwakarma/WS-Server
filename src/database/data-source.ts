@@ -24,6 +24,8 @@ import {CommentReaction} from 'src/comment-reactions/entities/comment-reaction.e
 import {SiteSettings} from 'src/settings/entities/site-settings.entity';
 import {migrations} from './migrations';
 import {AnalyticsEvent} from 'src/admin-analytics/entities/analytics-event.entity';
+import {SeasonalEvent} from 'src/seasonal-events/entities/seasonal-event.entity';
+import {SeasonalEventCompletion} from 'src/seasonal-events/entities/seasonal-event-completion.entity';
 
 // CLI-facing DataSource for the typeorm binary (migration:generate/run/
 // revert — see package.json scripts, which run it from dist). The runtime
@@ -61,6 +63,8 @@ export default new DataSource({
     CommentReaction,
     SiteSettings,
     AnalyticsEvent,
+    SeasonalEvent,
+    SeasonalEventCompletion,
   ],
   migrations,
 });

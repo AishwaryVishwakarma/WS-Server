@@ -61,6 +61,9 @@ import {AnalyticsEvent} from './admin-analytics/entities/analytics-event.entity'
 import {ImageStorageModule} from './image-storage/image-storage.module';
 import {normalizeBooleanEnv} from './common/config/normalize-boolean-env';
 import {normalizePositiveIntegerEnv} from './common/config/normalize-positive-integer-env';
+import {SeasonalEvent} from './seasonal-events/entities/seasonal-event.entity';
+import {SeasonalEventCompletion} from './seasonal-events/entities/seasonal-event-completion.entity';
+import {SeasonalEventsModule} from './seasonal-events/seasonal-events.module';
 
 // A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
@@ -283,6 +286,8 @@ const DEFAULT_DB_POOL_SIZE = 10;
           CommentReaction,
           SiteSettings,
           AnalyticsEvent,
+          SeasonalEvent,
+          SeasonalEventCompletion,
         ],
         synchronize: false,
         migrations,
@@ -311,6 +316,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
     PresenceModule,
     AdminAnalyticsModule,
     BillingModule,
+    SeasonalEventsModule,
   ],
   controllers: [AppController],
   providers: [

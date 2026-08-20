@@ -26,6 +26,7 @@ import {
   AnalyticsEvent,
   AnalyticsEventType,
 } from 'src/admin-analytics/entities/analytics-event.entity';
+import {SeasonalEventsService} from 'src/seasonal-events/seasonal-events.service';
 
 // The Nest Logger is muted below ({logger: ['error', 'warn']}) to hide
 // bootstrap noise, so the seeder reports via console directly.
@@ -815,6 +816,7 @@ async function seed() {
     const scareRatingsService = app.get(ScareRatingsService);
     const notificationsService = app.get(NotificationsService);
     const settingsService = app.get(SettingsService);
+    const seasonalEventsService = app.get(SeasonalEventsService);
 
     // Seed data is a reproducible development fixture, not an incremental
     // migration. Always rebuild it so changes to fixtures and historical dates
@@ -877,6 +879,31 @@ async function seed() {
       const tag = await tagsService.create({name});
       tagIdsByName.set(tag!.name, tag!.id);
     }
+
+    const year = new Date().getUTCFullYear();
+    await seasonalEventsService.create({
+      title: 'Summer Séance',
+      description:
+        'Read three ghostly or supernatural stories before the candles go out.',
+      tagIds: ['paranormal', 'supernatural', 'haunted-places'].map((name) =>
+        tagIdsByName.get(name)!
+      ),
+      goal: 3,
+      startsAt: new Date(Date.UTC(year, 7, 1)).toISOString(),
+      endsAt: new Date(Date.UTC(year, 8, 1)).toISOString(),
+      isPublished: true,
+    });
+    await seasonalEventsService.create({
+      title: 'The Long Night',
+      description: 'Cross five dark shelves during the season of shadows.',
+      tagIds: ['gothic', 'paranormal', 'folk-tale'].map((name) =>
+        tagIdsByName.get(name)!
+      ),
+      goal: 5,
+      startsAt: new Date(Date.UTC(year, 9, 1)).toISOString(),
+      endsAt: new Date(Date.UTC(year, 10, 1)).toISOString(),
+      isPublished: true,
+    });
 
     // Stories (created through the real service, then moderated through the
     // real status transition so isFlagged etc. stay consistent)
