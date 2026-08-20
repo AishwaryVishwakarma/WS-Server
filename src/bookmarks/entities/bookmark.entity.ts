@@ -28,6 +28,9 @@ import {
 // this, migration:generate can't see the index in entity metadata and
 // proposes dropping it every time.
 @Index('IDX_bookmark_createdAt', ['createdAt'])
+// computeAuthorStats' bookmark join filters by story; the unique constraint
+// above leads with user, not story, so it can't serve this.
+@Index('IDX_bookmark_story', ['story'])
 export class Bookmark {
   @PrimaryGeneratedColumn('uuid')
   id: string;

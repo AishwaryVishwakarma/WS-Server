@@ -41,6 +41,11 @@ import {buildSlug, shortId} from 'src/utils/slug';
 // created it in AddAnalyticsEvents — without this, migration:generate can't
 // see the index in entity metadata and proposes dropping it every time.
 @Index('IDX_user_createdAt', ['createdAt'], {where: '"deletedAt" IS NULL'})
+// GET /users/me reads this on every request (countReferredUsers) — partial
+// since most accounts were never referred by anyone.
+@Index('IDX_user_referredById', ['referredById'], {
+  where: '"referredById" IS NOT NULL',
+})
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -70,7 +75,10 @@ export class User {
   referredById: string | null;
 
   @ManyToOne(() => User, {nullable: true, onDelete: 'SET NULL'})
-  @JoinColumn({name: 'referredById'})
+  @JoinColumn({
+    name: 'referredById',
+    foreignKeyConstraintName: 'FK_user_referredById',
+  })
   referredBy: User | null;
 
   @Column({unique: true})

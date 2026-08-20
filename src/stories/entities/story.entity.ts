@@ -60,6 +60,19 @@ import {buildSlug} from 'src/utils/slug';
 // AddAnalyticsEvents — without this, migration:generate can't see the index
 // in entity metadata and proposes dropping it every time.
 @Index('IDX_story_createdAt', ['createdAt'])
+// findApprovedBySeriesId/findAllBySeriesId/reorderSeries all filter by
+// series and ORDER BY seriesPosition.
+@Index('IDX_story_series_position', ['series', 'seriesPosition'])
+// The trending sort filters status='approved' then orders by trendingScore
+// (a stored generated column) — without this it filesorts every keyset page.
+@Index('IDX_story_trending', ['status', 'trendingScore', 'id'])
+// SeriesService.notifyScheduledParts polls this predicate every 60s; a
+// partial index matching it exactly stays tiny (rows leave it the moment
+// they're notified) instead of rescanning every approved story.
+@Index('IDX_story_pending_series_notify', ['scheduledFor'], {
+  where:
+    '"seriesNotifiedAt" IS NULL AND "seriesId" IS NOT NULL AND "status" = \'approved\'',
+})
 export class Story {
   @PrimaryGeneratedColumn('uuid')
   id: string;

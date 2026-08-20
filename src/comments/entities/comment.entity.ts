@@ -23,6 +23,14 @@ import {CommentReport} from './comment-report.entity';
 // this, migration:generate can't see the index in entity metadata and
 // proposes dropping it every time.
 @Index('IDX_comment_createdAt', ['createdAt'])
+// A reply thread's replyCount map, findReplies, and the hide-cascade UPDATE
+// all filter/group on parent — the createdAt tail also serves findReplies'
+// own ORDER BY.
+@Index('IDX_comment_parent_createdAt', ['parent', 'createdAt'])
+// findAllByUserId (GET /users/me/comments) and the admin retention cohort's
+// correlated EXISTS both filter on user; the createdAt tail also serves the
+// activity ORDER BY and the retention window predicate.
+@Index('IDX_comment_user_createdAt', ['user', 'createdAt'])
 export class Comment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
