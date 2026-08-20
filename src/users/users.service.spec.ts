@@ -1334,6 +1334,48 @@ describe('UsersService', () => {
     });
   });
 
+  describe('computeProfileExtras', () => {
+    const loadedUser = {
+      id: 'user-1',
+      longestStreak: 30,
+      membershipTier: MembershipTier.Free,
+    };
+
+    it('takes the already-loaded user instead of re-fetching it', async () => {
+      await service.computeProfileExtras(loadedUser as never);
+
+      expect(repository.findOneByOrFail).not.toHaveBeenCalled();
+    });
+
+    it('runs the approved-story aggregate once and shares it across badges and achievements', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '10',
+        totalLikes: '25',
+        totalComments: '25',
+      });
+      seriesRepository.exists.mockResolvedValue(true);
+
+      const {badges, achievementBadges} = await service.computeProfileExtras(
+        loadedUser as never
+      );
+
+      expect(storiesQueryBuilder.getRawOne).toHaveBeenCalledTimes(1);
+      expect(badges).toEqual(
+        expect.arrayContaining([
+          Badge.Published,
+          Badge.Prolific,
+          Badge.FanFavorite,
+          Badge.ConversationStarter,
+          Badge.SeriesAuthor,
+          Badge.MonthStreak,
+        ])
+      );
+      expect(
+        achievementBadges.find(({key}) => key === AchievementKey.Storyteller)
+      ).toMatchObject({tier: 3});
+    });
+  });
+
   describe('computeAuthorStats', () => {
     it('returns all-zero stats for a fresh author', async () => {
       const stats = await service.computeAuthorStats('user-1');

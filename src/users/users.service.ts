@@ -48,6 +48,7 @@ import {SettingsService} from 'src/settings/settings.service';
 import {
   ACHIEVEMENT_DEFINITIONS,
   AchievementKey,
+  type AchievementBadge,
   type AchievementProgress,
   unlockedTier,
 } from './achievements';
@@ -476,29 +477,38 @@ export class UsersService {
     });
   }
 
-  async computeBadges(userId: string, longestStreak: number): Promise<Badge[]> {
-    const [raw, hasSeries] = await Promise.all([
-      this.storiesRepository
-        .createQueryBuilder('story')
-        .select('COUNT(*)', 'approvedCount')
-        .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
-        .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
-        .where('story.author = :authorId', {authorId: userId})
-        .andWhere('story.status = :status', {status: StoryStatus.Approved})
-        .getRawOne<{
-          approvedCount: string;
-          totalLikes: string;
-          totalComments: string;
-        }>(),
-      this.seriesRepository.exists({where: {author: {id: userId}}}),
-    ]);
-
-    const stats = {
+  // Shared by computeBadges/computeAchievements/computeProfileExtras so a
+  // public profile view (which needs both badges and achievements) doesn't
+  // run this identical approved-story aggregate twice.
+  private async _approvedStoryStats(userId: string): Promise<{
+    approvedCount: number;
+    totalLikes: number;
+    totalComments: number;
+  }> {
+    const raw = await this.storiesRepository
+      .createQueryBuilder('story')
+      .select('COUNT(*)', 'approvedCount')
+      .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
+      .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
+      .where('story.author = :authorId', {authorId: userId})
+      .andWhere('story.status = :status', {status: StoryStatus.Approved})
+      .getRawOne<{
+        approvedCount: string;
+        totalLikes: string;
+        totalComments: string;
+      }>();
+    return {
       approvedCount: Number(raw?.approvedCount) || 0,
       totalLikes: Number(raw?.totalLikes) || 0,
       totalComments: Number(raw?.totalComments) || 0,
     };
+  }
 
+  private _badgesFromStats(
+    stats: {approvedCount: number; totalLikes: number; totalComments: number},
+    hasSeries: boolean,
+    longestStreak: number
+  ): Badge[] {
     const badges: Badge[] = [];
     if (stats.approvedCount >= 1) badges.push(Badge.Published);
     if (stats.approvedCount >= PROLIFIC_STORY_COUNT)
@@ -517,47 +527,51 @@ export class UsersService {
     return badges;
   }
 
-  // Achievement progress for the private achievements view. Most progress is
-  // computed from existing stats; event completions use the durable ledger so
-  // an earned tier remains after its limited event ends.
-  async computeAchievements(userId: string): Promise<AchievementProgress[]> {
-    const user = await this.findOne(userId);
-    const [storyStats, seriesCount, completedStories, completedEvents] =
-      await Promise.all([
-        this.storiesRepository
-          .createQueryBuilder('story')
-          .select('COUNT(*)', 'approvedCount')
-          .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
-          .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
-          .where('story.author = :authorId', {authorId: userId})
-          .andWhere('story.status = :status', {status: StoryStatus.Approved})
-          .getRawOne<{
-            approvedCount: string;
-            totalLikes: string;
-            totalComments: string;
-          }>(),
-        this.seriesRepository
-          .createQueryBuilder('series')
-          .innerJoin('series.stories', 'story')
-          .where('series.author = :authorId', {authorId: userId})
-          .andWhere('story.status = :status', {status: StoryStatus.Approved})
-          .getCount(),
-        this.readingProgressRepository
-          .createQueryBuilder('progress')
-          .innerJoin('progress.story', 'story')
-          .where('progress.user = :userId', {userId})
-          .andWhere('progress.percent = :completePercent', {
-            completePercent: 100,
-          })
-          .andWhere('story.status = :status', {status: StoryStatus.Approved})
-          .getCount(),
-        this.eventCompletionsRepository?.countBy({user: {id: userId}}) ?? 0,
-      ]);
+  async computeBadges(userId: string, longestStreak: number): Promise<Badge[]> {
+    const [stats, hasSeries] = await Promise.all([
+      this._approvedStoryStats(userId),
+      this.seriesRepository.exists({where: {author: {id: userId}}}),
+    ]);
+
+    return this._badgesFromStats(stats, hasSeries, longestStreak);
+  }
+
+  // Shared by computeAchievements and computeProfileExtras once the caller
+  // already has `user` and its approved-story aggregate — event completions
+  // use the durable ledger so an earned tier remains after its limited event
+  // ends.
+  private async _achievementProgressFromStats(
+    user: User,
+    storyStats: {
+      approvedCount: number;
+      totalLikes: number;
+      totalComments: number;
+    }
+  ): Promise<AchievementProgress[]> {
+    const userId = user.id;
+    const [seriesCount, completedStories, completedEvents] = await Promise.all([
+      this.seriesRepository
+        .createQueryBuilder('series')
+        .innerJoin('series.stories', 'story')
+        .where('series.author = :authorId', {authorId: userId})
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getCount(),
+      this.readingProgressRepository
+        .createQueryBuilder('progress')
+        .innerJoin('progress.story', 'story')
+        .where('progress.user = :userId', {userId})
+        .andWhere('progress.percent = :completePercent', {
+          completePercent: 100,
+        })
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getCount(),
+      this.eventCompletionsRepository?.countBy({user: {id: userId}}) ?? 0,
+    ]);
 
     const progressByKey: Record<AchievementKey, number> = {
-      [AchievementKey.Storyteller]: Number(storyStats?.approvedCount) || 0,
-      [AchievementKey.CrowdFavorite]: Number(storyStats?.totalLikes) || 0,
-      [AchievementKey.CampfireHost]: Number(storyStats?.totalComments) || 0,
+      [AchievementKey.Storyteller]: storyStats.approvedCount,
+      [AchievementKey.CrowdFavorite]: storyStats.totalLikes,
+      [AchievementKey.CampfireHost]: storyStats.totalComments,
       [AchievementKey.SerialStoryteller]: seriesCount,
       [AchievementKey.ReadingRitual]: user.longestStreak,
       [AchievementKey.NightExplorer]: completedStories,
@@ -585,11 +599,47 @@ export class UsersService {
     });
   }
 
-  async computeAchievementBadges(userId: string) {
+  // Achievement progress for the private achievements view.
+  async computeAchievements(userId: string): Promise<AchievementProgress[]> {
+    const [user, storyStats] = await Promise.all([
+      this.findOne(userId),
+      this._approvedStoryStats(userId),
+    ]);
+    return this._achievementProgressFromStats(user, storyStats);
+  }
+
+  async computeAchievementBadges(userId: string): Promise<AchievementBadge[]> {
     const achievements = await this.computeAchievements(userId);
     return achievements.flatMap(({key, highestUnlockedTier}) =>
       highestUnlockedTier === 0 ? [] : [{key, tier: highestUnlockedTier}]
     );
+  }
+
+  // Public author profiles need both badges and achievement badges for the
+  // same user in one request. Computing them via the independent
+  // computeBadges/computeAchievementBadges methods above would run the
+  // approved-story aggregate twice and re-fetch a user the caller (the
+  // profile controller, which just resolved it via findOneBySlug) already
+  // has loaded — this shares both.
+  async computeProfileExtras(
+    user: User
+  ): Promise<{badges: Badge[]; achievementBadges: AchievementBadge[]}> {
+    const [storyStats, hasSeries] = await Promise.all([
+      this._approvedStoryStats(user.id),
+      this.seriesRepository.exists({where: {author: {id: user.id}}}),
+    ]);
+
+    const achievements = await this._achievementProgressFromStats(
+      user,
+      storyStats
+    );
+
+    return {
+      badges: this._badgesFromStats(storyStats, hasSeries, user.longestStreak),
+      achievementBadges: achievements.flatMap(({key, highestUnlockedTier}) =>
+        highestUnlockedTier === 0 ? [] : [{key, tier: highestUnlockedTier}]
+      ),
+    };
   }
 
   // Aggregate snapshot for the author's own dashboard (GET /users/me/stats).

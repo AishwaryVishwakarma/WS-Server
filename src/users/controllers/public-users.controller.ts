@@ -43,13 +43,10 @@ export class PublicUsersController {
   @Get(':slug')
   async findOne(@Param('slug') slug: string) {
     const user = await this.usersService.findOneBySlug(slug);
-    user.badges = await this.usersService.computeBadges(
-      user.id,
-      user.longestStreak
-    );
-    user.achievementBadges = await this.usersService.computeAchievementBadges(
-      user.id
-    );
+    const {badges, achievementBadges} =
+      await this.usersService.computeProfileExtras(user);
+    user.badges = badges;
+    user.achievementBadges = achievementBadges;
     return this._serialize(user);
   }
 
