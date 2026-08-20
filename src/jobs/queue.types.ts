@@ -10,6 +10,10 @@ export interface DigestJobData {
   userId: string;
 }
 
+export interface WinbackJobData {
+  userId: string;
+}
+
 export interface ImagePurgeJobData {
   requestedBy: string;
 }

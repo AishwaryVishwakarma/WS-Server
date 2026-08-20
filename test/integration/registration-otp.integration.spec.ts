@@ -1,11 +1,15 @@
 import request from 'supertest';
 import {MailService} from 'src/mail/mail.service';
 import {PendingRegistration} from 'src/auth/entities/pending-registration.entity';
+import {User} from 'src/users/entities/user.entity';
 import {
   cleanDatabase,
   closeTestApp,
   createTestApp,
   DEFAULT_USER,
+  getCsrfToken,
+  seedAdmin,
+  type Agent,
   type TestApp,
 } from './test-utils';
 
@@ -31,6 +35,16 @@ describe('Registration OTP (integration)', () => {
   const agent = () => request.agent(testApp.app.getHttpServer());
   const pendingRepository = () =>
     testApp.dataSource.getRepository(PendingRegistration);
+  const userRepository = () => testApp.dataSource.getRepository(User);
+
+  const enableReferralProgram = async (admin: Agent) => {
+    const token = await getCsrfToken(admin);
+    await admin
+      .patch('/admin/settings')
+      .set('x-csrf-token', token)
+      .send({referralProgramEnabled: true})
+      .expect(200);
+  };
 
   const spyOnMail = () => {
     const mailService = testApp.app.get(MailService);
@@ -237,6 +251,121 @@ describe('Registration OTP (integration)', () => {
         .post('/auth/register/confirm')
         .send({email: DEFAULT_USER.email, code: newCode})
         .expect(201);
+    });
+  });
+
+  describe('Referral program', () => {
+    // Full round trip through the real HTTP endpoints — start, confirm — for
+    // both the referrer (a normal registration) and the new signup
+    // (registering with the referrer's code), rather than seeding the
+    // referrer directly, so this exercises the exact referralCode a real
+    // account would generate.
+    const registerAndConfirm = async (
+      client: request.Agent,
+      overrides: Partial<typeof DEFAULT_USER> & {referralCode?: string} = {}
+    ) => {
+      const payload = {...DEFAULT_USER, ...overrides};
+      const sendMail = spyOnMail();
+      await client.post('/auth/register').send(payload).expect(204);
+      const code = extractCode(sendMail.mock.calls.at(-1)![2]);
+      sendMail.mockRestore();
+
+      const response = await client
+        .post('/auth/register/confirm')
+        .send({email: payload.email, code})
+        .expect(201);
+      return response.body as {id: string; referralBonusAwarded: boolean};
+    };
+
+    it('credits both the referrer and the new signup with a bonus streak-freeze token when the program is enabled', async () => {
+      await enableReferralProgram(await seedAdmin(testApp));
+
+      const referrer = await registerAndConfirm(agent(), {
+        email: 'referrer@test.com',
+      });
+      expect(referrer.referralBonusAwarded).toBe(false);
+      const referrerUser = await userRepository().findOneBy({
+        id: referrer.id,
+      });
+
+      const newUser = await registerAndConfirm(agent(), {
+        email: 'newcomer@test.com',
+        referralCode: referrerUser!.referralCode,
+      });
+      expect(newUser.referralBonusAwarded).toBe(true);
+
+      const updatedReferrer = await userRepository().findOneBy({
+        id: referrer.id,
+      });
+      const updatedNewUser = await userRepository().findOneBy({
+        id: newUser.id,
+      });
+      expect(updatedReferrer?.streakFreezeCount).toBe(1);
+      expect(updatedNewUser?.streakFreezeCount).toBe(1);
+      expect(updatedNewUser?.referredById).toBe(referrer.id);
+    });
+
+    it('registers successfully with an unknown/invalid referral code, crediting nobody', async () => {
+      await enableReferralProgram(await seedAdmin(testApp));
+
+      const newUser = await registerAndConfirm(agent(), {
+        email: 'newcomer@test.com',
+        referralCode: 'not-a-real-code',
+      });
+
+      expect(newUser.referralBonusAwarded).toBe(false);
+      const updatedNewUser = await userRepository().findOneBy({
+        id: newUser.id,
+      });
+      expect(updatedNewUser?.referredById).toBeNull();
+      expect(updatedNewUser?.streakFreezeCount).toBe(0);
+    });
+
+    it('never credits anyone while the referral program is globally disabled', async () => {
+      const referrer = await registerAndConfirm(agent(), {
+        email: 'referrer@test.com',
+      });
+      const referrerUser = await userRepository().findOneBy({
+        id: referrer.id,
+      });
+
+      // Deliberately not calling enableReferralProgram — the toggle defaults
+      // off.
+      const newUser = await registerAndConfirm(agent(), {
+        email: 'newcomer@test.com',
+        referralCode: referrerUser!.referralCode,
+      });
+
+      const updatedReferrer = await userRepository().findOneBy({
+        id: referrer.id,
+      });
+      const updatedNewUser = await userRepository().findOneBy({
+        id: newUser.id,
+      });
+      expect(updatedReferrer?.streakFreezeCount).toBe(0);
+      expect(updatedNewUser?.referredById).toBeNull();
+    });
+
+    it('caps the bonus rather than exceeding MAX_STREAK_FREEZES when the referrer already has one banked', async () => {
+      await enableReferralProgram(await seedAdmin(testApp));
+
+      const referrer = await registerAndConfirm(agent(), {
+        email: 'referrer@test.com',
+      });
+      await userRepository().update(referrer.id, {streakFreezeCount: 1});
+      const referrerUser = await userRepository().findOneBy({
+        id: referrer.id,
+      });
+
+      await registerAndConfirm(agent(), {
+        email: 'newcomer@test.com',
+        referralCode: referrerUser!.referralCode,
+      });
+
+      const updatedReferrer = await userRepository().findOneBy({
+        id: referrer.id,
+      });
+      expect(updatedReferrer?.streakFreezeCount).toBe(1);
     });
   });
 });

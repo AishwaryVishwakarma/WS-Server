@@ -57,6 +57,12 @@ export class UserPrivateResponseDto extends UserPreviewResponseDto {
   @Expose() currentStreak: number;
   @Expose() longestStreak: number;
   @Expose() digestEmailEnabled: boolean;
+  // Win-back opt-out (separate flag/email from the weekly digest above).
+  @Expose() winbackEmailEnabled: boolean;
+  // A permanent, shareable invite code (see User.assignReferralCode) and how
+  // many people have joined through it — both drive the /me Invite tab.
+  @Expose() referralCode: string;
+  @Expose() referredUserCount: number;
   // Self-only membership state: when this account first became a member
   // (null if never), and the banked streak-freeze token (Patron+, see
   // UsersService.recordActivity). Neither drives any public rendering.

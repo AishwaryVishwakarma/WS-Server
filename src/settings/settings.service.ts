@@ -32,6 +32,8 @@ export class SettingsService {
         digestEmailGloballyEnabled: false,
         notificationEmailGloballyEnabled: false,
         membershipFeaturesEnabled: false,
+        winbackEmailGloballyEnabled: false,
+        referralProgramEnabled: false,
         updatedAt: new Date(),
       }
     );
@@ -65,6 +67,16 @@ export class SettingsService {
   async isMembershipFeaturesEnabled(): Promise<boolean> {
     const settings = await this.getSettings();
     return settings.membershipFeaturesEnabled;
+  }
+
+  async isWinbackEmailGloballyEnabled(): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.winbackEmailGloballyEnabled;
+  }
+
+  async isReferralProgramEnabled(): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.referralProgramEnabled;
   }
 
   async updateSettings(dto: UpdateSiteSettingsDto): Promise<SiteSettings> {

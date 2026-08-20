@@ -97,6 +97,30 @@ describe('SettingsService', () => {
     });
   });
 
+  describe('isWinbackEmailGloballyEnabled', () => {
+    it('reflects the stored value', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        winbackEmailGloballyEnabled: true,
+        updatedAt: new Date(),
+      });
+
+      expect(await service.isWinbackEmailGloballyEnabled()).toBe(true);
+    });
+  });
+
+  describe('isReferralProgramEnabled', () => {
+    it('reflects the stored value', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        referralProgramEnabled: true,
+        updatedAt: new Date(),
+      });
+
+      expect(await service.isReferralProgramEnabled()).toBe(true);
+    });
+  });
+
   describe('updateSettings', () => {
     it('persists the new value', async () => {
       repository.findOne.mockResolvedValue({

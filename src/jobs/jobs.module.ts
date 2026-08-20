@@ -9,6 +9,8 @@ import {
   EMAIL_QUEUE,
   IMAGE_MAINTENANCE_DEAD_LETTER_QUEUE,
   IMAGE_MAINTENANCE_QUEUE,
+  WINBACK_DEAD_LETTER_QUEUE,
+  WINBACK_QUEUE,
 } from './queue.constants';
 import {DeadLetterService} from './dead-letter.service';
 
@@ -41,7 +43,9 @@ function redisConnection(redisUrl: string) {
       {name: DIGEST_QUEUE},
       {name: DIGEST_DEAD_LETTER_QUEUE},
       {name: IMAGE_MAINTENANCE_QUEUE},
-      {name: IMAGE_MAINTENANCE_DEAD_LETTER_QUEUE}
+      {name: IMAGE_MAINTENANCE_DEAD_LETTER_QUEUE},
+      {name: WINBACK_QUEUE},
+      {name: WINBACK_DEAD_LETTER_QUEUE}
     ),
   ],
   providers: [DeadLetterService],

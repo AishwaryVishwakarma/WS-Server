@@ -12,9 +12,17 @@ import {DigestController} from './digest.controller';
 import {DigestProcessor} from './digest.processor';
 import {DigestUnsubscribeController} from './digest-unsubscribe.controller';
 import {DigestUnsubscribeService} from './digest-unsubscribe.service';
+import {WinbackService} from './winback.service';
+import {WinbackController} from './winback.controller';
+import {WinbackProcessor} from './winback.processor';
+import {WinbackUnsubscribeController} from './winback-unsubscribe.controller';
+import {WinbackUnsubscribeService} from './winback-unsubscribe.service';
 
 // Plain imports, no forwardRef — none of these modules import DigestModule
-// back, so there's no cycle to guard against.
+// back, so there's no cycle to guard against. Win-back lives here rather
+// than a separate module since it reuses every one of these same
+// dependencies (a different retention-email cadence, not a different
+// domain).
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
@@ -25,8 +33,20 @@ import {DigestUnsubscribeService} from './digest-unsubscribe.service';
     MailModule,
     SettingsModule,
   ],
-  controllers: [DigestController, DigestUnsubscribeController],
-  providers: [DigestService, DigestProcessor, DigestUnsubscribeService],
-  exports: [DigestService],
+  controllers: [
+    DigestController,
+    DigestUnsubscribeController,
+    WinbackController,
+    WinbackUnsubscribeController,
+  ],
+  providers: [
+    DigestService,
+    DigestProcessor,
+    DigestUnsubscribeService,
+    WinbackService,
+    WinbackProcessor,
+    WinbackUnsubscribeService,
+  ],
+  exports: [DigestService, WinbackService],
 })
 export class DigestModule {}

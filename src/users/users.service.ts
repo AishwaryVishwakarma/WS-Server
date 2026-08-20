@@ -177,7 +177,12 @@ export class UsersService {
 
   // Accepts RegisterUserDto (self-registration) or CreateUserDto (admin, extends it)
   async create(createUserDto: RegisterUserDto) {
-    const {password, ...rest} = createUserDto;
+    // referralCode here is an *inbound* code (see RegisterUserDto) — the
+    // admin-create path doesn't run through the referral program at all, so
+    // it's stripped rather than passed to _createUserWithHash, where it
+    // would otherwise collide with User's own outbound referralCode column.
+    const {password, referralCode, ...rest} = createUserDto;
+    void referralCode;
     const hashedPassword = await this.hashPassword(password);
     return this._createUserWithHash(rest, hashedPassword);
   }
@@ -185,20 +190,26 @@ export class UsersService {
   // Used by registration-OTP confirm, where the password was already hashed
   // back at registration-start time (before the code was even sent) — the
   // PendingRegistration row only ever holds the hash, never the plaintext.
+  // referredById is the *resolved* referrer's id (from
+  // RegistrationOtpService/PendingRegistration.referredById), never the raw
+  // inbound code — see the note on `create` above.
   async createFromVerifiedRegistration(
-    dto: Omit<RegisterUserDto, 'password'>,
-    hashedPassword: string
+    dto: Omit<RegisterUserDto, 'password' | 'referralCode'>,
+    hashedPassword: string,
+    referredById: string | null = null
   ) {
-    return this._createUserWithHash(dto, hashedPassword);
+    return this._createUserWithHash(dto, hashedPassword, referredById);
   }
 
   private async _createUserWithHash(
-    dto: Omit<RegisterUserDto, 'password'>,
-    hashedPassword: string
+    dto: Omit<RegisterUserDto, 'password' | 'referralCode'>,
+    hashedPassword: string,
+    referredById: string | null = null
   ) {
     const user = this.usersRepository.create({
       ...dto,
       password: hashedPassword,
+      referredById,
       // Creation never grants the public verified-author status. Admins may
       // still verify an existing account through update(), and qualifying
       // authors may earn it through the automatic verification rule.
@@ -392,6 +403,22 @@ export class UsersService {
     });
   }
 
+  // Registration-time lookup for an inbound referral code — a plain
+  // nullable return, not the throwing findOneBySlug style above, since an
+  // invalid/typo'd code must let registration proceed silently as "no
+  // referrer" rather than error or reveal which codes exist.
+  async findOneByReferralCode(code: string): Promise<User | null> {
+    return this.usersRepository.findOneBy({referralCode: code});
+  }
+
+  // How many accounts this user has referred — self-only (see
+  // PrivateUsersController), attached the same way as hasPassword: computed
+  // fresh on each /users/me fetch rather than a denormalized counter, since
+  // it's read far less often than it would need invalidating.
+  async countReferredUsers(userId: string): Promise<number> {
+    return this.usersRepository.count({where: {referredById: userId}});
+  }
+
   // Records reading activity for today (UTC), extending/resetting the
   // user's streak via the pure computeStreakUpdate — triggered from
   // StoriesService.recordView on any story view. A no-op (no query beyond
@@ -405,9 +432,9 @@ export class UsersService {
     const today = new Date().toISOString().slice(0, 10);
     const now = new Date();
 
-    // Patron+ streak-freeze perk: gated on the site-wide toggle like every
-    // other membership benefit, checked lazily here since nothing else in
-    // this file runs on a schedule either (see streak.ts).
+    // Patron+ perk: gated on the site-wide toggle like every other
+    // membership benefit, checked lazily here since nothing else in this
+    // file runs on a schedule either (see streak.ts).
     const membershipLive =
       user.membershipTier !== MembershipTier.Free &&
       (await this.settingsService.isMembershipFeaturesEnabled());
@@ -417,24 +444,27 @@ export class UsersService {
     let freezeChanged = false;
     let effectiveState: StreakState = user;
 
-    if (membershipLive) {
-      if (
-        isEligibleForFreezeGrant(streakFreezeCount, lastStreakFreezeUsedAt, now)
-      ) {
-        streakFreezeCount += 1;
-        lastStreakFreezeUsedAt = now;
-        freezeChanged = true;
-      }
-      if (
-        streakFreezeCount > 0 &&
-        user.lastActiveDate &&
-        isOneDayGap(user.lastActiveDate, today)
-      ) {
-        effectiveState = {...user, ...applyFreeze(user, today)};
-        streakFreezeCount -= 1;
-        lastStreakFreezeUsedAt = now;
-        freezeChanged = true;
-      }
+    if (
+      membershipLive &&
+      isEligibleForFreezeGrant(streakFreezeCount, lastStreakFreezeUsedAt, now)
+    ) {
+      streakFreezeCount += 1;
+      lastStreakFreezeUsedAt = now;
+      freezeChanged = true;
+    }
+
+    // Spending a banked freeze is universal — it doesn't matter whether it
+    // came from the Patron+ top-up above or a referral bonus, so this check
+    // is deliberately not gated on membershipLive.
+    if (
+      streakFreezeCount > 0 &&
+      user.lastActiveDate &&
+      isOneDayGap(user.lastActiveDate, today)
+    ) {
+      effectiveState = {...user, ...applyFreeze(user, today)};
+      streakFreezeCount -= 1;
+      lastStreakFreezeUsedAt = now;
+      freezeChanged = true;
     }
 
     const updated = computeStreakUpdate(effectiveState, today);

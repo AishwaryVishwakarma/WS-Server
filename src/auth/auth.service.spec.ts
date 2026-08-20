@@ -26,6 +26,12 @@ describe('AuthService', () => {
   };
   let findOneBy: jest.Mock;
   let findOne: jest.Mock;
+  let usersRepository: {
+    createQueryBuilder: jest.Mock;
+    findOneBy: jest.Mock;
+    findOne: jest.Mock;
+    manager?: {transaction: jest.Mock};
+  };
   let usersService: {
     create: jest.Mock;
     findOrCreateGoogleUser: jest.Mock;
@@ -79,11 +85,11 @@ describe('AuthService', () => {
         AuthService,
         {
           provide: getRepositoryToken(User),
-          useValue: {
+          useValue: (usersRepository = {
             createQueryBuilder: jest.fn(() => queryBuilder),
             findOneBy,
             findOne,
-          },
+          }),
         },
         {provide: UsersService, useValue: usersService},
         {provide: SessionService, useValue: sessionService},
@@ -188,6 +194,7 @@ describe('AuthService', () => {
         name: 'Test',
         email: 'a@b.com',
         passwordHash: hashedPassword,
+        referredById: null,
       });
       usersService.createFromVerifiedRegistration.mockResolvedValue({
         id: 'user-1',
@@ -195,7 +202,11 @@ describe('AuthService', () => {
       });
       const req = createRequest();
 
-      const user = await service.confirmRegistration('a@b.com', '123456', req);
+      const result = await service.confirmRegistration(
+        'a@b.com',
+        '123456',
+        req
+      );
 
       expect(registrationOtpService.confirm).toHaveBeenCalledWith(
         'a@b.com',
@@ -203,7 +214,8 @@ describe('AuthService', () => {
       );
       expect(usersService.createFromVerifiedRegistration).toHaveBeenCalledWith(
         {name: 'Test', email: 'a@b.com'},
-        hashedPassword
+        hashedPassword,
+        null
       );
       expect(sessionService.regenerate).toHaveBeenCalledWith(req);
       expect(req.session.userId).toBe('user-1');
@@ -213,7 +225,81 @@ describe('AuthService', () => {
         'sid-1',
         SESSION_MAX_AGE_MS
       );
-      expect(user.id).toBe('user-1');
+      expect(result.user.id).toBe('user-1');
+      expect(result.referralBonusAwarded).toBe(false);
+    });
+
+    it('credits both the referrer and the new user with a bonus streak-freeze token, capped', async () => {
+      registrationOtpService.confirm.mockResolvedValue({
+        name: 'Test',
+        email: 'a@b.com',
+        passwordHash: hashedPassword,
+        referredById: 'referrer-1',
+      });
+      usersService.createFromVerifiedRegistration.mockResolvedValue({
+        id: 'new-user-1',
+        role: Role.User,
+      });
+      const managerFindOneBy = jest
+        .fn()
+        .mockImplementation((_entity, {id}: {id: string}) =>
+          Promise.resolve(
+            id === 'referrer-1'
+              ? {id: 'referrer-1', streakFreezeCount: 0}
+              : {id: 'new-user-1', streakFreezeCount: 0}
+          )
+        );
+      const managerUpdate = jest.fn().mockResolvedValue(undefined);
+      const transaction = jest.fn(
+        async (fn: (manager: unknown) => Promise<void>) =>
+          fn({findOneBy: managerFindOneBy, update: managerUpdate})
+      );
+      usersRepository.manager = {transaction};
+      const req = createRequest();
+
+      const result = await service.confirmRegistration(
+        'a@b.com',
+        '123456',
+        req
+      );
+
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(managerUpdate).toHaveBeenCalledWith(User, 'referrer-1', {
+        streakFreezeCount: 1,
+      });
+      expect(managerUpdate).toHaveBeenCalledWith(User, 'new-user-1', {
+        streakFreezeCount: 1,
+      });
+      expect(result.referralBonusAwarded).toBe(true);
+    });
+
+    it('caps the referral bonus rather than exceeding MAX_STREAK_FREEZES', async () => {
+      registrationOtpService.confirm.mockResolvedValue({
+        name: 'Test',
+        email: 'a@b.com',
+        passwordHash: hashedPassword,
+        referredById: 'referrer-1',
+      });
+      usersService.createFromVerifiedRegistration.mockResolvedValue({
+        id: 'new-user-1',
+        role: Role.User,
+      });
+      const managerFindOneBy = jest
+        .fn()
+        .mockResolvedValue({id: 'referrer-1', streakFreezeCount: 1});
+      const managerUpdate = jest.fn().mockResolvedValue(undefined);
+      usersRepository.manager = {
+        transaction: jest.fn(async (fn: (manager: unknown) => Promise<void>) =>
+          fn({findOneBy: managerFindOneBy, update: managerUpdate})
+        ),
+      };
+      const req = createRequest();
+
+      await service.confirmRegistration('a@b.com', '123456', req);
+
+      expect(managerUpdate).toHaveBeenCalledWith(User, 'referrer-1', {
+        streakFreezeCount: 1,
+      });
     });
   });
 

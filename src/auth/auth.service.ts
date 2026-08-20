@@ -22,6 +22,7 @@ import {GoogleAuthService} from './google-auth.service';
 import {RegistrationOtpService} from './registration-otp.service';
 import {sessionMetadataFrom} from 'src/session/session-metadata';
 import {GeoLocationService} from 'src/session/geo-location.service';
+import {MAX_STREAK_FREEZES} from 'src/users/streak';
 
 @Injectable()
 export class AuthService {
@@ -106,11 +107,16 @@ export class AuthService {
     await this.registrationOtpService.start(registerUserDto);
   }
 
+  // referralBonusAwarded is a one-time signal for this specific confirm
+  // call (mirrors the reading-progress PUT's optional eventAchievement) —
+  // User.referredById stays set permanently afterward, so it can't itself
+  // tell a caller "a bonus was *just* credited" versus "this account
+  // happens to have been referred at some point."
   async confirmRegistration(
     email: string,
     code: string,
     req: Request
-  ): Promise<User> {
+  ): Promise<{user: User; referralBonusAwarded: boolean}> {
     const confirmed = await this.registrationOtpService.confirm(
       email.toLowerCase(),
       code
@@ -121,12 +127,42 @@ export class AuthService {
         email: confirmed.email,
         bio: confirmed.bio ?? undefined,
       },
-      confirmed.passwordHash
+      confirmed.passwordHash,
+      confirmed.referredById
     )) as User;
+
+    const referralBonusAwarded = !!confirmed.referredById;
+    if (referralBonusAwarded) {
+      await this._creditReferralBonus(confirmed.referredById!, user.id);
+    }
 
     await this._establishSession(req, user);
 
-    return user;
+    return {user, referralBonusAwarded};
+  }
+
+  // Both sides of a completed referral get a bonus streak-freeze token,
+  // capped at MAX_STREAK_FREEZES like every other source of one (the
+  // monthly Patron+ top-up in UsersService.recordActivity) — a user already
+  // at the cap (e.g. a Patron who's already banked one) is a no-op, not an
+  // overflow past it. One transaction so a mid-way failure can't produce
+  // partial credit.
+  private async _creditReferralBonus(
+    referrerId: string,
+    newUserId: string
+  ): Promise<void> {
+    await this.usersRepository.manager.transaction(async (manager) => {
+      for (const id of [referrerId, newUserId]) {
+        const user = await manager.findOneBy(User, {id});
+        if (!user) continue;
+        await manager.update(User, id, {
+          streakFreezeCount: Math.min(
+            user.streakFreezeCount + 1,
+            MAX_STREAK_FREEZES
+          ),
+        });
+      }
+    });
   }
 
   async login(loginInfoDto: LoginInfoDto, req: Request) {

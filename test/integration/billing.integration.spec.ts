@@ -234,6 +234,7 @@ describe('Billing (integration)', () => {
       const filler = Array.from({length: 100}, (_, i) => ({
         name: `Filler ${i}`,
         slug: `filler-${i}`,
+        referralCode: `fc-${i}`,
         email: `filler${i}@test.com`,
         foundingPatronSince: new Date(),
       }));

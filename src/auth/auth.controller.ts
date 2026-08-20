@@ -84,12 +84,13 @@ export class AuthController {
       throw new BadRequestException('Already logged in');
     }
 
-    const user = await this.authService.confirmRegistration(
-      confirmRegistrationDto.email,
-      confirmRegistrationDto.code,
-      req
-    );
-    return this._serialize(user, req.session.role);
+    const {user, referralBonusAwarded} =
+      await this.authService.confirmRegistration(
+        confirmRegistrationDto.email,
+        confirmRegistrationDto.code,
+        req
+      );
+    return {...this._serialize(user, req.session.role), referralBonusAwarded};
   }
 
   @Post('register/resend')

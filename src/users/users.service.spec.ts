@@ -477,6 +477,18 @@ describe('UsersService', () => {
         })
       ).rejects.toThrow(ConflictException);
     });
+
+    it("strips an inbound referralCode rather than letting it collide with the account's own outbound one", async () => {
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+        referralCode: 'someone-elses-code',
+      })) as User;
+
+      expect(user).not.toHaveProperty('referralCode');
+      expect(user.referredById).toBeNull();
+    });
   });
 
   describe('createFromVerifiedRegistration', () => {
@@ -507,6 +519,57 @@ describe('UsersService', () => {
           'already-hashed'
         )
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('sets referredById when a resolved referrer id is supplied', async () => {
+      const user = (await service.createFromVerifiedRegistration(
+        {name: 'Test', email: 'a@b.com'},
+        'already-hashed',
+        'referrer-1'
+      )) as User;
+
+      expect(user.referredById).toBe('referrer-1');
+    });
+
+    it('defaults referredById to null when no referrer was supplied', async () => {
+      const user = (await service.createFromVerifiedRegistration(
+        {name: 'Test', email: 'a@b.com'},
+        'already-hashed'
+      )) as User;
+
+      expect(user.referredById).toBeNull();
+    });
+  });
+
+  describe('findOneByReferralCode', () => {
+    it('returns the matching user', async () => {
+      repository.findOneBy.mockResolvedValue({id: 'user-1'});
+
+      await expect(service.findOneByReferralCode('abc123')).resolves.toEqual({
+        id: 'user-1',
+      });
+      expect(repository.findOneBy).toHaveBeenCalledWith({
+        referralCode: 'abc123',
+      });
+    });
+
+    it('returns null rather than throwing on an unknown code', async () => {
+      repository.findOneBy.mockResolvedValue(null);
+
+      await expect(
+        service.findOneByReferralCode('not-a-real-code')
+      ).resolves.toBeNull();
+    });
+  });
+
+  describe('countReferredUsers', () => {
+    it('counts accounts referred by this user', async () => {
+      repository.count.mockResolvedValue(3);
+
+      await expect(service.countReferredUsers('user-1')).resolves.toBe(3);
+      expect(repository.count).toHaveBeenCalledWith({
+        where: {referredById: 'user-1'},
+      });
     });
   });
 
@@ -944,6 +1007,26 @@ describe('UsersService', () => {
         lastStreakFreezeUsedAt: null,
       });
       settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+
+      await service.recordActivity('user-1');
+
+      const [, update] = repository.update.mock.calls[0];
+      expect(update.currentStreak).toBe(6);
+      expect(update.streakFreezeCount).toBe(0);
+    });
+
+    it('spends a banked freeze for a Free member too — spending is universal even though the monthly grant is Patron+-only', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        currentStreak: 5,
+        longestStreak: 5,
+        lastActiveDate: twoDaysAgo,
+        // Only reachable for a Free member via a referral bonus (see
+        // AuthService.confirmRegistration) — never the monthly grant above.
+        streakFreezeCount: 1,
+        lastStreakFreezeUsedAt: null,
+      });
 
       await service.recordActivity('user-1');
 

@@ -13,8 +13,11 @@ function yesterday(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Patron+ perk: a banked freeze silently protects one missed day instead of
-// the streak resetting. Checked lazily inside UsersService.recordActivity —
+// A banked freeze silently protects one missed day instead of the streak
+// resetting — spendable by anyone who has one, regardless of tier (a
+// referral bonus can put a Free reader here too; see
+// AuthService.confirmRegistration). Only the automatic *monthly top-up* in
+// UsersService.recordActivity stays a Patron+ perk. Checked lazily there —
 // mirrors this file's own "no scheduler, just recompute on next activity"
 // approach rather than a daily cron.
 export const MAX_STREAK_FREEZES = 1;

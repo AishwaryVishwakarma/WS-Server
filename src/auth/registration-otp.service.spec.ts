@@ -4,6 +4,7 @@ import {Test} from '@nestjs/testing';
 import {getRepositoryToken} from '@nestjs/typeorm';
 import {UsersService} from 'src/users/users.service';
 import {MailService} from 'src/mail/mail.service';
+import {SettingsService} from 'src/settings/settings.service';
 import {PendingRegistration} from './entities/pending-registration.entity';
 import {RegistrationOtpService} from './registration-otp.service';
 
@@ -15,8 +16,12 @@ describe('RegistrationOtpService', () => {
     create: jest.Mock;
     findOne: jest.Mock;
   };
-  let usersService: {hashPassword: jest.Mock};
+  let usersService: {
+    hashPassword: jest.Mock;
+    findOneByReferralCode: jest.Mock;
+  };
   let mailService: {send: jest.Mock};
+  let settingsService: {isReferralProgramEnabled: jest.Mock};
 
   const dto = {name: 'Aria', email: 'reader@test.com', password: 'S3cret!Pw'};
   const hashedPassword = 'hashed-password';
@@ -41,8 +46,12 @@ describe('RegistrationOtpService', () => {
     };
     usersService = {
       hashPassword: jest.fn().mockResolvedValue(hashedPassword),
+      findOneByReferralCode: jest.fn().mockResolvedValue(null),
     };
     mailService = {send: jest.fn().mockResolvedValue(undefined)};
+    settingsService = {
+      isReferralProgramEnabled: jest.fn().mockResolvedValue(false),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -53,6 +62,7 @@ describe('RegistrationOtpService', () => {
         },
         {provide: UsersService, useValue: usersService},
         {provide: MailService, useValue: mailService},
+        {provide: SettingsService, useValue: settingsService},
       ],
     }).compile();
 
@@ -109,6 +119,52 @@ describe('RegistrationOtpService', () => {
           bio: null,
         })
       );
+    });
+  });
+
+  describe('start — referrals', () => {
+    it('resolves and stores the referrer id when the program is enabled and the code is valid', async () => {
+      settingsService.isReferralProgramEnabled.mockResolvedValue(true);
+      usersService.findOneByReferralCode.mockResolvedValue({
+        id: 'referrer-1',
+      });
+
+      await service.start({...dto, referralCode: 'abc123'});
+
+      expect(usersService.findOneByReferralCode).toHaveBeenCalledWith('abc123');
+      expect(pendingRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({referredById: 'referrer-1'})
+      );
+    });
+
+    it('silently ignores a code that resolves to nobody', async () => {
+      settingsService.isReferralProgramEnabled.mockResolvedValue(true);
+      usersService.findOneByReferralCode.mockResolvedValue(null);
+
+      await service.start({...dto, referralCode: 'not-a-real-code'});
+
+      expect(pendingRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({referredById: null})
+      );
+    });
+
+    it('never looks up a code while the referral program is globally disabled', async () => {
+      settingsService.isReferralProgramEnabled.mockResolvedValue(false);
+
+      await service.start({...dto, referralCode: 'abc123'});
+
+      expect(usersService.findOneByReferralCode).not.toHaveBeenCalled();
+      expect(pendingRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({referredById: null})
+      );
+    });
+
+    it('never looks anything up when no code was supplied at all', async () => {
+      settingsService.isReferralProgramEnabled.mockResolvedValue(true);
+
+      await service.start(dto);
+
+      expect(usersService.findOneByReferralCode).not.toHaveBeenCalled();
     });
   });
 
@@ -233,6 +289,7 @@ describe('RegistrationOtpService', () => {
         email: dto.email,
         passwordHash: hashedPassword,
         bio: null,
+        referredById: null,
       });
       expect(pendingRepository.delete).toHaveBeenCalledWith({
         email: dto.email,

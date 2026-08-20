@@ -71,13 +71,15 @@ describe('Membership (integration)', () => {
 
       // Fill the founding headcount directly — cheaper than registering 100
       // real accounts through the OTP flow just to exhaust the cutoff. A bulk
-      // .insert() bypasses the entity's @BeforeInsert hooks, so slug (NOT
-      // NULL + unique) needs an explicit value here. The cap is counted off
-      // foundingPatronSince (see UsersService._resolveGrantedTier), not the
-      // current membershipTier, so filler rows need the latch set directly.
+      // .insert() bypasses the entity's @BeforeInsert hooks, so slug and
+      // referralCode (both NOT NULL + unique) need explicit values here. The
+      // cap is counted off foundingPatronSince (see
+      // UsersService._resolveGrantedTier), not the current membershipTier,
+      // so filler rows need the latch set directly.
       const filler = Array.from({length: 100}, (_, i) => ({
         name: `Filler ${i}`,
         slug: `filler-${i}`,
+        referralCode: `fc-${i}`,
         email: `filler${i}@test.com`,
         membershipTier: MembershipTier.FoundingPatron,
         premiumSince: new Date(),

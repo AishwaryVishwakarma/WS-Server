@@ -10,6 +10,7 @@ import {PendingRegistration} from './entities/pending-registration.entity';
 import {UsersModule} from 'src/users/users.module';
 import {SessionModule} from 'src/session/session.module';
 import {MailModule} from 'src/mail/mail.module';
+import {SettingsModule} from 'src/settings/settings.module';
 import {GoogleAuthService} from './google-auth.service';
 import {RegistrationOtpService} from './registration-otp.service';
 
@@ -19,6 +20,7 @@ import {RegistrationOtpService} from './registration-otp.service';
     UsersModule,
     SessionModule,
     MailModule,
+    SettingsModule,
   ],
   controllers: [AuthController, PasswordResetController],
   providers: [

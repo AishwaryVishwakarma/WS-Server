@@ -61,6 +61,7 @@ export class PrivateUsersController {
       {
         ...user,
         hasPassword: await this.usersService.hasPassword(user.id),
+        referredUserCount: await this.usersService.countReferredUsers(user.id),
       },
       {
         excludeExtraneousValues: true,
