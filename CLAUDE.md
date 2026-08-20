@@ -2,6 +2,11 @@
 
 Repository guidance for the Whispering Shadows backend.
 
+Keep source comments focused on why: data invariants, security boundaries,
+database or framework quirks, and non-obvious tradeoffs. Do not narrate readable
+code, preserve implementation history, or duplicate this document. Update or
+remove comments whenever the behavior they describe changes.
+
 ## Project
 
 NestJS 11 + TypeORM + PostgreSQL API with Redis-backed sessions. The sibling
@@ -123,15 +128,22 @@ production safety checks there.
 
 ## Membership (Patron / Founding Patron)
 
-- Phase 0 only: `User.membershipTier` (`Free|Patron|FoundingPatron`) is granted
-  and revoked manually by an admin via `PATCH /admin/users/:id`, mirroring how
-  `role`/`isVerified` already work. No payment processor is wired up — do not
-  add real billing without an explicit decision on a provider.
+- `User.membershipTier` (`Free|Patron|FoundingPatron`) has two grant sources
+  that both funnel through one shared core in `UsersService`: an admin's
+  `PATCH /admin/users/:id` (mirroring how `role`/`isVerified` already work),
+  and a real LemonSqueezy self-serve subscription via `src/billing/`. Never
+  branch membership-grant logic per source — add to
+  `_resolveMembershipGrant`/`_resolveGrantedTier` (private) or
+  `applyMembershipChange` (the webhook's public entry point), not around them.
 - `SiteSettings.membershipFeaturesEnabled` (default `false`) is the site-wide
   kill switch. Every membership-gated behavior checks both
   `membershipTier !== Free` AND `SettingsService.isMembershipFeaturesEnabled()`
   — a tier staged on an account before rollout has no effect until the toggle
-  flips.
+  flips. **This toggle only gates starting a new checkout** (`BillingController`
+  returns 403); it never gates the webhook. A subscriber who already paid keeps
+  their recorded tier/status regardless of the toggle — gating the webhook on
+  it would drop paid state on the floor, and pausing the LemonSqueezy store
+  itself (not this toggle) is the only real stop switch for new charges.
 - `User.premiumSince`, not the current `membershipTier`, is the "has this
   account ever been a member" signal. It is stamped once, on a genuine first
   grant, and never cleared by a later lapse-then-re-grant — checking the
@@ -140,13 +152,49 @@ production safety checks there.
 - Founding Patron is auto-assigned in `UsersService._resolveGrantedTier`: a
   genuine first-ever grant to `Patron` while fewer than
   `MEMBERSHIP_FOUNDING_LIMIT` (100) accounts have ever held Patron+ is
-  upgraded to `FoundingPatron` instead. Once granted it is never re-evaluated
-  or lost. Explicitly requesting `FoundingPatron` directly is always honored
-  as-is, without recomputing eligibility.
+  upgraded to `FoundingPatron` instead. `User.foundingPatronSince` is the
+  latch that carries this forward — checked _first_, before any other rule,
+  so a lapsed Founding Patron who resubscribes (self-serve checkout can only
+  ever request plain `Patron`, never `FoundingPatron` directly) comes back
+  Founding rather than losing the status permanently. The cap itself is
+  counted off `foundingPatronSince` (`count({where: {foundingPatronSince: Not(IsNull())}})`),
+  not the current tier — counting current holders would let a churned
+  Founding Patron's slot silently be reissued, exceeding the lifetime cap.
+  An explicit grant of `Free` (an admin revoke, or the webhook's
+  `subscription_expired` handler) always wins over the latch — "once granted,
+  never lost" means a later re-grant restores it, not that the tier can never
+  become `Free` while lapsed. Explicitly requesting `FoundingPatron` directly
+  is always honored as-is, without recomputing eligibility.
+- LemonSqueezy billing (`src/billing/`, monthly-cadence Patron only — there is
+  no self-serve Founding tier): `LemonSqueezyService` is the outbound client
+  (`createCheckout`, `getCustomerPortalUrl` — the portal URL is a pre-signed,
+  24h-valid link fetched on demand and never cached); `enabled` gates on all of
+  `LEMONSQUEEZY_API_KEY`/`STORE_ID`/`PATRON_VARIANT_ID` being configured
+  (`app.module.ts` validates these four vars as all-or-nothing — a partially
+  configured group throws at boot). `LemonSqueezyWebhookController`/`Service`
+  verify `X-Signature` (HMAC-SHA256 over the **raw** body — `rawBody: true` in
+  `main.ts`, and `crypto.timingSafeEqual` after a length check, since it
+  throws rather than returning false on a length mismatch) and resolve the
+  account via `meta.custom_data.user_id` (UUID-shape validated before it ever
+  reaches a query — a malformed literal would otherwise throw a Postgres
+  driver error, which LemonSqueezy would retry forever) falling back to
+  `lemonSqueezyCustomerId`. `User.lemonSqueezySubscriptionId` (unique) is also
+  the **stale-event guard**: a webhook only applies a change when the
+  payload's subscription id matches it (or the account has none yet, or the
+  event is `subscription_created`) — otherwise a late/retried terminal event
+  for an already-superseded subscription (cancel → resubscribe → old sub's
+  expiry arrives late) could downgrade a currently-paying member.
+  `subscription_cancelled` mirrors status only — LemonSqueezy access
+  continues through period end, so the tier is untouched; `subscription_expired`
+  is the actual downgrade to `Free`. `subscription_payment_failed` is a
+  deliberate no-op (LemonSqueezy, the Merchant of Record, runs its own
+  dunning; `past_due` already arrives via `subscription_updated`). Every
+  handler is declarative and idempotent by construction — a byte-identical
+  replay produces the same call — so there is no webhook-event dedupe table.
 - Guardrails that must hold for any future membership feature: never paywall
   story content itself; membership must never buy a better spot in organic
   trending/search rankings; the priority moderation queue changes queue
-  *position* only, never moderation standards (same rules, just reviewed
+  _position_ only, never moderation standards (same rules, just reviewed
   sooner).
 - Gated behaviors, all resolved from the author's own `membershipTier`, never
   a request-supplied one:
@@ -179,6 +227,25 @@ production safety checks there.
     member who already clears it stays capped at tier 3, preserving
     earned-status integrity.
 
+## Retention features
+
+- `ReadingProgressService.weeklyGoal` uses Monday-based UTC weeks and counts
+  completed progress rows; the user's 1-14 target is cross-device state.
+- Seasonal events are persisted, admin-managed windows in `seasonal-events/`.
+  Drafts stay private, future published windows are scheduled, and published
+  windows cannot overlap. Progress is derived from completed stories carrying
+  any selected tag. Crossing the goal writes one durable per-user/event ledger
+  row, which powers the tiered Event Seeker achievement after the event ends.
+- Series subscriptions are distinct from author follows. `seriesNotifiedAt`
+  prevents repeat notifications; future-scheduled parts are picked up by
+  `SeriesService.notifyScheduledParts` only once publicly available. The full
+  `/users/me/series-subscriptions` list includes author metadata; its `/ids`
+  variant remains the lightweight toggle-state endpoint.
+- Recommendation feedback is one durable row per user/story. `more_like_this`
+  contributes affinity; `not_for_me` excludes that story from For You results.
+- `Story.discussionPrompt` is optional author copy exposed on story detail;
+  an explicit `null` clears it.
+
 ## Database and TypeScript rules
 
 - Migrations own the schema; `synchronize` stays off. After changing an entity,
@@ -209,6 +276,10 @@ production safety checks there.
 - Before handing off a change, run the narrowest relevant tests, then
   `npm run typecheck` and `npm run lint`. Run `npm run build` for changes that
   affect startup, packaging, decorators, or generated output.
+- For large, cross-cutting, or cross-stack changes, run the complete integration
+  suite and the web repository's complete Playwright E2E suite before handoff.
+  Add or update integration/E2E coverage when a changed API or user journey is
+  not already exercised.
 
 ## Git
 

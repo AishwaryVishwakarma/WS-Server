@@ -3,5 +3,6 @@ export const NOTIFICATION_TYPES = [
   'comment',
   'follow',
   'like',
+  'series',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

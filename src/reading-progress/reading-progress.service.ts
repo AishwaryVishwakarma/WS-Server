@@ -6,6 +6,9 @@ import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {Role} from 'src/users/enums/role';
 import {Story} from 'src/stories/entities/story.entity';
 import {ReadingProgress} from './entities/reading-progress.entity';
+import {User} from 'src/users/entities/user.entity';
+import {SeasonalEventsService} from 'src/seasonal-events/seasonal-events.service';
+import {SeasonalEventCompletion} from 'src/seasonal-events/entities/seasonal-event-completion.entity';
 
 // Below this, a read barely started — don't bother persisting (and don't
 // wipe an existing row just because the reader briefly scrolled back up to
@@ -26,8 +29,104 @@ export class ReadingProgressService {
   constructor(
     @InjectRepository(ReadingProgress)
     private readonly readingProgressRepository: Repository<ReadingProgress>,
-    private readonly storiesService: StoriesService
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
+    @InjectRepository(SeasonalEventCompletion)
+    private readonly eventCompletionsRepository: Repository<SeasonalEventCompletion>,
+    private readonly storiesService: StoriesService,
+    private readonly seasonalEventsService: SeasonalEventsService
   ) {}
+
+  async weeklyGoal(userId: string) {
+    const now = new Date();
+    const day = now.getUTCDay();
+    const daysSinceMonday = day === 0 ? 6 : day - 1;
+    const start = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    );
+    start.setUTCDate(start.getUTCDate() - daysSinceMonday);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 7);
+
+    const [user, completed] = await Promise.all([
+      this.usersRepository.findOneByOrFail({id: userId}),
+      this.readingProgressRepository
+        .createQueryBuilder('progress')
+        .where('progress.userId = :userId', {userId})
+        .andWhere('progress.percent >= :completePercent', {
+          completePercent: COMPLETE_PERCENT,
+        })
+        .andWhere('progress.updatedAt >= :start', {start})
+        .andWhere('progress.updatedAt < :end', {end})
+        .getCount(),
+    ]);
+
+    return {
+      goal: user.weeklyReadingGoal,
+      completed,
+      weekStartsAt: start,
+      weekEndsAt: end,
+    };
+  }
+
+  async updateWeeklyGoal(userId: string, goal: number) {
+    await this.usersRepository.update(userId, {weeklyReadingGoal: goal});
+    return this.weeklyGoal(userId);
+  }
+
+  async seasonalEvent(userId: string) {
+    const event = await this.seasonalEventsService.active();
+    if (!event) return null;
+    const completed = await this.countSeasonalEventStories(userId, event);
+    if (completed >= event.goal)
+      await this.recordSeasonalEventCompletion(userId, event.id);
+    return {...this.seasonalEventsService.view(event), completed};
+  }
+
+  private async countSeasonalEventStories(
+    userId: string,
+    event: NonNullable<Awaited<ReturnType<SeasonalEventsService['active']>>>
+  ): Promise<number> {
+    if (event.tags.length === 0) return 0;
+    const result = await this.readingProgressRepository
+      .createQueryBuilder('progress')
+      .innerJoin('progress.story', 'story')
+      .innerJoin('story.tags', 'tag')
+      .select('COUNT(DISTINCT progress.storyId)', 'completed')
+      .where('progress.userId = :userId', {userId})
+      .andWhere('progress.percent >= :completePercent', {
+        completePercent: COMPLETE_PERCENT,
+      })
+      .andWhere('progress.updatedAt >= :startsAt', {
+        startsAt: event.startsAt,
+      })
+      .andWhere('progress.updatedAt < :endsAt', {endsAt: event.endsAt})
+      .andWhere('tag.id IN (:...tagIds)', {
+        tagIds: event.tags.map((tag) => tag.id),
+      })
+      .getRawOne<{completed: string}>();
+    return Number(result?.completed) || 0;
+  }
+
+  private async recordSeasonalEventCompletion(
+    userId: string,
+    eventId: string
+  ): Promise<void> {
+    await this.eventCompletionsRepository
+      .createQueryBuilder()
+      .insert()
+      .values({user: {id: userId}, event: {id: eventId}})
+      .orIgnore()
+      .execute();
+  }
+
+  private async evaluateSeasonalEvent(userId: string): Promise<void> {
+    const event = await this.seasonalEventsService.active();
+    if (!event) return;
+    const completed = await this.countSeasonalEventStories(userId, event);
+    if (completed < event.goal) return;
+    await this.recordSeasonalEventCompletion(userId, event.id);
+  }
 
   // Record how far a member has scrolled into a story. Validates visibility
   // first (same 404-if-not-visible guard as bookmarking), then applies the
@@ -51,6 +150,7 @@ export class ReadingProgressService {
       },
       {conflictPaths: ['user', 'story']}
     );
+    if (percent >= COMPLETE_PERCENT) await this.evaluateSeasonalEvent(userId);
   }
 
   async clear(userId: string, storyId: string): Promise<void> {

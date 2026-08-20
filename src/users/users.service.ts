@@ -15,10 +15,18 @@ import {Story} from 'src/stories/entities/story.entity';
 import {Bookmark} from 'src/bookmarks/entities/bookmark.entity';
 import {Follow} from 'src/follows/entities/follow.entity';
 import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
+import {SeasonalEventCompletion} from 'src/seasonal-events/entities/seasonal-event-completion.entity';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
-import {ILike, In, MoreThan, Repository, type FindOptionsWhere} from 'typeorm';
+import {
+  ILike,
+  IsNull,
+  MoreThan,
+  Not,
+  Repository,
+  type FindOptionsWhere,
+} from 'typeorm';
 import {
   MembershipTier,
   MEMBERSHIP_FOUNDING_LIMIT,
@@ -83,7 +91,10 @@ export class UsersService {
     private readonly readingProgressRepository: Repository<ReadingProgress>,
     private readonly configService: ConfigService,
     private readonly settingsService: SettingsService,
-    @Optional() private readonly imageStorage?: ImageStorageService
+    @Optional() private readonly imageStorage?: ImageStorageService,
+    @Optional()
+    @InjectRepository(SeasonalEventCompletion)
+    private readonly eventCompletionsRepository?: Repository<SeasonalEventCompletion>
   ) {}
 
   async replaceProfileImage(userId: string, file: UploadedImage) {
@@ -476,42 +487,42 @@ export class UsersService {
     return badges;
   }
 
-  // Achievement badges for the public profile (GET /users/:id). Computed on
-  // read from stats that already exist elsewhere — approved story count,
-  // likes/comments received, and series ownership — rather than stored and
-  // kept in sync via triggers scattered across StoriesService/LikesService/
-  // CommentsService/SeriesService.
+  // Achievement progress for the private achievements view. Most progress is
+  // computed from existing stats; event completions use the durable ledger so
+  // an earned tier remains after its limited event ends.
   async computeAchievements(userId: string): Promise<AchievementProgress[]> {
     const user = await this.findOne(userId);
-    const [storyStats, seriesCount, completedStories] = await Promise.all([
-      this.storiesRepository
-        .createQueryBuilder('story')
-        .select('COUNT(*)', 'approvedCount')
-        .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
-        .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
-        .where('story.author = :authorId', {authorId: userId})
-        .andWhere('story.status = :status', {status: StoryStatus.Approved})
-        .getRawOne<{
-          approvedCount: string;
-          totalLikes: string;
-          totalComments: string;
-        }>(),
-      this.seriesRepository
-        .createQueryBuilder('series')
-        .innerJoin('series.stories', 'story')
-        .where('series.author = :authorId', {authorId: userId})
-        .andWhere('story.status = :status', {status: StoryStatus.Approved})
-        .getCount(),
-      this.readingProgressRepository
-        .createQueryBuilder('progress')
-        .innerJoin('progress.story', 'story')
-        .where('progress.user = :userId', {userId})
-        .andWhere('progress.percent = :completePercent', {
-          completePercent: 100,
-        })
-        .andWhere('story.status = :status', {status: StoryStatus.Approved})
-        .getCount(),
-    ]);
+    const [storyStats, seriesCount, completedStories, completedEvents] =
+      await Promise.all([
+        this.storiesRepository
+          .createQueryBuilder('story')
+          .select('COUNT(*)', 'approvedCount')
+          .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
+          .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
+          .where('story.author = :authorId', {authorId: userId})
+          .andWhere('story.status = :status', {status: StoryStatus.Approved})
+          .getRawOne<{
+            approvedCount: string;
+            totalLikes: string;
+            totalComments: string;
+          }>(),
+        this.seriesRepository
+          .createQueryBuilder('series')
+          .innerJoin('series.stories', 'story')
+          .where('series.author = :authorId', {authorId: userId})
+          .andWhere('story.status = :status', {status: StoryStatus.Approved})
+          .getCount(),
+        this.readingProgressRepository
+          .createQueryBuilder('progress')
+          .innerJoin('progress.story', 'story')
+          .where('progress.user = :userId', {userId})
+          .andWhere('progress.percent = :completePercent', {
+            completePercent: 100,
+          })
+          .andWhere('story.status = :status', {status: StoryStatus.Approved})
+          .getCount(),
+        this.eventCompletionsRepository?.countBy({user: {id: userId}}) ?? 0,
+      ]);
 
     const progressByKey: Record<AchievementKey, number> = {
       [AchievementKey.Storyteller]: Number(storyStats?.approvedCount) || 0,
@@ -520,6 +531,7 @@ export class UsersService {
       [AchievementKey.SerialStoryteller]: seriesCount,
       [AchievementKey.ReadingRitual]: user.longestStreak,
       [AchievementKey.NightExplorer]: completedStories,
+      [AchievementKey.EventSeeker]: completedEvents,
     };
 
     // Tier 4 additionally requires the site-wide toggle live, like every
@@ -703,23 +715,10 @@ export class UsersService {
 
     let effectiveTier = updateUserDto.membershipTier;
     if (updateUserDto.membershipTier !== undefined) {
-      // premiumSince (not the current tier) is the "ever been a member"
-      // signal — a lapsed member's tier resets to Free too, which would be
-      // indistinguishable from a true first grant if this checked the tier
-      // instead. Immune to a later revoke-then-re-grant cycle.
-      const isGenuineFirstGrant =
-        !user.premiumSince &&
-        updateUserDto.membershipTier !== MembershipTier.Free;
-      effectiveTier = await this._resolveGrantedTier(
-        updateUserDto.membershipTier,
-        isGenuineFirstGrant
+      effectiveTier = await this._resolveMembershipGrant(
+        user,
+        updateUserDto.membershipTier
       );
-      // Stamped directly on the entity (mirrors verificationLocked above) —
-      // UpdateUserDto has no premiumSince field, so Object.assign in
-      // _applyUserUpdates below can't touch or overwrite it.
-      if (isGenuineFirstGrant) {
-        user.premiumSince = new Date();
-      }
     }
 
     return this._applyUserUpdates(user, {
@@ -728,33 +727,140 @@ export class UsersService {
     });
   }
 
-  // Phase 0: an admin granting/revoking membership manually — no payment
-  // processor exists yet. A genuine first-ever grant to Patron — while fewer
-  // than MEMBERSHIP_FOUNDING_LIMIT accounts have ever held Patron+ — is
+  // Granted either here (an admin's PATCH) or from
+  // LemonSqueezyWebhookService via applyMembershipChange below — both
+  // funnel through this one core so the founding-cap/premiumSince rules
+  // never drift between the two grant sources. Mutates premiumSince/
+  // foundingPatronSince directly on the entity (mirrors verificationLocked
+  // above) rather than returning them, since UpdateUserDto has neither
+  // field and Object.assign in _applyUserUpdates can't touch or overwrite
+  // them. Does not persist — the caller owns the single save.
+  private async _resolveMembershipGrant(
+    user: User,
+    requestedTier: MembershipTier
+  ): Promise<MembershipTier> {
+    // premiumSince (not the current tier) is the "ever been a member"
+    // signal — a lapsed member's tier resets to Free too, which would be
+    // indistinguishable from a true first grant if this checked the tier
+    // instead. Immune to a later revoke-then-re-grant cycle.
+    const isGenuineFirstGrant =
+      !user.premiumSince && requestedTier !== MembershipTier.Free;
+    const effectiveTier = await this._resolveGrantedTier(
+      user,
+      requestedTier,
+      isGenuineFirstGrant
+    );
+    if (isGenuineFirstGrant) {
+      user.premiumSince = new Date();
+    }
+    return effectiveTier;
+  }
+
+  // Admin grants and LemonSqueezy subscription webhooks both funnel here. A
+  // genuine first-ever grant to Patron — while fewer than
+  // MEMBERSHIP_FOUNDING_LIMIT accounts have ever held Patron+ — is
   // auto-upgraded to FoundingPatron, a status that's never re-evaluated or
   // lost even if membership later lapses and is re-granted. Explicitly
-  // requesting FoundingPatron directly (e.g. a manual override) is always
-  // honored as-is, without recomputing eligibility.
+  // requesting FoundingPatron directly (e.g. a manual admin override) is
+  // always honored as-is, without recomputing eligibility.
+  //
+  // The cap is counted off foundingPatronSince, not the current
+  // membershipTier: counting current holders would let a churned Founding
+  // Patron's slot silently be reissued (more than MEMBERSHIP_FOUNDING_LIMIT
+  // lifetime grants), and — since this method's own first-grant guard
+  // already prevents a lapsed member's re-grant from re-entering the count
+  // at all — would leave no way back to FoundingPatron for someone
+  // resubscribing via self-serve checkout, which only ever requests plain
+  // Patron. Checking the latch first, before any of that, is what restores
+  // it instead.
   private async _resolveGrantedTier(
+    user: User,
     newTier: MembershipTier,
     isGenuineFirstGrant: boolean
   ): Promise<MembershipTier> {
+    // An explicit Free — a lapse (subscription_expired) or an admin revoke —
+    // must go through even for a latched Founding Patron. The latch means
+    // "never lost on a later re-grant," not "can never become Free": the
+    // account's tier really is Free for the lapsed period, which is exactly
+    // what lets premiumSince (unaffected here) distinguish the eventual
+    // re-grant from a genuine first grant.
+    if (newTier === MembershipTier.Free) {
+      return MembershipTier.Free;
+    }
+
+    if (user.foundingPatronSince) {
+      return MembershipTier.FoundingPatron;
+    }
+
     if (newTier !== MembershipTier.Patron || !isGenuineFirstGrant) {
       return newTier;
     }
 
-    const existingMemberCount = await this.usersRepository.count({
-      where: {
-        membershipTier: In([
-          MembershipTier.Patron,
-          MembershipTier.FoundingPatron,
-        ]),
-      },
+    const foundingPatronCount = await this.usersRepository.count({
+      where: {foundingPatronSince: Not(IsNull())},
     });
 
-    return existingMemberCount < MEMBERSHIP_FOUNDING_LIMIT
-      ? MembershipTier.FoundingPatron
-      : MembershipTier.Patron;
+    if (foundingPatronCount < MEMBERSHIP_FOUNDING_LIMIT) {
+      user.foundingPatronSince = new Date();
+      return MembershipTier.FoundingPatron;
+    }
+
+    return MembershipTier.Patron;
+  }
+
+  // Entry point for LemonSqueezyWebhookService — the self-serve counterpart
+  // to the admin PATCH path above, sharing the same grant core so the
+  // founding cap and premiumSince rules apply identically regardless of
+  // source. Uses findOneBy (not findOne, which throws NotFoundException)
+  // since a webhook referencing an unknown or since-deleted account must be
+  // a quiet no-op, not a 404 that LemonSqueezy would retry indefinitely.
+  async applyMembershipChange(
+    userId: string,
+    requestedTier: MembershipTier,
+    billing?: Partial<
+      Pick<
+        User,
+        | 'lemonSqueezyCustomerId'
+        | 'lemonSqueezySubscriptionId'
+        | 'membershipStatus'
+        | 'membershipRenewsAt'
+      >
+    >
+  ): Promise<User | null> {
+    const user = await this.usersRepository.findOneBy({id: userId});
+    if (!user) return null;
+
+    const effectiveTier = await this._resolveMembershipGrant(
+      user,
+      requestedTier
+    );
+    user.membershipTier = effectiveTier;
+    Object.assign(user, billing);
+
+    return this.usersRepository.save(user);
+  }
+
+  // Resolves the target account for a LemonSqueezy webhook: primarily by the
+  // user id LemonSqueezy echoes back in checkout_data.custom (see
+  // LemonSqueezyService.createCheckout), falling back to whatever
+  // lemonSqueezyCustomerId is already on file — covers a subscription
+  // created directly in the LemonSqueezy dashboard, which carries no custom
+  // data at all. Caller is responsible for validating `userId` looks like a
+  // real uuid before calling this — see LemonSqueezyWebhookService.
+  async findForBillingWebhook(
+    userId?: string,
+    customerId?: string
+  ): Promise<User | null> {
+    if (userId) {
+      const user = await this.usersRepository.findOneBy({id: userId});
+      if (user) return user;
+    }
+    if (customerId) {
+      return this.usersRepository.findOneBy({
+        lemonSqueezyCustomerId: customerId,
+      });
+    }
+    return null;
   }
 
   // Latches once — see User.hasPublishedStory. Called only from

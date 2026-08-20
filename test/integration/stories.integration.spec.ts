@@ -4,6 +4,7 @@ import {Story} from 'src/stories/entities/story.entity';
 import {User} from 'src/users/entities/user.entity';
 import {StoryResponseDto} from 'src/stories/dto/story-response.dto';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
+import {RecommendationFeedback} from 'src/stories/entities/recommendation-feedback.entity';
 import {
   cleanDatabase,
   closeTestApp,
@@ -2047,6 +2048,55 @@ describe('Stories (integration)', () => {
       await registerUser(other, {email: 'not-the-author@test.com'});
 
       await other.get(`/users/me/stories/${story.id}/stats`).expect(404);
+    });
+  });
+
+  describe('recommendation feedback', () => {
+    it('persists and updates one feedback choice per reader and story', async () => {
+      const {story} = await createStory();
+      await approveStory(story.id);
+      const reader = agent();
+      const {body: user} = await registerUser(reader, {
+        email: 'feedback-reader@test.com',
+      });
+      const token = await getCsrfToken(reader);
+
+      await reader
+        .post(`/stories/${story.id}/recommendation-feedback`)
+        .set('x-csrf-token', token)
+        .send({action: 'more_like_this'})
+        .expect(204);
+      await reader
+        .post(`/stories/${story.id}/recommendation-feedback`)
+        .set('x-csrf-token', token)
+        .send({action: 'not_for_me'})
+        .expect(204);
+
+      const rows = await testApp.dataSource
+        .getRepository(RecommendationFeedback)
+        .find({relations: {user: true, story: true}});
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({action: 'not_for_me'});
+      expect(rows[0].user.id).toBe(user.id);
+      expect(rows[0].story.id).toBe(story.id);
+    });
+
+    it('rejects invalid or anonymous feedback', async () => {
+      const {story} = await createStory();
+      await approveStory(story.id);
+      const reader = agent();
+      await registerUser(reader, {email: 'invalid-feedback@test.com'});
+      const token = await getCsrfToken(reader);
+
+      await reader
+        .post(`/stories/${story.id}/recommendation-feedback`)
+        .set('x-csrf-token', token)
+        .send({action: 'maybe'})
+        .expect(400);
+      await agent()
+        .post(`/stories/${story.id}/recommendation-feedback`)
+        .send({action: 'more_like_this'})
+        .expect(403);
     });
   });
 });

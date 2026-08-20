@@ -16,6 +16,7 @@ import {StoriesModule} from 'src/stories/stories.module';
 import {SettingsModule} from 'src/settings/settings.module';
 import {UsersService} from './users.service';
 import {ImageStorageModule} from 'src/image-storage/image-storage.module';
+import {SeasonalEventCompletion} from 'src/seasonal-events/entities/seasonal-event-completion.entity';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import {ImageStorageModule} from 'src/image-storage/image-storage.module';
       Bookmark,
       Follow,
       ReadingProgress,
+      SeasonalEventCompletion,
     ]),
     SessionModule,
     StoriesModule,

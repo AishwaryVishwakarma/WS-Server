@@ -12,7 +12,7 @@ import {ConfigService} from '@nestjs/config';
 import {escapeHtml, renderEmailHtml} from 'src/mail/email-template';
 import {SettingsService} from 'src/settings/settings.service';
 
-interface NotificationInput {
+export interface NotificationInput {
   type: NotificationType;
   recipientId: string;
   actorName: string;
@@ -47,6 +47,10 @@ const EMAIL_COPY: Record<NotificationType, {subject: string; action: string}> =
       action: 'started following you',
     },
     like: {subject: 'Your story found a reader', action: 'liked your story'},
+    series: {
+      subject: 'A subscribed series has a new part',
+      action: 'published a new part',
+    },
   };
 
 const minutes = (value: string) => {

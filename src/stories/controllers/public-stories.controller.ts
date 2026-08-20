@@ -36,6 +36,7 @@ import type {Request} from 'express';
 import {PaginationDto} from 'src/common/dto/pagination.dto';
 import {StoryQueryDto} from '../dto/story-query.dto';
 import {ForYouQueryDto} from '../dto/for-you-query.dto';
+import {RecommendationFeedbackDto} from '../dto/recommendation-feedback.dto';
 import {CommentsService} from 'src/comments/comments.service';
 import {
   CommentModerationPreviewResponseDto,
@@ -200,6 +201,23 @@ export class PublicStoriesController {
       nextCursor,
       total,
     };
+  }
+
+  @Post(':id/recommendation-feedback')
+  @ApiCookieAuth('session')
+  @UseGuards(SessionAuthGuard)
+  @HttpCode(204)
+  async recommendationFeedback(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecommendationFeedbackDto,
+    @Req() req: Request
+  ) {
+    await this.storiesService.setRecommendationFeedback(
+      req.session.userId!,
+      id,
+      dto.action,
+      req.session.role
+    );
   }
 
   @Get(':slug')

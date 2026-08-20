@@ -1,15 +1,114 @@
 import {Injectable, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
-import {Repository} from 'typeorm';
+import {IsNull, LessThanOrEqual, Not, Repository} from 'typeorm';
 import {Series} from './entities/series.entity';
 import {User} from 'src/users/entities/user.entity';
+import {SeriesSubscription} from './entities/series-subscription.entity';
+import {NotificationsService} from 'src/notifications/notifications.service';
+import {Story} from 'src/stories/entities/story.entity';
+import {Interval} from '@nestjs/schedule';
+import {StoryStatus} from 'src/stories/enums/story-status.enum';
 
 @Injectable()
 export class SeriesService {
   constructor(
     @InjectRepository(Series)
-    private readonly seriesRepository: Repository<Series>
+    private readonly seriesRepository: Repository<Series>,
+    @InjectRepository(SeriesSubscription)
+    private readonly subscriptionsRepository: Repository<SeriesSubscription>,
+    @InjectRepository(Story)
+    private readonly storiesRepository: Repository<Story>,
+    private readonly notificationsService: NotificationsService
   ) {}
+
+  async subscribe(userId: string, seriesId: string): Promise<void> {
+    await this.findOne(seriesId);
+    await this.subscriptionsRepository.upsert(
+      {user: {id: userId}, series: {id: seriesId}},
+      {conflictPaths: ['user', 'series']}
+    );
+  }
+
+  async unsubscribe(userId: string, seriesId: string): Promise<void> {
+    await this.subscriptionsRepository.delete({
+      user: {id: userId},
+      series: {id: seriesId},
+    });
+  }
+
+  async subscriptionIds(userId: string): Promise<string[]> {
+    const rows = await this.subscriptionsRepository
+      .createQueryBuilder('subscription')
+      .select('subscription.seriesId', 'seriesId')
+      .where('subscription.userId = :userId', {userId})
+      .getRawMany<{seriesId: string}>();
+    return rows.map((row) => row.seriesId);
+  }
+
+  async subscriptions(userId: string): Promise<Series[]> {
+    const rows = await this.subscriptionsRepository.find({
+      where: {user: {id: userId}},
+      relations: {series: {author: true}},
+      order: {createdAt: 'DESC'},
+    });
+    return rows.map((row) => row.series);
+  }
+
+  async notifySubscribers(story: Story): Promise<void> {
+    if (
+      !story.series ||
+      story.seriesNotifiedAt ||
+      (story.scheduledFor && story.scheduledFor > new Date())
+    )
+      return;
+    const subscriptions = await this.subscriptionsRepository.find({
+      where: {series: {id: story.series.id}},
+      relations: {user: true},
+    });
+    await Promise.all(
+      subscriptions
+        .filter((subscription) => subscription.user.id !== story.author.id)
+        .map((subscription) =>
+          this.notificationsService.createNotification({
+            type: 'series',
+            recipientId: subscription.user.id,
+            actorName: story.author.name,
+            actorId: story.author.id,
+            actorSlug: story.author.slug,
+            storyId: story.id,
+            storySlug: story.slug,
+            storyTitle: story.title,
+          })
+        )
+    );
+    await this.storiesRepository.update(story.id, {
+      seriesNotifiedAt: new Date(),
+    });
+  }
+
+  @Interval(60_000)
+  async notifyScheduledParts(): Promise<void> {
+    const now = new Date();
+    const stories = await this.storiesRepository.find({
+      where: [
+        {
+          status: StoryStatus.Approved,
+          series: Not(IsNull()),
+          scheduledFor: IsNull(),
+          seriesNotifiedAt: IsNull(),
+        },
+        {
+          status: StoryStatus.Approved,
+          series: Not(IsNull()),
+          scheduledFor: LessThanOrEqual(now),
+          seriesNotifiedAt: IsNull(),
+        },
+      ],
+      relations: {series: true, author: true},
+      take: 100,
+    });
+    for (const story of stories) await this.notifySubscribers(story);
+  }
 
   // Resolves this author's series by title, creating one if they've never
   // used it before. The story editor's Series field is a single free-text

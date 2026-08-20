@@ -93,11 +93,12 @@ export class User {
   @Column({default: false})
   isBlocked: boolean;
 
-  // Phase 0: granted/revoked manually by an admin (see UsersService.
-  // grantMembership) — no payment processor exists yet. `premiumSince` is
-  // set once on the first-ever grant and never cleared by a later
-  // lapse/re-grant, so it keeps meaning "when this account first became a
-  // member" regardless of any gap in between.
+  // Granted either by an admin (UsersService.update) or by a LemonSqueezy
+  // subscription webhook (UsersService.applyMembershipChange) — both funnel
+  // through the same _resolveMembershipGrant/_resolveGrantedTier core.
+  // `premiumSince` is set once on the first-ever grant and never cleared by
+  // a later lapse/re-grant, so it keeps meaning "when this account first
+  // became a member" regardless of any gap in between.
   @Column({
     type: 'enum',
     enum: MembershipTier,
@@ -107,6 +108,46 @@ export class User {
 
   @Column({type: 'timestamp', nullable: true})
   premiumSince: Date | null;
+
+  // Latched the first time this account is ever awarded FoundingPatron and
+  // never cleared afterward — mirrors premiumSince's own philosophy, for
+  // the same reason. Fixes two bugs a churn-and-rejoin cycle would otherwise
+  // hit if the founding cap were still counted off current membershipTier:
+  // a lapsed Founding Patron's slot silently freeing up for reassignment,
+  // and that same member losing founding status for good on resubscribing
+  // (a self-serve checkout only ever requests Patron, so without this latch
+  // there is no way back to FoundingPatron once premiumSince is already
+  // set). See UsersService._resolveGrantedTier.
+  @Column({type: 'timestamp', nullable: true})
+  foundingPatronSince: Date | null;
+
+  // The reconciliation key for LemonSqueezy subscription webhooks — a
+  // webhook only applies a state change when its subscription id matches
+  // this column (or the account has none yet), so a late/retried event for
+  // an already-superseded subscription can never downgrade a current
+  // member. Unique: one LemonSqueezy subscription belongs to one account.
+  @Column({type: 'varchar', length: 64, nullable: true, unique: true})
+  lemonSqueezySubscriptionId: string | null;
+
+  // Fallback reconciliation when a webhook carries no custom_data (e.g. a
+  // subscription created directly in the LemonSqueezy dashboard), and the
+  // handle used for support lookups. Not unique — a customer can plausibly
+  // hold more than one subscription across their lifetime.
+  @Column({type: 'varchar', length: 64, nullable: true})
+  lemonSqueezyCustomerId: string | null;
+
+  // Raw mirror of the LemonSqueezy subscription's own `status` (active,
+  // on_trial, past_due, paused, unpaid, cancelled, expired). membershipTier
+  // alone can't express "cancelled but still active until period end" — a
+  // cancelled member keeps their tier till then (see LemonSqueezyWebhookService)
+  // — and the /me copy and manage-vs-upgrade CTA both depend on knowing which.
+  @Column({type: 'varchar', length: 32, nullable: true})
+  membershipStatus: string | null;
+
+  // From the subscription's renews_at (still billing) or ends_at (cancelled,
+  // winding down) — lets the UI say "renews {date}" or "perks end {date}".
+  @Column({type: 'timestamp', nullable: true})
+  membershipRenewsAt: Date | null;
 
   @Column({type: 'varchar', length: 500, nullable: true})
   profileImageUrl: string | null;
@@ -156,6 +197,9 @@ export class User {
 
   @Column({type: 'int', default: 0})
   longestStreak: number;
+
+  @Column({type: 'smallint', default: 3})
+  weeklyReadingGoal: number;
 
   @Column({type: 'varchar', length: 10, nullable: true})
   lastActiveDate: string | null;

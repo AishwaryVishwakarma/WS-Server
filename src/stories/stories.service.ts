@@ -50,6 +50,8 @@ import {
 } from './story-cursor';
 import {toBooleanFulltextQuery} from './story-search';
 import {StoryReportReason} from './enums/story-report-reason.enum';
+import {RecommendationFeedback} from './entities/recommendation-feedback.entity';
+import {RecommendationFeedbackAction} from './enums/recommendation-feedback-action.enum';
 import {
   ImageStorageService,
   type UploadedImage,
@@ -134,6 +136,7 @@ const SELECTED_FIELDS = {
   scheduledFor: true,
   status: true,
   excerpt: true,
+  discussionPrompt: true,
   wordCount: true,
   commentCount: true,
   viewCount: true,
@@ -164,6 +167,8 @@ export class StoriesService {
     private readonly bookmarkRepository: Repository<Bookmark>,
     @InjectRepository(ReadingProgress)
     private readonly readingProgressRepository: Repository<ReadingProgress>,
+    @InjectRepository(RecommendationFeedback)
+    private readonly recommendationFeedbackRepository: Repository<RecommendationFeedback>,
     private readonly usersService: UsersService,
     private readonly tagsService: TagsService,
     @Inject(forwardRef(() => SeriesService))
@@ -173,6 +178,19 @@ export class StoriesService {
     @Optional() private readonly imageStorage?: ImageStorageService,
     @Optional() private readonly analyticsEvents?: AnalyticsEventsService
   ) {}
+
+  async setRecommendationFeedback(
+    userId: string,
+    storyId: string,
+    action: RecommendationFeedbackAction,
+    role?: Role
+  ): Promise<void> {
+    await this.assertVisible(storyId, userId, role);
+    await this.recommendationFeedbackRepository.upsert(
+      {user: {id: userId}, story: {id: storyId}, action},
+      {conflictPaths: ['user', 'story']}
+    );
+  }
 
   async replaceCoverImage(
     storyId: string,
@@ -389,6 +407,7 @@ export class StoriesService {
     // badges.
     if (saved.status === StoryStatus.Approved) {
       await this.usersService.markHasPublishedStory(author.id);
+      await this.seriesService.notifySubscribers(saved);
     }
 
     return saved;
@@ -1095,7 +1114,7 @@ export class StoriesService {
   // affinity.
   private async _engagedStoryIds(userId: string): Promise<string[]> {
     const CAP = 50;
-    const [likes, bookmarks, progress] = await Promise.all([
+    const [likes, bookmarks, progress, positiveFeedback] = await Promise.all([
       this.storyLikeRepository.find({
         where: {user: {id: userId}},
         relations: {story: true},
@@ -1114,10 +1133,19 @@ export class StoriesService {
         order: {updatedAt: 'DESC'},
         take: CAP,
       }),
+      this.recommendationFeedbackRepository.find({
+        where: {
+          user: {id: userId},
+          action: RecommendationFeedbackAction.MoreLikeThis,
+        },
+        relations: {story: true},
+        order: {updatedAt: 'DESC'},
+        take: CAP,
+      }),
     ]);
 
     const ids = new Set<string>();
-    [...likes, ...bookmarks, ...progress].forEach((row) =>
+    [...likes, ...bookmarks, ...progress, ...positiveFeedback].forEach((row) =>
       ids.add(row.story.id)
     );
     return [...ids];
@@ -1167,14 +1195,28 @@ export class StoriesService {
       return {data: [], nextCursor: null, total: 0};
     }
 
-    const mutedIds = await this.mutesService.mutedAuthorIds(userId);
+    const [mutedIds, negativeFeedback] = await Promise.all([
+      this.mutesService.mutedAuthorIds(userId),
+      this.recommendationFeedbackRepository.find({
+        where: {
+          user: {id: userId},
+          action: RecommendationFeedbackAction.NotForMe,
+        },
+        relations: {story: true},
+        select: {id: true, story: {id: true}},
+      }),
+    ]);
+    const excludedStoryIds = [
+      ...engagedStoryIds,
+      ...negativeFeedback.map((feedback) => feedback.story.id),
+    ];
 
     return this.findApprovedFeed({
       cursor: params.cursor,
       limit: params.limit,
       filters: {
         forYouTagIds,
-        excludeStoryIds: engagedStoryIds,
+        excludeStoryIds: excludedStoryIds,
         excludeAuthorIds: [userId, ...mutedIds],
       },
     });
@@ -1302,6 +1344,7 @@ export class StoriesService {
 
     if (justAutoApproved) {
       await this.usersService.markHasPublishedStory(story.author.id);
+      await this.seriesService.notifySubscribers(saved);
     }
 
     return saved;
@@ -1338,6 +1381,7 @@ export class StoriesService {
 
     if (saved.status === StoryStatus.Approved) {
       await this.usersService.markHasPublishedStory(story.author.id);
+      await this.seriesService.notifySubscribers(saved);
     }
 
     return saved;
@@ -1367,8 +1411,12 @@ export class StoriesService {
     // Latches the author's "ever published" flag the first time any of
     // their stories reaches approved — feeds auto-verification
     // (SessionAuthGuard) and survives this exact story being deleted later.
-    if (status === StoryStatus.Approved) {
+    if (
+      status === StoryStatus.Approved &&
+      previousStatus !== StoryStatus.Approved
+    ) {
       await this.usersService.markHasPublishedStory(story.author.id);
+      await this.seriesService.notifySubscribers(updated);
     }
 
     return updated;
@@ -1391,6 +1439,10 @@ export class StoriesService {
         throw new NotFoundException('One or more stories not found');
       }
 
+      const newlyApprovedStories = stories.filter(
+        (story) => story.status !== StoryStatus.Approved
+      );
+
       for (const story of stories) {
         story.status = status;
         story.isFlagged = status === StoryStatus.Flagged;
@@ -1406,6 +1458,11 @@ export class StoriesService {
         for (const authorId of authorIds) {
           await this.usersService.markHasPublishedStory(authorId);
         }
+        await Promise.all(
+          newlyApprovedStories.map((story) =>
+            this.seriesService.notifySubscribers(story)
+          )
+        );
       }
 
       return stories;

@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Put,
+  Patch,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ import {SessionAuthGuard} from 'src/common/gaurds/session-auth.gaurd';
 import {StoryPreviewResponseDto} from 'src/stories/dto/story-response.dto';
 import {SetReadingProgressDto} from './dto/set-reading-progress.dto';
 import {ReadingProgressService} from './reading-progress.service';
+import {UpdateReadingGoalDto} from './dto/update-reading-goal.dto';
 
 // Reading progress — all gated (it belongs to the signed-in member). The
 // write lives on the story (`/stories/:id/reading-progress`); the list lives
@@ -77,5 +79,26 @@ export class ReadingProgressController {
       }),
       completedAt: updatedAt,
     }));
+  }
+
+  @Get('users/me/reading-goal')
+  async weeklyGoal(@Req() req: Request) {
+    return this.readingProgressService.weeklyGoal(req.session.userId!);
+  }
+
+  @Patch('users/me/reading-goal')
+  async updateWeeklyGoal(
+    @Body() dto: UpdateReadingGoalDto,
+    @Req() req: Request
+  ) {
+    return this.readingProgressService.updateWeeklyGoal(
+      req.session.userId!,
+      dto.goal
+    );
+  }
+
+  @Get('users/me/seasonal-event')
+  async seasonalEvent(@Req() req: Request) {
+    return this.readingProgressService.seasonalEvent(req.session.userId!);
   }
 }

@@ -8,6 +8,9 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Put,
+  Delete,
+  HttpCode,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -77,6 +80,40 @@ export class SeriesController {
       req.session.userId!
     );
     return series.map((s) => this._serializeSeries(s));
+  }
+
+  @Get('users/me/series-subscriptions/ids')
+  @ApiCookieAuth('session')
+  @UseGuards(SessionAuthGuard)
+  async subscriptionIds(@Req() req: Request) {
+    return this.seriesService.subscriptionIds(req.session.userId!);
+  }
+
+  @Get('users/me/series-subscriptions')
+  @ApiCookieAuth('session')
+  @UseGuards(SessionAuthGuard)
+  async subscriptions(@Req() req: Request) {
+    const series = await this.seriesService.subscriptions(req.session.userId!);
+    return series.map((item) => this._serializeSeries(item));
+  }
+
+  @Put('series/:id/subscription')
+  @ApiCookieAuth('session')
+  @UseGuards(SessionAuthGuard)
+  @HttpCode(204)
+  async subscribe(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    await this.seriesService.subscribe(req.session.userId!, id);
+  }
+
+  @Delete('series/:id/subscription')
+  @ApiCookieAuth('session')
+  @UseGuards(SessionAuthGuard)
+  @HttpCode(204)
+  async unsubscribe(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request
+  ) {
+    await this.seriesService.unsubscribe(req.session.userId!, id);
   }
 
   // The author's own detail view — every story in the series regardless of

@@ -21,6 +21,7 @@ import {StoriesModule} from './stories/stories.module';
 import {Story} from './stories/entities/story.entity';
 import {StoryReport} from './stories/entities/story-report.entity';
 import {StoryRevision} from './stories/entities/story-revision.entity';
+import {RecommendationFeedback} from './stories/entities/recommendation-feedback.entity';
 import {TagsModule} from './tags/tags.module';
 import {Tag} from './tags/entities/tag.entity';
 import {CommentsModule} from './comments/comments.module';
@@ -40,6 +41,7 @@ import {ScareVote} from './scare-ratings/entities/scare-vote.entity';
 import {MutedAuthor} from './mutes/entities/muted-author.entity';
 import {ScareRatingsModule} from './scare-ratings/scare-ratings.module';
 import {Series} from './series/entities/series.entity';
+import {SeriesSubscription} from './series/entities/series-subscription.entity';
 import {SeriesModule} from './series/series.module';
 import {ReadingProgress} from './reading-progress/entities/reading-progress.entity';
 import {ReadingProgressModule} from './reading-progress/reading-progress.module';
@@ -54,10 +56,14 @@ import {RedisThrottlerStorage} from './common/redis-throttler.storage';
 import {RateLimitModule} from './common/rate-limit.module';
 import {JobsModule} from './jobs/jobs.module';
 import {AdminAnalyticsModule} from './admin-analytics/admin-analytics.module';
+import {BillingModule} from './billing/billing.module';
 import {AnalyticsEvent} from './admin-analytics/entities/analytics-event.entity';
 import {ImageStorageModule} from './image-storage/image-storage.module';
 import {normalizeBooleanEnv} from './common/config/normalize-boolean-env';
 import {normalizePositiveIntegerEnv} from './common/config/normalize-positive-integer-env';
+import {SeasonalEvent} from './seasonal-events/entities/seasonal-event.entity';
+import {SeasonalEventCompletion} from './seasonal-events/entities/seasonal-event-completion.entity';
+import {SeasonalEventsModule} from './seasonal-events/seasonal-events.module';
 
 // A reasonable default pool size when DB_POOL_SIZE is unset.
 const DEFAULT_DB_POOL_SIZE = 10;
@@ -190,6 +196,32 @@ const DEFAULT_DB_POOL_SIZE = 10;
           config.IMAGE_PURGE_ENABLED
         );
 
+        // Unlike Appwrite, none of these are required in any environment —
+        // billing simply stays disabled (LemonSqueezyService.enabled ===
+        // false, checkout/portal/webhook all 503) until a store exists to
+        // configure. But a *partially* configured group is worse than none:
+        // it could create real checkouts with no way to reconcile their
+        // webhooks, or accept webhooks it can never have created checkouts
+        // for. All-or-nothing.
+        const lemonSqueezyKeys = [
+          'LEMONSQUEEZY_API_KEY',
+          'LEMONSQUEEZY_STORE_ID',
+          'LEMONSQUEEZY_PATRON_VARIANT_ID',
+          'LEMONSQUEEZY_WEBHOOK_SECRET',
+        ];
+        const lemonSqueezyConfigured = lemonSqueezyKeys.filter(
+          (key) => !!config[key]
+        );
+        if (
+          lemonSqueezyConfigured.length > 0 &&
+          lemonSqueezyConfigured.length < lemonSqueezyKeys.length
+        ) {
+          const missing = lemonSqueezyKeys.filter((key) => !config[key]);
+          throw new Error(
+            `Incomplete LemonSqueezy config — missing ${missing.join(', ')}`
+          );
+        }
+
         // Fail fast on a typo'd NODE_ENV — it gates cookie security, so a
         // bad value silently weakens production.
         const nodeEnv = config.NODE_ENV;
@@ -236,6 +268,7 @@ const DEFAULT_DB_POOL_SIZE = 10;
           Story,
           StoryReport,
           StoryRevision,
+          RecommendationFeedback,
           Tag,
           Comment,
           CommentReport,
@@ -246,12 +279,15 @@ const DEFAULT_DB_POOL_SIZE = 10;
           PasswordResetToken,
           PendingRegistration,
           Series,
+          SeriesSubscription,
           ReadingProgress,
           ScareVote,
           MutedAuthor,
           CommentReaction,
           SiteSettings,
           AnalyticsEvent,
+          SeasonalEvent,
+          SeasonalEventCompletion,
         ],
         synchronize: false,
         migrations,
@@ -279,6 +315,8 @@ const DEFAULT_DB_POOL_SIZE = 10;
     SettingsModule,
     PresenceModule,
     AdminAnalyticsModule,
+    BillingModule,
+    SeasonalEventsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -313,6 +351,10 @@ export class AppModule {
         // Resend has no browser session/CSRF cookie. Authenticity is enforced
         // with its Svix signature over the untouched raw request body.
         '/webhooks/resend',
+        // Same reasoning — LemonSqueezy signs the raw body with an HMAC-
+        // SHA256 X-Signature header instead of Svix, but there's still no
+        // browser session/CSRF cookie to check.
+        '/webhooks/lemonsqueezy',
         // Anonymous read-counter ping — anonymous browsers can't hold a CSRF
         // token, and it's a harmless denormalized counter, not a real mutation.
         {path: 'stories/:id/view', method: RequestMethod.POST},

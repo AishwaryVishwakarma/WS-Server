@@ -1,5 +1,7 @@
 import {INestApplication} from '@nestjs/common';
 import {Test} from '@nestjs/testing';
+import * as bodyParser from 'body-parser';
+import type {Express, Request} from 'express';
 import type {RedisClientType} from 'redis';
 import request from 'supertest';
 import {App} from 'supertest/types';
@@ -58,7 +60,29 @@ export async function createTestApp(): Promise<TestApp> {
     imports: [AppModule],
   }).compile();
 
-  const app = moduleFixture.createNestApplication<INestApplication<App>>();
+  // rawBody mirrors main.ts's real bootstrap — required for any webhook
+  // route (Resend, LemonSqueezy) that verifies a signature over the exact
+  // request bytes rather than trusting the parsed body. Nest's own
+  // `rawBody: true` option is a no-op when the app is created through
+  // `createNestApplication()` (as opposed to `NestFactory.create()`) — the
+  // raw-body-capturing parser it wires up in production never gets attached
+  // here, so req.rawBody stays undefined for every request. Registering the
+  // same body-parser + verify callback by hand below sidesteps that gap;
+  // `bodyParser: false` stops Nest from also mounting its own (non-capturing)
+  // parser, which would otherwise consume the request stream first.
+  const app = moduleFixture.createNestApplication<INestApplication<App>>({
+    rawBody: true,
+    bodyParser: false,
+  });
+  const expressApp = app.getHttpAdapter().getInstance() as Express;
+  const captureRawBody = (req: Request, _res: unknown, buf: Buffer) => {
+    (req as Request & {rawBody?: Buffer}).rawBody = buf;
+  };
+  expressApp.use(bodyParser.json({verify: captureRawBody}));
+  expressApp.use(
+    bodyParser.urlencoded({extended: true, verify: captureRawBody})
+  );
+
   const redisClient = await setupApp(app);
   await app.init();
 
