@@ -1998,8 +1998,9 @@ describe('Stories (integration)', () => {
 
       const response = await client.get('/users/me/stats/stories').expect(200);
 
-      expect(response.body).toHaveLength(1);
-      expect(response.body[0]).toMatchObject({
+      expect(response.body).toMatchObject({total: 1, limit: 3});
+      expect(response.body.stories).toHaveLength(1);
+      expect(response.body.stories[0]).toMatchObject({
         id: story.id,
         title: story.title,
         viewCount: 1,
@@ -2017,7 +2018,7 @@ describe('Stories (integration)', () => {
 
       const response = await client.get('/users/me/stats/stories').expect(200);
 
-      expect(response.body).toEqual([]);
+      expect(response.body).toEqual({stories: [], total: 0, limit: 3});
     });
 
     it("day-buckets a story's views/likes/comments, zero-filled across the range", async () => {

@@ -27,6 +27,13 @@ import {
   AnalyticsEventType,
 } from 'src/admin-analytics/entities/analytics-event.entity';
 import {SeasonalEventsService} from 'src/seasonal-events/seasonal-events.service';
+import {SeasonalEventCompletion} from 'src/seasonal-events/entities/seasonal-event-completion.entity';
+import {SeasonalEvent} from 'src/seasonal-events/entities/seasonal-event.entity';
+import {MutesService} from 'src/mutes/mutes.service';
+import {CommentReactionsService} from 'src/comment-reactions/comment-reactions.service';
+import {SeriesService} from 'src/series/series.service';
+import {Series} from 'src/series/entities/series.entity';
+import {RecommendationFeedbackAction} from 'src/stories/enums/recommendation-feedback-action.enum';
 
 // The Nest Logger is muted below ({logger: ['error', 'warn']}) to hide
 // bootstrap noise, so the seeder reports via console directly.
@@ -140,6 +147,7 @@ const STORIES: {
       'Last night it reached one.',
     coverImageUrl: 'https://picsum.photos/seed/baby-monitor/800/450',
     scareLevel: 2,
+    contentWarnings: [ContentWarning.ChildHarm],
     tags: ['psychological'],
     status: StoryStatus.Pending,
   },
@@ -205,6 +213,7 @@ const STORIES: {
       'I have started leaving the door open a crack, out of courtesy. The cold spot has started leaving me small dead birds, possibly for the same reason.',
     coverImageUrl: 'https://picsum.photos/seed/cold-spots/800/450',
     scareLevel: 1,
+    contentWarnings: [ContentWarning.AnimalCruelty],
     tags: ['paranormal'],
     status: StoryStatus.Approved,
   },
@@ -582,12 +591,27 @@ const STORY_REPORTS: {
         reporter: 'carol@whisperingshadows.dev',
         reason: StoryReportReason.Copyright,
       },
+      {reporter: 'dave@whisperingshadows.dev', reason: StoryReportReason.Other},
     ],
   },
   {
     story: 'Cold Spots',
     reports: [
       {reporter: 'alice@whisperingshadows.dev', reason: StoryReportReason.Spam},
+      {
+        reporter: 'carol@whisperingshadows.dev',
+        reason: StoryReportReason.GraphicContent,
+      },
+    ],
+  },
+  {
+    story: 'Whisper in the Walls',
+    reports: [
+      {
+        reporter: 'bob@whisperingshadows.dev',
+        reason: StoryReportReason.Harassment,
+        details: 'The author kept messaging me off-thread after I commented.',
+      },
     ],
   },
 ];
@@ -624,6 +648,22 @@ const USER_REPORTS: {
         reason: ReportReason.Harassment,
         details: 'Kept messaging after being asked to stop.',
       },
+    ],
+  },
+  {
+    reportedUser: 'bob@whisperingshadows.dev',
+    reports: [
+      {
+        reporter: 'carol@whisperingshadows.dev',
+        reason: ReportReason.InappropriateImage,
+        details: 'The profile photo violates the community guidelines.',
+      },
+    ],
+  },
+  {
+    reportedUser: 'alice@whisperingshadows.dev',
+    reports: [
+      {reporter: 'dave@whisperingshadows.dev', reason: ReportReason.Other},
     ],
   },
 ];
@@ -817,6 +857,9 @@ async function seed() {
     const notificationsService = app.get(NotificationsService);
     const settingsService = app.get(SettingsService);
     const seasonalEventsService = app.get(SeasonalEventsService);
+    const mutesService = app.get(MutesService);
+    const commentReactionsService = app.get(CommentReactionsService);
+    const seriesService = app.get(SeriesService);
 
     // Seed data is a reproducible development fixture, not an incremental
     // migration. Always rebuild it so changes to fixtures and historical dates
@@ -866,13 +909,71 @@ async function seed() {
     await usersService.update(aliceForMembership.id, {
       membershipTier: MembershipTier.Patron,
     });
-    // A banked streak-freeze token, so the /me Membership section has
-    // something to show beyond a bare tier badge — set directly since
-    // recordActivity (the only real path to a freeze) needs a live session.
+    // A banked streak-freeze token and a real reading streak, so the /me
+    // Membership section and the ReadingRitual/WeekStreak/MonthStreak
+    // achievements have something to show beyond a bare tier badge — set
+    // directly since recordActivity (the only real path to either) needs a
+    // live session.
     await dataSource.getRepository(User).update(aliceForMembership.id, {
       streakFreezeCount: 1,
       lastStreakFreezeUsedAt: new Date(),
+      currentStreak: 9,
+      longestStreak: 32,
     });
+
+    // Membership variety: bob is an active Founding Patron carrying real
+    // LemonSqueezy billing fields, seeded through applyMembershipChange (the
+    // same public entry point the real webhook uses) rather than the admin
+    // PATCH path alice exercised above, so both grant sources populate data.
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const bobForMembership = usersByEmail.get('bob@whisperingshadows.dev')!;
+    await usersService.applyMembershipChange(
+      bobForMembership.id,
+      MembershipTier.Patron,
+      {
+        lemonSqueezyCustomerId: 'seed-customer-bob',
+        lemonSqueezySubscriptionId: 'seed-subscription-bob',
+        membershipStatus: 'active',
+        membershipRenewsAt: new Date(Date.now() + THIRTY_DAYS_MS),
+      }
+    );
+
+    // Carol: cancelled but still inside the paid period — LemonSqueezy keeps
+    // access live until renewsAt, so the tier stays granted even though the
+    // status already reads "cancelled" (mirrors subscription_cancelled).
+    const carolForMembership = usersByEmail.get('carol@whisperingshadows.dev')!;
+    await usersService.applyMembershipChange(
+      carolForMembership.id,
+      MembershipTier.Patron,
+      {
+        lemonSqueezyCustomerId: 'seed-customer-carol',
+        lemonSqueezySubscriptionId: 'seed-subscription-carol',
+        membershipStatus: 'cancelled',
+        membershipRenewsAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+      }
+    );
+
+    // Dave: a lapsed member — premiumSince stays set from his original grant
+    // even once the subscription actually expires (mirrors
+    // subscription_expired), so premiumSince can be seen distinguishing
+    // "never subscribed" from "used to be a member" while membershipTier
+    // reads Free for both.
+    const daveForMembership = usersByEmail.get('dave@whisperingshadows.dev')!;
+    await usersService.applyMembershipChange(
+      daveForMembership.id,
+      MembershipTier.Patron,
+      {
+        lemonSqueezyCustomerId: 'seed-customer-dave',
+        lemonSqueezySubscriptionId: 'seed-subscription-dave',
+        membershipStatus: 'active',
+        membershipRenewsAt: new Date(Date.now() + THIRTY_DAYS_MS),
+      }
+    );
+    await usersService.applyMembershipChange(
+      daveForMembership.id,
+      MembershipTier.Free,
+      {membershipStatus: 'expired', membershipRenewsAt: null}
+    );
 
     const tagIdsByName = new Map<string, string>();
     for (const name of TAG_NAMES) {
@@ -903,6 +1004,28 @@ async function seed() {
       startsAt: new Date(Date.UTC(year, 9, 1)).toISOString(),
       endsAt: new Date(Date.UTC(year, 10, 1)).toISOString(),
       isPublished: true,
+    });
+    // A concluded event (fully in the past) so the /events archive shows real
+    // history rather than just the current/upcoming windows above.
+    const pastEvent = await seasonalEventsService.create({
+      title: 'Whispers of Winter',
+      description: 'Cross two chilling shelves before the frost thaws.',
+      tagIds: ['gothic', 'cursed-objects'].map((name) =>
+        tagIdsByName.get(name)!
+      ),
+      goal: 2,
+      startsAt: new Date(Date.UTC(year, 0, 1)).toISOString(),
+      endsAt: new Date(Date.UTC(year, 1, 1)).toISOString(),
+      isPublished: true,
+    });
+    // The completion ledger is only ever written by evaluating the
+    // currently-active event (see ReadingProgressService), so a concluded
+    // event's completion has no live-service path to seed through — insert
+    // the durable ledger row directly, same as the streak columns above.
+    // This is what powers the tiered Event Seeker achievement.
+    await dataSource.getRepository(SeasonalEventCompletion).save({
+      user: {id: aliceForMembership.id} as User,
+      event: {id: pastEvent.id} as SeasonalEvent,
     });
 
     // Stories (created through the real service, then moderated through the
@@ -973,6 +1096,45 @@ async function seed() {
       await commentsService.create(
         {content, storyId: storyIdsByTitle.get(story)!, parentId},
         usersByEmail.get(author)!.id,
+        Role.User
+      );
+    }
+
+    // Comment reactions (through the real service so the denormalized
+    // reactionCount stays correct) — a few readers reacting to comments they
+    // didn't write themselves.
+    const REACTIONS: {commentContent: string; reactor: string}[] = [
+      {
+        commentContent: 'The sealed attic detail got me. Excellent pacing.',
+        reactor: 'alice@whisperingshadows.dev',
+      },
+      {
+        commentContent: 'Folk horror done right. The last line is perfect.',
+        reactor: 'carol@whisperingshadows.dev',
+      },
+      {
+        commentContent: 'A queue of one, moving toward the cellar. Brilliant.',
+        reactor: 'bob@whisperingshadows.dev',
+      },
+    ];
+    for (const {commentContent, reactor} of REACTIONS) {
+      const commentId = commentIdsByContent.get(commentContent);
+      const reactorId = usersByEmail.get(reactor)?.id;
+      if (!commentId || !reactorId) continue;
+      await commentReactionsService.react(reactorId, commentId, Role.User);
+    }
+
+    // The story's own author quietly hides one comment on their story
+    // (through the real service, so the reply-cascade and preserved
+    // updatedAt behave exactly as in production) — gives the moderation
+    // surface an isHiddenByAuthor fixture.
+    const hiddenCommentId = commentIdsByContent.get(
+      'Paying for the dead to come home is such a chilling idea.'
+    );
+    if (hiddenCommentId) {
+      await commentsService.hide(
+        hiddenCommentId,
+        usersByEmail.get('bob@whisperingshadows.dev')!.id,
         Role.User
       );
     }
@@ -1066,6 +1228,63 @@ async function seed() {
       bookmarks++;
     }
 
+    // A mute (through the real service — validates target + is idempotent).
+    // Carol has already reported Dave above; muting him too shows both
+    // moderation surfaces can hold independent state for the same pair.
+    await mutesService.mute(
+      usersByEmail.get('carol@whisperingshadows.dev')!.id,
+      usersByEmail.get('dave@whisperingshadows.dev')!.id
+    );
+
+    // Series subscriptions (through the real service) so
+    // /users/me/series-subscriptions has data beyond the series' own author.
+    const hollowLaneSeries = await dataSource
+      .getRepository(Series)
+      .findOne({where: {title: 'Hollow Lane'}});
+    let seriesSubscriptions = 0;
+    if (hollowLaneSeries) {
+      for (const email of [
+        'bob@whisperingshadows.dev',
+        'carol@whisperingshadows.dev',
+      ]) {
+        await seriesService.subscribe(
+          usersByEmail.get(email)!.id,
+          hollowLaneSeries.id
+        );
+        seriesSubscriptions++;
+      }
+    }
+
+    // Recommendation feedback (through the real service — validates
+    // visibility) so the For You feed's affinity/exclusion logic has data.
+    const RECOMMENDATION_FEEDBACK: {
+      reader: string;
+      story: string;
+      action: RecommendationFeedbackAction;
+    }[] = [
+      {
+        reader: 'bob@whisperingshadows.dev',
+        story: 'Whisper in the Walls',
+        action: RecommendationFeedbackAction.MoreLikeThis,
+      },
+      {
+        reader: 'carol@whisperingshadows.dev',
+        story: 'Cold Spots',
+        action: RecommendationFeedbackAction.NotForMe,
+      },
+    ];
+    for (const {reader, story, action} of RECOMMENDATION_FEEDBACK) {
+      const storyId = storyIdsByTitle.get(story);
+      const readerId = usersByEmail.get(reader)?.id;
+      if (!storyId || !readerId) continue;
+      await storiesService.setRecommendationFeedback(
+        readerId,
+        storyId,
+        action,
+        Role.User
+      );
+    }
+
     const approvedStoryIds = await dataSource
       .getRepository(Story)
       .find({select: {id: true}, where: {status: StoryStatus.Approved}});
@@ -1076,7 +1295,9 @@ async function seed() {
     );
 
     const alice = usersByEmail.get('alice@whisperingshadows.dev')!;
-    const readingFixtures = approvedStoryIds.slice(0, 5).map(({id}, index) =>
+    // 5 completed (100%) stories clears the NightExplorer achievement's tier
+    // 1 threshold, on top of the 3 in-progress rows below tier 1.
+    const readingFixtures = approvedStoryIds.slice(0, 8).map(({id}, index) =>
       dataSource.getRepository(ReadingProgress).create({
         user: alice,
         story: {id} as Story,
@@ -1135,6 +1356,7 @@ async function seed() {
         `(${reportedComments} reported), ${reportedStories} reported stories, ` +
         `${reportedUsers} reported users, ${bookmarks} bookmarks, ` +
         `${follows} follows, ${likes} likes, ${scareVotes} scare votes, ` +
+        `${seriesSubscriptions} series subscriptions, ` +
         `${analyticsViews} historical view events`
     );
     log(
@@ -1144,13 +1366,18 @@ async function seed() {
       `Writer login: alice|bob|carol@whisperingshadows.dev / ${WRITER_PASSWORD} (dave is blocked)`
     );
     log(
-      'Membership: alice granted Founding Patron (membershipFeaturesEnabled ' +
-        'is off by default — flip it in Admin Settings to see the perks live)'
+      'Membership: alice is Founding Patron (admin-grant path), bob is an ' +
+        'active Founding Patron with billing fields (webhook-entry-point ' +
+        'path), carol is cancelled-but-still-active, dave is a lapsed member ' +
+        '(premiumSince set, tier back to Free) — membershipFeaturesEnabled ' +
+        'is off by default, flip it in Admin Settings to see the perks live'
     );
     log(
       "Achievements: alice's 25 approved stories clear the Storyteller " +
-        'achievement Obsidian (tier 4) threshold — unlocks once ' +
-        'membershipFeaturesEnabled is live'
+        'achievement Obsidian (tier 4) threshold, her streak/reading-progress ' +
+        'fixtures clear WeekStreak/MonthStreak and NightExplorer tier 1, and ' +
+        'a completion row on the concluded "Whispers of Winter" event clears ' +
+        'Event Seeker tier 1 — unlocks once membershipFeaturesEnabled is live'
     );
   } finally {
     await app.close();

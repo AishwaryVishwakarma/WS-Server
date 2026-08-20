@@ -36,6 +36,11 @@ export class AdminSeasonalEventsController {
     return this.eventsService.create(dto);
   }
 
+  @Get(':id/analytics')
+  analytics(@Param('id', ParseUUIDPipe) id: string) {
+    return this.eventsService.analytics(id);
+  }
+
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,

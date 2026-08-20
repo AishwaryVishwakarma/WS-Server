@@ -32,13 +32,12 @@ export class ReadingProgressController {
   ) {}
 
   @Put('stories/:id/reading-progress')
-  @HttpCode(204)
   async set(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetReadingProgressDto,
     @Req() req: Request
   ) {
-    await this.readingProgressService.set(
+    return this.readingProgressService.set(
       req.session.userId!,
       id,
       dto.percent,
@@ -100,5 +99,12 @@ export class ReadingProgressController {
   @Get('users/me/seasonal-event')
   async seasonalEvent(@Req() req: Request) {
     return this.readingProgressService.seasonalEvent(req.session.userId!);
+  }
+
+  @Get('users/me/seasonal-events/completed')
+  completedSeasonalEvents(@Req() req: Request) {
+    return this.readingProgressService.completedSeasonalEvents(
+      req.session.userId!
+    );
   }
 }

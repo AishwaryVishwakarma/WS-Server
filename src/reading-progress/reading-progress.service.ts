@@ -24,6 +24,11 @@ export interface ReadingProgressRow {
   updatedAt: Date;
 }
 
+export interface SeasonalEventUnlock {
+  eventId: string;
+  title: string;
+}
+
 @Injectable()
 export class ReadingProgressService {
   constructor(
@@ -111,21 +116,32 @@ export class ReadingProgressService {
   private async recordSeasonalEventCompletion(
     userId: string,
     eventId: string
-  ): Promise<void> {
-    await this.eventCompletionsRepository
+  ): Promise<boolean> {
+    const result = await this.eventCompletionsRepository
       .createQueryBuilder()
       .insert()
       .values({user: {id: userId}, event: {id: eventId}})
       .orIgnore()
+      .returning('id')
       .execute();
+    // TypeORM may populate `identifiers` from the attempted entity even when
+    // Postgres took the ON CONFLICT path. RETURNING rows are the reliable
+    // signal that this request actually inserted the ledger record.
+    return Array.isArray(result.raw) && result.raw.length > 0;
   }
 
-  private async evaluateSeasonalEvent(userId: string): Promise<void> {
+  private async evaluateSeasonalEvent(
+    userId: string
+  ): Promise<SeasonalEventUnlock | null> {
     const event = await this.seasonalEventsService.active();
-    if (!event) return;
+    if (!event) return null;
     const completed = await this.countSeasonalEventStories(userId, event);
-    if (completed < event.goal) return;
-    await this.recordSeasonalEventCompletion(userId, event.id);
+    if (completed < event.goal) return null;
+    const newlyUnlocked = await this.recordSeasonalEventCompletion(
+      userId,
+      event.id
+    );
+    return newlyUnlocked ? {eventId: event.id, title: event.title} : null;
   }
 
   // Record how far a member has scrolled into a story. Validates visibility
@@ -137,8 +153,8 @@ export class ReadingProgressService {
     storyId: string,
     percent: number,
     role?: Role
-  ): Promise<void> {
-    if (percent < MIN_PERCENT) return;
+  ): Promise<{eventAchievement: SeasonalEventUnlock | null}> {
+    if (percent < MIN_PERCENT) return {eventAchievement: null};
 
     await this.storiesService.assertVisible(storyId, userId, role);
 
@@ -150,7 +166,11 @@ export class ReadingProgressService {
       },
       {conflictPaths: ['user', 'story']}
     );
-    if (percent >= COMPLETE_PERCENT) await this.evaluateSeasonalEvent(userId);
+    const eventAchievement =
+      percent >= COMPLETE_PERCENT
+        ? await this.evaluateSeasonalEvent(userId)
+        : null;
+    return {eventAchievement};
   }
 
   async clear(userId: string, storyId: string): Promise<void> {
@@ -207,6 +227,21 @@ export class ReadingProgressService {
       story: row.story,
       percent: row.percent,
       updatedAt: row.updatedAt,
+    }));
+  }
+
+  async completedSeasonalEvents(userId: string) {
+    const rows = await this.eventCompletionsRepository
+      .createQueryBuilder('completion')
+      .innerJoinAndSelect('completion.event', 'event')
+      .leftJoinAndSelect('event.tags', 'tag')
+      .where('completion.userId = :userId', {userId})
+      .orderBy('completion.completedAt', 'DESC')
+      .getMany();
+
+    return rows.map((row) => ({
+      ...this.seasonalEventsService.view(row.event),
+      completedAt: row.completedAt,
     }));
   }
 }

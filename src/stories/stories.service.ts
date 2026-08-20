@@ -110,6 +110,7 @@ export const TRENDING_WINDOW_DAYS = 14;
 // count, so authors can keep working — the cap is on how much they push to the
 // keepers, both a fair-use limit and basic spam protection.
 export const FREE_PUBLISH_LIMIT = 10;
+export const FREE_STORY_INSIGHTS_LIMIT = 3;
 
 // Free accounts can also have up to this many private drafts at once — a
 // separate bucket from FREE_PUBLISH_LIMIT (a free author could have up to 20
@@ -1549,10 +1550,8 @@ export class StoriesService {
   // existing denormalized counters, no new query complexity. Capped rather
   // than paginated: a breakdown table this long would need pagination UI
   // before a limit here matters.
-  async getAuthorStoryBreakdown(
-    authorId: string
-  ): Promise<
-    Pick<
+  async getAuthorStoryBreakdown(authorId: string): Promise<{
+    stories: Pick<
       Story,
       | 'id'
       | 'title'
@@ -1561,9 +1560,16 @@ export class StoriesService {
       | 'likeCount'
       | 'commentCount'
       | 'createdAt'
-    >[]
-  > {
-    return this.storiesRepository.find({
+    >[];
+    total: number;
+    limit: number | null;
+  }> {
+    const author = await this.usersService.findOne(authorId);
+    const hasFullInsights =
+      author.membershipTier !== MembershipTier.Free &&
+      (await this.settingsService.isMembershipFeaturesEnabled());
+    const limit = hasFullInsights ? 50 : FREE_STORY_INSIGHTS_LIMIT;
+    const [stories, total] = await this.storiesRepository.findAndCount({
       where: {author: {id: authorId}, status: StoryStatus.Approved},
       select: {
         id: true,
@@ -1574,9 +1580,10 @@ export class StoriesService {
         commentCount: true,
         createdAt: true,
       },
-      order: {viewCount: 'DESC'},
-      take: 50,
+      order: {viewCount: 'DESC', id: 'ASC'},
+      take: limit,
     });
+    return {stories, total, limit: hasFullInsights ? null : limit};
   }
 
   // Day-bucketed views/likes/comments for one of the author's own stories,
@@ -1599,7 +1606,11 @@ export class StoriesService {
   ): Promise<{date: string; views: number; likes: number; comments: number}[]> {
     const story = await this.storiesRepository.findOne({
       where: {id: storyId},
-      select: {id: true, author: {id: true, membershipTier: true}},
+      select: {
+        id: true,
+        status: true,
+        author: {id: true, membershipTier: true},
+      },
       relations: {author: true},
     });
     if (!story || story.author?.id !== requesterId) {
@@ -1612,6 +1623,22 @@ export class StoriesService {
     const hasExtendedInsights =
       story.author.membershipTier !== MembershipTier.Free &&
       (await this.settingsService.isMembershipFeaturesEnabled());
+    if (!hasExtendedInsights && story.status === StoryStatus.Approved) {
+      const visibleStories = await this.storiesRepository.find({
+        where: {
+          author: {id: requesterId},
+          status: StoryStatus.Approved,
+        },
+        select: {id: true, viewCount: true},
+        order: {viewCount: 'DESC', id: 'ASC'},
+        take: FREE_STORY_INSIGHTS_LIMIT,
+      });
+      if (!visibleStories.some((visible) => visible.id === storyId)) {
+        throw new ForbiddenException(
+          'Upgrade to Patron to unlock this story insight'
+        );
+      }
+    }
     const effectiveDays = hasExtendedInsights ? days : Math.min(days, 90);
 
     const end = new Date();

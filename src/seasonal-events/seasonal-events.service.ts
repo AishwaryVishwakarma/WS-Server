@@ -8,6 +8,9 @@ import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
 import {TagsService} from 'src/tags/tags.service';
 import {SeasonalEvent} from './entities/seasonal-event.entity';
+import {SeasonalEventCompletion} from './entities/seasonal-event-completion.entity';
+import {ReadingProgress} from 'src/reading-progress/entities/reading-progress.entity';
+import {StoryStatus} from 'src/stories/enums/story-status.enum';
 import {CreateSeasonalEventDto} from './dto/create-seasonal-event.dto';
 import {UpdateSeasonalEventDto} from './dto/update-seasonal-event.dto';
 
@@ -18,6 +21,10 @@ export class SeasonalEventsService {
   constructor(
     @InjectRepository(SeasonalEvent)
     private readonly eventsRepository: Repository<SeasonalEvent>,
+    @InjectRepository(SeasonalEventCompletion)
+    private readonly completionsRepository: Repository<SeasonalEventCompletion>,
+    @InjectRepository(ReadingProgress)
+    private readonly progressRepository: Repository<ReadingProgress>,
     private readonly tagsService: TagsService
   ) {}
 
@@ -38,6 +45,14 @@ export class SeasonalEventsService {
 
   async list() {
     const events = await this.eventsRepository.find({
+      order: {startsAt: 'DESC'},
+    });
+    return events.map((event) => this.view(event));
+  }
+
+  async publicList() {
+    const events = await this.eventsRepository.find({
+      where: {isPublished: true},
       order: {startsAt: 'DESC'},
     });
     return events.map((event) => this.view(event));
@@ -69,6 +84,59 @@ export class SeasonalEventsService {
   async remove(id: string) {
     const result = await this.eventsRepository.delete(id);
     if (!result.affected) throw new NotFoundException('Event not found');
+  }
+
+  async analytics(id: string) {
+    const event = await this.findOne(id);
+    const tagIds = event.tags.map((tag) => tag.id);
+    const completions = await this.completionsRepository.count({
+      where: {event: {id}},
+    });
+
+    if (tagIds.length === 0) {
+      return {participants: 0, completions, completionRate: 0, stories: []};
+    }
+
+    const base = this.progressRepository
+      .createQueryBuilder('progress')
+      .innerJoin('progress.story', 'story')
+      .innerJoin('story.tags', 'tag')
+      .where('progress.percent >= :completePercent', {completePercent: 95})
+      .andWhere('progress.updatedAt >= :startsAt', {startsAt: event.startsAt})
+      .andWhere('progress.updatedAt < :endsAt', {endsAt: event.endsAt})
+      .andWhere('story.status = :status', {status: StoryStatus.Approved})
+      .andWhere('tag.id IN (:...tagIds)', {tagIds});
+
+    const participantResult = await base
+      .clone()
+      .select('COUNT(DISTINCT progress.userId)', 'count')
+      .getRawOne<{count: string}>();
+    const participants = Number(participantResult?.count) || 0;
+    const stories = await base
+      .clone()
+      .select('story.id', 'id')
+      .addSelect('story.title', 'title')
+      .addSelect('story.slug', 'slug')
+      .addSelect('COUNT(DISTINCT progress.userId)', 'readers')
+      .groupBy('story.id')
+      .addGroupBy('story.title')
+      .addGroupBy('story.slug')
+      .orderBy('COUNT(DISTINCT progress.userId)', 'DESC')
+      .addOrderBy('story.title', 'ASC')
+      .limit(5)
+      .getRawMany<{id: string; title: string; slug: string; readers: string}>();
+
+    return {
+      participants,
+      completions,
+      completionRate: participants
+        ? Math.min(100, Math.round((completions / participants) * 100))
+        : 0,
+      stories: stories.map((story) => ({
+        ...story,
+        readers: Number(story.readers),
+      })),
+    };
   }
 
   private async findOne(id: string) {
