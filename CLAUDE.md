@@ -2,6 +2,11 @@
 
 Repository guidance for the Whispering Shadows backend.
 
+Keep source comments focused on why: data invariants, security boundaries,
+database or framework quirks, and non-obvious tradeoffs. Do not narrate readable
+code, preserve implementation history, or duplicate this document. Update or
+remove comments whenever the behavior they describe changes.
+
 ## Project
 
 NestJS 11 + TypeORM + PostgreSQL API with Redis-backed sessions. The sibling

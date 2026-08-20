@@ -17,8 +17,7 @@ export class CreateUserDto extends RegisterUserDto {
   @IsBoolean()
   isBlocked?: boolean;
 
-  // Phase 0: the only way membership is granted/revoked today (no payment
-  // processor) — see UsersService.update's founding-member logic.
+  // Manual grants use the same membership resolution path as billing events.
   @IsOptional()
   @IsEnum(MembershipTier)
   membershipTier?: MembershipTier;

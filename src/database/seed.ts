@@ -858,17 +858,8 @@ async function seed() {
       }
     }
 
-    // Membership (Phase 0: admin-granted only — see UsersService.update).
-    // Alice is the seed's first-ever grant, so she becomes Founding Patron
-    // through the real founding-headcount check, exactly as an early admin
-    // action would play out. membershipFeaturesEnabled itself is left at its
-    // real launch-default (off) — a fresh seed shows the kill switch's exact
-    // purpose: a tier can be granted and staged before membership goes live.
-    // Flip it on in Admin Settings to see the perks (ring, badge, publish-cap
-    // bypass, priority queue, deeper Story Insights, Obsidian tier) live.
-    // Her 25 approved stories (see generateAliceTopUpStories) already clear
-    // the Storyteller achievement's Obsidian (tier 4) threshold, so it shows
-    // as completed the moment the toggle goes live — same staged pattern.
+    // Exercise the real first-grant path while leaving the feature toggle off.
+    // Alice's seeded progress also demonstrates the gated Obsidian tier.
     const aliceForMembership = usersByEmail.get('alice@whisperingshadows.dev')!;
     await usersService.update(aliceForMembership.id, {
       membershipTier: MembershipTier.Patron,

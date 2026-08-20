@@ -31,11 +31,7 @@ export class SiteSettings {
   @Column({type: 'boolean', default: false})
   notificationEmailGloballyEnabled: boolean;
 
-  // Site-wide kill switch for the Patron membership feature set (Phase 0:
-  // manually admin-granted, no payment processor). Off by default so the
-  // rollout can be staged; individual users can already carry a
-  // membershipTier before this flips — it only gates whether the perks
-  // (publish-cap bypass, priority queue, etc.) actually take effect.
+  // Gates perks and new checkouts, but never billing webhooks or stored status.
   @Column({type: 'boolean', default: false})
   membershipFeaturesEnabled: boolean;
 
