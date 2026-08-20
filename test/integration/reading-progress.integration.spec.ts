@@ -83,7 +83,7 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 42})
-      .expect(204);
+      .expect(200);
 
     const list = await client.get('/users/me/reading-progress').expect(200);
     expect(list.body).toHaveLength(1);
@@ -102,7 +102,7 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 2})
-      .expect(204);
+      .expect(200);
 
     const list = await client.get('/users/me/reading-progress').expect(200);
     expect(list.body).toHaveLength(0);
@@ -116,12 +116,12 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 40})
-      .expect(204);
+      .expect(200);
     await client
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 2})
-      .expect(204);
+      .expect(200);
 
     const list = await client.get('/users/me/reading-progress').expect(200);
     expect(list.body).toHaveLength(1);
@@ -136,7 +136,7 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 40})
-      .expect(204);
+      .expect(200);
     await client
       .delete(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
@@ -154,12 +154,12 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 60})
-      .expect(204);
+      .expect(200);
     await client
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 97})
-      .expect(204);
+      .expect(200);
 
     const list = await client.get('/users/me/reading-progress').expect(200);
     expect(list.body).toHaveLength(0);
@@ -183,7 +183,7 @@ describe('Reading progress (integration)', () => {
       tag.id,
     ]);
     const now = Date.now();
-    await testApp.dataSource.getRepository(SeasonalEvent).save({
+    const event = await testApp.dataSource.getRepository(SeasonalEvent).save({
       title: 'The Midnight Trial',
       description: 'Finish one story before the door closes.',
       goal: 1,
@@ -192,13 +192,39 @@ describe('Reading progress (integration)', () => {
       isPublished: true,
       tags: [tag],
     });
+    await agent()
+      .get('/seasonal-events')
+      .expect(200)
+      .expect(({body}) =>
+        expect(body).toEqual([
+          expect.objectContaining({
+            id: event.id,
+            status: 'active',
+            tagSlugs: [tag.slug],
+          }),
+        ])
+      );
     const {client, token} = await reader();
 
     await client
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 100})
-      .expect(204);
+      .expect(200)
+      .expect(({body}) =>
+        expect(body).toMatchObject({
+          eventAchievement: {
+            title: 'The Midnight Trial',
+          },
+        })
+      );
+
+    await client
+      .put(`/stories/${story.id}/reading-progress`)
+      .set('x-csrf-token', token)
+      .send({percent: 100})
+      .expect(200)
+      .expect({eventAchievement: null});
 
     await client
       .get('/users/me/seasonal-event')
@@ -210,6 +236,33 @@ describe('Reading progress (integration)', () => {
         (achievement: {key: string}) => achievement.key === 'event-seeker'
       )
     ).toMatchObject({progress: 1, highestUnlockedTier: 1});
+    await client
+      .get('/users/me/seasonal-events/completed')
+      .expect(200)
+      .expect(({body}) =>
+        expect(body).toEqual([
+          expect.objectContaining({
+            title: 'The Midnight Trial',
+            completedAt: expect.any(String),
+          }),
+        ])
+      );
+    await admin
+      .get(`/admin/seasonal-events/${event.id}/analytics`)
+      .expect(200)
+      .expect(({body}) =>
+        expect(body).toMatchObject({
+          participants: 1,
+          completions: 1,
+          completionRate: 100,
+          stories: [
+            expect.objectContaining({
+              id: story.id,
+              readers: 1,
+            }),
+          ],
+        })
+      );
   });
 
   it('upserts — a second write in range updates the same row', async () => {
@@ -220,12 +273,12 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 20})
-      .expect(204);
+      .expect(200);
     await client
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 55})
-      .expect(204);
+      .expect(200);
 
     const list = await client.get('/users/me/reading-progress').expect(200);
     expect(list.body).toHaveLength(1);
@@ -249,12 +302,12 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${first.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 30})
-      .expect(204);
+      .expect(200);
     await client
       .put(`/stories/${second.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 30})
-      .expect(204);
+      .expect(200);
 
     const list = await client.get('/users/me/reading-progress').expect(200);
     expect(list.body.map((row: {story: {id: string}}) => row.story.id)).toEqual(
@@ -270,7 +323,7 @@ describe('Reading progress (integration)', () => {
       .put(`/stories/${story.id}/reading-progress`)
       .set('x-csrf-token', token)
       .send({percent: 30})
-      .expect(204);
+      .expect(200);
 
     await admin
       .patch(`/admin/stories/${story.id}/status`)
@@ -317,6 +370,7 @@ describe('Reading progress (integration)', () => {
     await anon.get('/users/me/reading-goal').expect(401);
     await anon.patch('/users/me/reading-goal').send({goal: 5}).expect(403);
     await anon.get('/users/me/seasonal-event').expect(401);
+    await anon.get('/users/me/seasonal-events/completed').expect(401);
   });
 
   it('reads and updates the weekly reading goal', async () => {

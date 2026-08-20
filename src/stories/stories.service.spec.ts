@@ -1500,11 +1500,11 @@ describe('StoriesService', () => {
           createdAt: new Date(),
         },
       ];
-      repository.find.mockResolvedValue(rows);
+      repository.findAndCount.mockResolvedValue([rows, 8]);
 
       const result = await service.getAuthorStoryBreakdown('author-1');
 
-      expect(repository.find).toHaveBeenCalledWith({
+      expect(repository.findAndCount).toHaveBeenCalledWith({
         where: {author: {id: 'author-1'}, status: StoryStatus.Approved},
         select: {
           id: true,
@@ -1515,14 +1515,34 @@ describe('StoriesService', () => {
           commentCount: true,
           createdAt: true,
         },
-        order: {viewCount: 'DESC'},
-        take: 50,
+        order: {viewCount: 'DESC', id: 'ASC'},
+        take: 3,
       });
-      expect(result).toBe(rows);
+      expect(result).toEqual({stories: rows, total: 8, limit: 3});
+    });
+
+    it('returns the full breakdown for a Patron while perks are enabled', async () => {
+      usersService.findOne.mockResolvedValue({
+        id: 'author-1',
+        membershipTier: MembershipTier.Patron,
+      });
+      settingsService.isMembershipFeaturesEnabled.mockResolvedValue(true);
+      repository.findAndCount.mockResolvedValue([[], 12]);
+
+      await expect(
+        service.getAuthorStoryBreakdown('author-1')
+      ).resolves.toEqual({stories: [], total: 12, limit: null});
+      expect(repository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({take: 50})
+      );
     });
   });
 
   describe('getStoryDailyStats', () => {
+    beforeEach(() => {
+      repository.find.mockResolvedValue([{id: 'story-1'}]);
+    });
+
     it('404s when the story does not exist', async () => {
       repository.findOne.mockResolvedValue(null);
 
@@ -1541,6 +1561,24 @@ describe('StoriesService', () => {
       await expect(
         service.getStoryDailyStats('story-1', 'author-1', 30)
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(repository.query).not.toHaveBeenCalled();
+    });
+
+    it('blocks a Free author from requesting a story outside the top three', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 'story-4',
+        status: StoryStatus.Approved,
+        author: {id: 'author-1', membershipTier: MembershipTier.Free},
+      });
+      repository.find.mockResolvedValue([
+        {id: 'story-1'},
+        {id: 'story-2'},
+        {id: 'story-3'},
+      ]);
+
+      await expect(
+        service.getStoryDailyStats('story-4', 'author-1', 30)
+      ).rejects.toBeInstanceOf(ForbiddenException);
       expect(repository.query).not.toHaveBeenCalled();
     });
 

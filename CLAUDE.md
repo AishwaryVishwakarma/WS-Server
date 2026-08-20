@@ -280,6 +280,14 @@ production safety checks there.
   suite and the web repository's complete Playwright E2E suite before handoff.
   Add or update integration/E2E coverage when a changed API or user journey is
   not already exercised.
+- Seasonal event completions are durable ledger rows. Reading-progress writes
+  may announce an unlock only when the conflict-safe insert creates a new row;
+  achievements, completed-event history, and admin completion totals must read
+  from that ledger rather than recomputing past awards.
+- Story Insights is enforced server-side: Free authors (and everyone while the
+  membership toggle is off) receive only the top three story breakdown rows,
+  and trend requests for other stories are rejected. The client blur must
+  never contain hidden story data.
 
 ## Git
 
