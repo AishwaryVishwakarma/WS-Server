@@ -107,7 +107,8 @@ export class WinbackService {
       this.mutesService.mutedAuthorIds(user.id),
       this.notificationsService.unreadCount(user.id),
     ]);
-    const visibleAuthorIds = authorIds.filter((id) => !mutedIds.includes(id));
+    const mutedIdSet = new Set(mutedIds);
+    const visibleAuthorIds = authorIds.filter((id) => !mutedIdSet.has(id));
 
     let newStories: DigestNewStory[] = [];
     if (visibleAuthorIds.length > 0) {

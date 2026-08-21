@@ -132,7 +132,8 @@ export class FollowsService {
       this.followingIds(userId),
       this.mutesService.mutedAuthorIds(userId),
     ]);
-    const visibleAuthorIds = authorIds.filter((id) => !mutedIds.includes(id));
+    const mutedIdSet = new Set(mutedIds);
+    const visibleAuthorIds = authorIds.filter((id) => !mutedIdSet.has(id));
     if (visibleAuthorIds.length === 0) {
       return getPaginatedResponse([], 0, page, limit);
     }

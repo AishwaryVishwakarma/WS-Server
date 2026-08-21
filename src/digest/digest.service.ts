@@ -92,7 +92,8 @@ export class DigestService {
       this.mutesService.mutedAuthorIds(user.id),
       this.notificationsService.unreadCount(user.id),
     ]);
-    const visibleAuthorIds = authorIds.filter((id) => !mutedIds.includes(id));
+    const mutedIdSet = new Set(mutedIds);
+    const visibleAuthorIds = authorIds.filter((id) => !mutedIdSet.has(id));
 
     let newStories: {title: string; id: string; authorName: string}[] = [];
     if (visibleAuthorIds.length > 0) {
