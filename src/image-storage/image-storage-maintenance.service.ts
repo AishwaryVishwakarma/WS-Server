@@ -31,21 +31,40 @@ export class ImageStorageMaintenanceService {
   ) {}
 
   async snapshot(): Promise<ImageStorageSnapshot> {
-    const files = await this.storage.listAll();
-    const namespaceFiles = files.filter((file) =>
-      this.storage.belongsToNamespace(file)
-    );
-    const stale = await this.staleFiles(namespaceFiles);
+    const referenced = await this._referencedFileIds();
+    const cutoff = Date.now() - GRACE_PERIOD_MS;
+
+    let usedBytes = 0;
+    let fileCount = 0;
+    let namespaceUsedBytes = 0;
+    let namespaceFileCount = 0;
+    let staleBytes = 0;
+    let staleFileCount = 0;
+
+    for await (const {files} of this.storage.listAllPages()) {
+      for (const file of files) {
+        fileCount++;
+        usedBytes += file.size;
+        if (!this.storage.belongsToNamespace(file)) continue;
+        namespaceFileCount++;
+        namespaceUsedBytes += file.size;
+        if (this._isStale(file, referenced, cutoff)) {
+          staleFileCount++;
+          staleBytes += file.size;
+        }
+      }
+    }
+
     return {
-      usedBytes: this.totalBytes(files),
+      usedBytes,
       capacityBytes: this.storage.capacityBytes(),
-      fileCount: files.length,
+      fileCount,
       namespace: this.storage.namespace(),
-      namespaceUsedBytes: this.totalBytes(namespaceFiles),
-      namespaceFileCount: namespaceFiles.length,
+      namespaceUsedBytes,
+      namespaceFileCount,
       purgeEnabled: this.storage.purgeEnabled(),
-      staleBytes: this.totalBytes(stale),
-      staleFileCount: stale.length,
+      staleBytes,
+      staleFileCount,
       gracePeriodHours: GRACE_PERIOD_HOURS,
       checkedAt: new Date().toISOString(),
     };
@@ -93,23 +112,37 @@ export class ImageStorageMaintenanceService {
         'Image purge is disabled in this environment'
       );
     }
-    const files = await this.storage.listAll();
-    const stale = await this.staleFiles(
-      files.filter((file) => this.storage.belongsToNamespace(file))
-    );
+    const referenced = await this._referencedFileIds();
+    const cutoff = Date.now() - GRACE_PERIOD_MS;
+
     let deletedBytes = 0;
     let deletedFileCount = 0;
     let failedFileCount = 0;
+    let scanned = 0;
 
-    for (const [index, file] of stale.entries()) {
-      try {
-        await this.storage.delete(file.id);
-        deletedBytes += file.size;
-        deletedFileCount++;
-      } catch {
-        failedFileCount++;
+    for await (const {files, total} of this.storage.listAllPages()) {
+      for (const file of files) {
+        scanned++;
+        if (
+          this.storage.belongsToNamespace(file) &&
+          this._isStale(file, referenced, cutoff)
+        ) {
+          try {
+            await this.storage.delete(file.id);
+            deletedBytes += file.size;
+            deletedFileCount++;
+          } catch {
+            failedFileCount++;
+          }
+        }
+        // Reports scan progress (files examined / bucket total) rather than
+        // "stale files deleted so far" — the latter would need a full pass
+        // up front just to learn the denominator, defeating the point of
+        // streaming pages instead of materializing the whole bucket first.
+        await job?.updateProgress(
+          total > 0 ? Math.round((scanned / total) * 100) : 100
+        );
       }
-      await job?.updateProgress(Math.round(((index + 1) / stale.length) * 100));
     }
 
     return {
@@ -120,7 +153,7 @@ export class ImageStorageMaintenanceService {
     } satisfies ImagePurgeResult;
   }
 
-  private async staleFiles(files: StoredImage[]): Promise<StoredImage[]> {
+  private async _referencedFileIds(): Promise<Set<string>> {
     const [stories, users] = await Promise.all([
       this.stories
         .createQueryBuilder('story')
@@ -134,18 +167,19 @@ export class ImageStorageMaintenanceService {
         .where('user.profileImageFileId IS NOT NULL')
         .getRawMany<{fileId: string}>(),
     ]);
-    const referenced = new Set([
+    return new Set([
       ...stories.map(({fileId}) => fileId),
       ...users.map(({fileId}) => fileId),
     ]);
-    const cutoff = Date.now() - GRACE_PERIOD_MS;
-    return files.filter(
-      (file) =>
-        !referenced.has(file.id) && new Date(file.createdAt).getTime() < cutoff
-    );
   }
 
-  private totalBytes(files: StoredImage[]) {
-    return files.reduce((total, file) => total + file.size, 0);
+  private _isStale(
+    file: StoredImage,
+    referenced: Set<string>,
+    cutoffMs: number
+  ): boolean {
+    return (
+      !referenced.has(file.id) && new Date(file.createdAt).getTime() < cutoffMs
+    );
   }
 }
