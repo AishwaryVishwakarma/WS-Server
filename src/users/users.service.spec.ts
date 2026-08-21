@@ -976,6 +976,27 @@ describe('UsersService', () => {
 
       const [, update] = repository.update.mock.calls[0];
       expect(update.streakFreezeCount).toBeUndefined();
+      expect(
+        settingsService.isMembershipFeaturesEnabled
+      ).not.toHaveBeenCalled();
+    });
+
+    it('skips the settings lookup when already at the freeze cap', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Patron,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastActiveDate: yesterday,
+        streakFreezeCount: 1,
+        lastStreakFreezeUsedAt: null,
+      });
+
+      await service.recordActivity('user-1');
+
+      expect(
+        settingsService.isMembershipFeaturesEnabled
+      ).not.toHaveBeenCalled();
     });
 
     it('does not grant while membership features are staged off', async () => {

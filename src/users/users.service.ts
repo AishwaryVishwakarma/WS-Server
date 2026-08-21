@@ -433,21 +433,23 @@ export class UsersService {
     const today = new Date().toISOString().slice(0, 10);
     const now = new Date();
 
-    // Patron+ perk: gated on the site-wide toggle like every other
-    // membership benefit, checked lazily here since nothing else in this
-    // file runs on a schedule either (see streak.ts).
-    const membershipLive =
-      user.membershipTier !== MembershipTier.Free &&
-      (await this.settingsService.isMembershipFeaturesEnabled());
-
     let streakFreezeCount = user.streakFreezeCount;
     let lastStreakFreezeUsedAt = user.lastStreakFreezeUsedAt;
     let freezeChanged = false;
     let effectiveState: StreakState = user;
 
+    // isEligibleForFreezeGrant (cap, replenish window) and the tier check are
+    // both cheap and synchronous; the site-wide toggle is the only part of
+    // this condition that costs a settings lookup, called on every
+    // view/comment/like. Checking it last means most calls — a Free-tier
+    // member, or a Patron+ one already at the cap or mid-replenish-window —
+    // never pay for it at all.
+    const grantPossible =
+      user.membershipTier !== MembershipTier.Free &&
+      isEligibleForFreezeGrant(streakFreezeCount, lastStreakFreezeUsedAt, now);
     if (
-      membershipLive &&
-      isEligibleForFreezeGrant(streakFreezeCount, lastStreakFreezeUsedAt, now)
+      grantPossible &&
+      (await this.settingsService.isMembershipFeaturesEnabled())
     ) {
       streakFreezeCount += 1;
       lastStreakFreezeUsedAt = now;
