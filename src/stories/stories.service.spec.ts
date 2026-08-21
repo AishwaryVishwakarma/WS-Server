@@ -1463,6 +1463,40 @@ describe('StoriesService', () => {
       });
     });
 
+    it('selects only ids off the engagement tables and caps the NotForMe exclusion list', async () => {
+      storyLikeRepository.find.mockResolvedValue([{story: {id: 'story-1'}}]);
+      repository.find.mockResolvedValue([
+        {id: 'story-1', tags: [{id: 'tag-1'}]},
+      ]);
+      jest
+        .spyOn(service, 'findApprovedFeed')
+        .mockResolvedValue({data: [], nextCursor: null, total: 0});
+
+      await service.findForYouFeed('reader-1', {});
+
+      expect(storyLikeRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {id: true, createdAt: true, story: {id: true}},
+        })
+      );
+      expect(bookmarkRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {id: true, createdAt: true, story: {id: true}},
+        })
+      );
+      expect(readingProgressRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {id: true, updatedAt: true, story: {id: true}},
+        })
+      );
+      expect(recommendationFeedbackRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {id: true, updatedAt: true, story: {id: true}},
+          take: 200,
+        })
+      );
+    });
+
     it('also excludes muted authors alongside the reader themselves', async () => {
       storyLikeRepository.find.mockResolvedValue([{story: {id: 'story-1'}}]);
       repository.find.mockResolvedValue([
