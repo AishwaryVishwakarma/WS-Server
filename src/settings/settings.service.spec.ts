@@ -37,6 +37,19 @@ describe('SettingsService', () => {
       expect(repository.findOne).toHaveBeenCalledWith({where: {id: 1}});
     });
 
+    it('serves a second call within the TTL from cache, not another query', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        requireStoryApproval: false,
+        updatedAt: new Date(),
+      });
+
+      await service.getSettings();
+      await service.getSettings();
+
+      expect(repository.findOne).toHaveBeenCalledTimes(1);
+    });
+
     it('falls back to requiring approval, with image uploads and digest off, when the seed row is missing', async () => {
       repository.findOne.mockResolvedValue(null);
 
@@ -155,6 +168,21 @@ describe('SettingsService', () => {
 
       expect(settings.allowProfileImageUpload).toBe(true);
       expect(settings.allowStoryCoverImage).toBe(true);
+    });
+
+    it('refreshes the cache immediately so a later getSettings reflects the write without re-querying', async () => {
+      repository.findOne.mockResolvedValue({
+        id: 1,
+        requireStoryApproval: true,
+        updatedAt: new Date(),
+      });
+
+      await service.updateSettings({requireStoryApproval: false});
+      repository.findOne.mockClear();
+      const settings = await service.getSettings();
+
+      expect(settings.requireStoryApproval).toBe(false);
+      expect(repository.findOne).not.toHaveBeenCalled();
     });
   });
 });
