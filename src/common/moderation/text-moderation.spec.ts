@@ -41,4 +41,20 @@ describe('isProfane', () => {
       expect(isProfane(word)).toBe(false);
     }
   });
+
+  // Every IsClean-decorated field has its own @MaxLength (500 at most today)
+  // that class-validator still runs alongside this one — an oversized
+  // payload must fail on length rather than pay for a regex scan sized to
+  // whatever an attacker sends.
+  it('skips the regex scan for text far beyond any real field length, without flagging it as profane', () => {
+    const oversized = 'a'.repeat(5000);
+
+    expect(isProfane(oversized)).toBe(false);
+  });
+
+  it('still scans text within realistic field lengths', () => {
+    const longButNormal = `A reader of ghost stories. ${'x'.repeat(400)} fuck`;
+
+    expect(isProfane(longButNormal)).toBe(true);
+  });
 });
