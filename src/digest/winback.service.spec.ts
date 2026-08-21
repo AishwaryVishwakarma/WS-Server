@@ -20,6 +20,7 @@ import {WinbackUnsubscribeService} from './winback-unsubscribe.service';
 describe('WinbackService', () => {
   let service: WinbackService;
   let queryBuilder: {
+    select: jest.Mock;
     where: jest.Mock;
     andWhere: jest.Mock;
     orderBy: jest.Mock;
@@ -28,10 +29,11 @@ describe('WinbackService', () => {
   };
   let usersRepository: {createQueryBuilder: jest.Mock};
   let settingsService: {isWinbackEmailGloballyEnabled: jest.Mock};
-  let winbackQueue: {add: jest.Mock};
+  let winbackQueue: {addBulk: jest.Mock};
 
   beforeEach(async () => {
     queryBuilder = {
+      select: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
@@ -44,7 +46,7 @@ describe('WinbackService', () => {
     settingsService = {
       isWinbackEmailGloballyEnabled: jest.fn().mockResolvedValue(true),
     };
-    winbackQueue = {add: jest.fn().mockResolvedValue({id: 'winback-job'})};
+    winbackQueue = {addBulk: jest.fn().mockResolvedValue([])};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -88,7 +90,7 @@ describe('WinbackService', () => {
       );
     });
 
-    it('queues one durable winback job per eligible user', async () => {
+    it('queues one durable winback job per eligible user in a single bulk add', async () => {
       queryBuilder.getMany
         .mockResolvedValueOnce([{id: 'user-1'}, {id: 'user-2'}])
         .mockResolvedValueOnce([]);
@@ -96,15 +98,21 @@ describe('WinbackService', () => {
       const result = await service.sendWinbackEmails();
 
       expect(result).toEqual({sent: 2});
-      expect(winbackQueue.add).toHaveBeenCalledTimes(2);
-      expect(winbackQueue.add).toHaveBeenCalledWith(
-        'winback',
-        {userId: 'user-1'},
+      expect(winbackQueue.addBulk).toHaveBeenCalledTimes(1);
+      expect(winbackQueue.addBulk).toHaveBeenCalledWith([
         expect.objectContaining({
-          attempts: 5,
-          jobId: expect.stringMatching(/^winback-\d{4}-\d{2}-\d{2}-user-1$/),
-        })
-      );
+          name: 'winback',
+          data: {userId: 'user-1'},
+          opts: expect.objectContaining({
+            attempts: 5,
+            jobId: expect.stringMatching(/^winback-\d{4}-\d{2}-\d{2}-user-1$/),
+          }),
+        }),
+        expect.objectContaining({
+          name: 'winback',
+          data: {userId: 'user-2'},
+        }),
+      ]);
     });
   });
 });

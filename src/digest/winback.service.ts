@@ -60,6 +60,7 @@ export class WinbackService {
     while (true) {
       const qb = this.usersRepository
         .createQueryBuilder('user')
+        .select('user.id')
         .where('user.winbackEmailEnabled = true')
         .andWhere('user.lastActiveDate IS NOT NULL')
         .andWhere('user.lastActiveDate <= :cutoff', {cutoff})
@@ -77,14 +78,17 @@ export class WinbackService {
       const users = await qb.getMany();
       if (users.length === 0) break;
 
-      for (const user of users) {
-        await this.winbackQueue.add(
-          'winback',
-          {userId: user.id},
-          {...DURABLE_JOB_OPTIONS, jobId: `winback-${todayKey}-${user.id}`}
-        );
-        queued++;
-      }
+      await this.winbackQueue.addBulk(
+        users.map((user) => ({
+          name: 'winback',
+          data: {userId: user.id},
+          opts: {
+            ...DURABLE_JOB_OPTIONS,
+            jobId: `winback-${todayKey}-${user.id}`,
+          },
+        }))
+      );
+      queued += users.length;
       cursor = users.at(-1)!.id;
     }
 
