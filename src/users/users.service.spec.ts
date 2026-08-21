@@ -8,7 +8,7 @@ import {ConfigService} from '@nestjs/config';
 import {Test} from '@nestjs/testing';
 import {getRepositoryToken} from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import {QueryFailedError} from 'typeorm';
+import {In, QueryFailedError} from 'typeorm';
 import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
 import {Story} from 'src/stories/entities/story.entity';
@@ -1087,6 +1087,24 @@ describe('UsersService', () => {
       expect(repository.update).toHaveBeenCalledWith('user-1', {
         hasPublishedStory: true,
       });
+    });
+  });
+
+  describe('markManyHasPublishedStory', () => {
+    it('sets the flag for every id in a single update', async () => {
+      await service.markManyHasPublishedStory(['user-1', 'user-2']);
+
+      expect(repository.update).toHaveBeenCalledTimes(1);
+      expect(repository.update).toHaveBeenCalledWith(
+        {id: In(['user-1', 'user-2'])},
+        {hasPublishedStory: true}
+      );
+    });
+
+    it('does not query when given no ids', async () => {
+      await service.markManyHasPublishedStory([]);
+
+      expect(repository.update).not.toHaveBeenCalled();
     });
   });
 

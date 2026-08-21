@@ -75,6 +75,7 @@ describe('StoriesService', () => {
   let usersService: {
     findOne: jest.Mock;
     markHasPublishedStory: jest.Mock;
+    markManyHasPublishedStory: jest.Mock;
     recordActivity: jest.Mock;
   };
   let tagsService: {findManyByIds: jest.Mock};
@@ -169,6 +170,7 @@ describe('StoriesService', () => {
     usersService = {
       findOne: jest.fn().mockResolvedValue(author),
       markHasPublishedStory: jest.fn().mockResolvedValue(undefined),
+      markManyHasPublishedStory: jest.fn().mockResolvedValue(undefined),
       recordActivity: jest.fn().mockResolvedValue(undefined),
     };
     tagsService = {findManyByIds: jest.fn()};
@@ -1034,20 +1036,24 @@ describe('StoriesService', () => {
       expect(result[0].rejectionReason).toBeNull();
     });
 
-    it('latches markHasPublishedStory once per distinct author when approving', async () => {
+    it('latches markManyHasPublishedStory once with distinct authors when approving', async () => {
       const stories = [
         {id: 'story-1', status: StoryStatus.Pending, author: {id: 'a1'}},
         {id: 'story-2', status: StoryStatus.Pending, author: {id: 'a1'}},
+        {id: 'story-3', status: StoryStatus.Pending, author: {id: 'a2'}},
       ];
       repository.find.mockResolvedValue(stories);
 
       await service.bulkUpdateStatus(
-        ['story-1', 'story-2'],
+        ['story-1', 'story-2', 'story-3'],
         StoryStatus.Approved
       );
 
-      expect(usersService.markHasPublishedStory).toHaveBeenCalledTimes(1);
-      expect(usersService.markHasPublishedStory).toHaveBeenCalledWith('a1');
+      expect(usersService.markManyHasPublishedStory).toHaveBeenCalledTimes(1);
+      expect(usersService.markManyHasPublishedStory).toHaveBeenCalledWith([
+        'a1',
+        'a2',
+      ]);
     });
 
     it('rejects the whole batch (and changes nothing) when an id is missing', async () => {

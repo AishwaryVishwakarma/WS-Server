@@ -21,6 +21,7 @@ import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
 import {
   ILike,
+  In,
   IsNull,
   MoreThan,
   Not,
@@ -949,6 +950,17 @@ export class UsersService {
   // StoriesService.updateStatus when a story reaches approved.
   async markHasPublishedStory(userId: string): Promise<void> {
     await this.usersRepository.update(userId, {hasPublishedStory: true});
+  }
+
+  // Same latch as markHasPublishedStory, batched for
+  // StoriesService.bulkUpdateStatus — one UPDATE across every distinct
+  // author in the batch instead of one per author.
+  async markManyHasPublishedStory(userIds: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+    await this.usersRepository.update(
+      {id: In(userIds)},
+      {hasPublishedStory: true}
+    );
   }
 
   // A member deleting their own account (as opposed to admin removal, see

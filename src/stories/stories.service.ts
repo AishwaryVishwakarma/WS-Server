@@ -1472,9 +1472,7 @@ export class StoriesService {
 
       if (status === StoryStatus.Approved) {
         const authorIds = new Set(stories.map((story) => story.author.id));
-        for (const authorId of authorIds) {
-          await this.usersService.markHasPublishedStory(authorId);
-        }
+        await this.usersService.markManyHasPublishedStory([...authorIds]);
         await Promise.all(
           newlyApprovedStories.map((story) =>
             this.seriesService.notifySubscribers(story)
