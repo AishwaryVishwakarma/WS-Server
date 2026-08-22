@@ -42,7 +42,7 @@ describe('Mail previews (integration)', () => {
         'notification-follow',
         'notification-like',
         'notification-series',
-      ]),
+      ])
     );
   });
 
@@ -53,9 +53,7 @@ describe('Mail previews (integration)', () => {
       .get('/admin/mail-previews/weekly-digest')
       .expect(200);
 
-    expect((response.body as {html: string}).html).toContain(
-      '<!doctype html>',
-    );
+    expect((response.body as {html: string}).html).toContain('<!doctype html>');
   });
 
   it('404s for an unknown template name', async () => {
