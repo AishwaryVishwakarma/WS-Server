@@ -88,7 +88,7 @@ export function renderEmailHtml({
               footnote
                 ? `
             <tr>
-              <td style="padding:20px 32px; border-top:1px solid ${BRAND.border}; background:${BRAND.surfaceRaised};">
+              <td style="padding:20px 32px; border-top:1px solid ${BRAND.border}; background:${BRAND.surfaceRaised}; border-radius:0 0 14px 14px;">
                 <p style="margin:0; font-size:12px; line-height:1.55; color:${BRAND.textSecondary};">${escapeHtml(footnote)}</p>
               </td>
             </tr>`
