@@ -6,15 +6,18 @@ import {TypeOrmModule} from '@nestjs/typeorm';
 import {User} from 'src/users/entities/user.entity';
 import {ResendWebhookController} from './resend-webhook.controller';
 import {ResendWebhookService} from './resend-webhook.service';
+import {MailPreviewController} from './mail-preview.controller';
+import {MailPreviewService} from './mail-preview.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User])],
-  controllers: [ResendWebhookController],
+  controllers: [ResendWebhookController, MailPreviewController],
   providers: [
     MailService,
     MailTransportService,
     MailProcessor,
     ResendWebhookService,
+    MailPreviewService,
   ],
   exports: [MailService, MailTransportService],
 })
