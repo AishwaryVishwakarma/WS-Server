@@ -21,14 +21,14 @@ describe('DigestService', () => {
   let service: DigestService;
   let usersRepository: {find: jest.Mock};
   let settingsService: {isDigestEmailGloballyEnabled: jest.Mock};
-  let digestQueue: {add: jest.Mock};
+  let digestQueue: {addBulk: jest.Mock};
 
   beforeEach(async () => {
     usersRepository = {find: jest.fn().mockResolvedValue([])};
     settingsService = {
       isDigestEmailGloballyEnabled: jest.fn().mockResolvedValue(true),
     };
-    digestQueue = {add: jest.fn().mockResolvedValue({id: 'digest-job'})};
+    digestQueue = {addBulk: jest.fn().mockResolvedValue([])};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -70,12 +70,13 @@ describe('DigestService', () => {
       expect(result).toEqual({sent: 0});
       expect(usersRepository.find).toHaveBeenCalledWith({
         where: {digestEmailEnabled: true},
+        select: {id: true},
         order: {id: 'ASC'},
         take: 100,
       });
     });
 
-    it('queues one durable weekly job per opted-in user', async () => {
+    it('queues one durable weekly job per opted-in user in a single bulk add', async () => {
       usersRepository.find
         .mockResolvedValueOnce([{id: 'user-1'}, {id: 'user-2'}])
         .mockResolvedValueOnce([]);
@@ -83,15 +84,21 @@ describe('DigestService', () => {
       const result = await service.sendWeeklyDigests();
 
       expect(result).toEqual({sent: 2});
-      expect(digestQueue.add).toHaveBeenCalledTimes(2);
-      expect(digestQueue.add).toHaveBeenCalledWith(
-        'weekly',
-        {userId: 'user-1'},
+      expect(digestQueue.addBulk).toHaveBeenCalledTimes(1);
+      expect(digestQueue.addBulk).toHaveBeenCalledWith([
         expect.objectContaining({
-          attempts: 5,
-          jobId: expect.stringMatching(/^weekly-\d{4}-\d{2}-\d{2}-user-1$/),
-        })
-      );
+          name: 'weekly',
+          data: {userId: 'user-1'},
+          opts: expect.objectContaining({
+            attempts: 5,
+            jobId: expect.stringMatching(/^weekly-\d{4}-\d{2}-\d{2}-user-1$/),
+          }),
+        }),
+        expect.objectContaining({
+          name: 'weekly',
+          data: {userId: 'user-2'},
+        }),
+      ]);
     });
   });
 });

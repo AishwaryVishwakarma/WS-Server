@@ -8,7 +8,7 @@ import {ConfigService} from '@nestjs/config';
 import {Test} from '@nestjs/testing';
 import {getRepositoryToken} from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import {QueryFailedError} from 'typeorm';
+import {In, QueryFailedError} from 'typeorm';
 import {User} from './entities/user.entity';
 import {UserReport} from './entities/user-report.entity';
 import {Story} from 'src/stories/entities/story.entity';
@@ -477,6 +477,18 @@ describe('UsersService', () => {
         })
       ).rejects.toThrow(ConflictException);
     });
+
+    it("strips an inbound referralCode rather than letting it collide with the account's own outbound one", async () => {
+      const user = (await service.create({
+        name: 'Test',
+        email: 'a@b.com',
+        password: 'S3cret!Password',
+        referralCode: 'someone-elses-code',
+      })) as User;
+
+      expect(user).not.toHaveProperty('referralCode');
+      expect(user.referredById).toBeNull();
+    });
   });
 
   describe('createFromVerifiedRegistration', () => {
@@ -507,6 +519,57 @@ describe('UsersService', () => {
           'already-hashed'
         )
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('sets referredById when a resolved referrer id is supplied', async () => {
+      const user = (await service.createFromVerifiedRegistration(
+        {name: 'Test', email: 'a@b.com'},
+        'already-hashed',
+        'referrer-1'
+      )) as User;
+
+      expect(user.referredById).toBe('referrer-1');
+    });
+
+    it('defaults referredById to null when no referrer was supplied', async () => {
+      const user = (await service.createFromVerifiedRegistration(
+        {name: 'Test', email: 'a@b.com'},
+        'already-hashed'
+      )) as User;
+
+      expect(user.referredById).toBeNull();
+    });
+  });
+
+  describe('findOneByReferralCode', () => {
+    it('returns the matching user', async () => {
+      repository.findOneBy.mockResolvedValue({id: 'user-1'});
+
+      await expect(service.findOneByReferralCode('abc123')).resolves.toEqual({
+        id: 'user-1',
+      });
+      expect(repository.findOneBy).toHaveBeenCalledWith({
+        referralCode: 'abc123',
+      });
+    });
+
+    it('returns null rather than throwing on an unknown code', async () => {
+      repository.findOneBy.mockResolvedValue(null);
+
+      await expect(
+        service.findOneByReferralCode('not-a-real-code')
+      ).resolves.toBeNull();
+    });
+  });
+
+  describe('countReferredUsers', () => {
+    it('counts accounts referred by this user', async () => {
+      repository.count.mockResolvedValue(3);
+
+      await expect(service.countReferredUsers('user-1')).resolves.toBe(3);
+      expect(repository.count).toHaveBeenCalledWith({
+        where: {referredById: 'user-1'},
+      });
     });
   });
 
@@ -913,6 +976,27 @@ describe('UsersService', () => {
 
       const [, update] = repository.update.mock.calls[0];
       expect(update.streakFreezeCount).toBeUndefined();
+      expect(
+        settingsService.isMembershipFeaturesEnabled
+      ).not.toHaveBeenCalled();
+    });
+
+    it('skips the settings lookup when already at the freeze cap', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Patron,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastActiveDate: yesterday,
+        streakFreezeCount: 1,
+        lastStreakFreezeUsedAt: null,
+      });
+
+      await service.recordActivity('user-1');
+
+      expect(
+        settingsService.isMembershipFeaturesEnabled
+      ).not.toHaveBeenCalled();
     });
 
     it('does not grant while membership features are staged off', async () => {
@@ -952,6 +1036,26 @@ describe('UsersService', () => {
       expect(update.streakFreezeCount).toBe(0);
     });
 
+    it('spends a banked freeze for a Free member too — spending is universal even though the monthly grant is Patron+-only', async () => {
+      repository.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        membershipTier: MembershipTier.Free,
+        currentStreak: 5,
+        longestStreak: 5,
+        lastActiveDate: twoDaysAgo,
+        // Only reachable for a Free member via a referral bonus (see
+        // AuthService.confirmRegistration) — never the monthly grant above.
+        streakFreezeCount: 1,
+        lastStreakFreezeUsedAt: null,
+      });
+
+      await service.recordActivity('user-1');
+
+      const [, update] = repository.update.mock.calls[0];
+      expect(update.currentStreak).toBe(6);
+      expect(update.streakFreezeCount).toBe(0);
+    });
+
     it('resets normally when the gap is more than one day, even with a freeze banked', async () => {
       const fourDaysAgo = new Date(Date.now() - 4 * 86_400_000)
         .toISOString()
@@ -983,6 +1087,24 @@ describe('UsersService', () => {
       expect(repository.update).toHaveBeenCalledWith('user-1', {
         hasPublishedStory: true,
       });
+    });
+  });
+
+  describe('markManyHasPublishedStory', () => {
+    it('sets the flag for every id in a single update', async () => {
+      await service.markManyHasPublishedStory(['user-1', 'user-2']);
+
+      expect(repository.update).toHaveBeenCalledTimes(1);
+      expect(repository.update).toHaveBeenCalledWith(
+        {id: In(['user-1', 'user-2'])},
+        {hasPublishedStory: true}
+      );
+    });
+
+    it('does not query when given no ids', async () => {
+      await service.markManyHasPublishedStory([]);
+
+      expect(repository.update).not.toHaveBeenCalled();
     });
   });
 
@@ -1248,6 +1370,48 @@ describe('UsersService', () => {
         'story.status = :status',
         {status: 'approved'}
       );
+    });
+  });
+
+  describe('computeProfileExtras', () => {
+    const loadedUser = {
+      id: 'user-1',
+      longestStreak: 30,
+      membershipTier: MembershipTier.Free,
+    };
+
+    it('takes the already-loaded user instead of re-fetching it', async () => {
+      await service.computeProfileExtras(loadedUser as never);
+
+      expect(repository.findOneByOrFail).not.toHaveBeenCalled();
+    });
+
+    it('runs the approved-story aggregate once and shares it across badges and achievements', async () => {
+      storiesQueryBuilder.getRawOne.mockResolvedValue({
+        approvedCount: '10',
+        totalLikes: '25',
+        totalComments: '25',
+      });
+      seriesRepository.exists.mockResolvedValue(true);
+
+      const {badges, achievementBadges} = await service.computeProfileExtras(
+        loadedUser as never
+      );
+
+      expect(storiesQueryBuilder.getRawOne).toHaveBeenCalledTimes(1);
+      expect(badges).toEqual(
+        expect.arrayContaining([
+          Badge.Published,
+          Badge.Prolific,
+          Badge.FanFavorite,
+          Badge.ConversationStarter,
+          Badge.SeriesAuthor,
+          Badge.MonthStreak,
+        ])
+      );
+      expect(
+        achievementBadges.find(({key}) => key === AchievementKey.Storyteller)
+      ).toMatchObject({tier: 3});
     });
   });
 

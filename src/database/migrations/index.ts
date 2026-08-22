@@ -29,6 +29,9 @@ import {AddBillingColumns1786960000000} from './1786960000000-AddBillingColumns'
 import {AddRetentionFeatures1786970000000} from './1786970000000-AddRetentionFeatures';
 import {AddSeasonalEvents1787050000000} from './1787050000000-AddSeasonalEvents';
 import {AddSeasonalEventAchievements1787060000000} from './1787060000000-AddSeasonalEventAchievements';
+import {AddReferralProgram1787070000000} from './1787070000000-AddReferralProgram';
+import {AddWinbackEmail1787080000000} from './1787080000000-AddWinbackEmail';
+import {AddPerformanceIndexes1787090000000} from './1787090000000-AddPerformanceIndexes';
 
 export const migrations = [
   Baseline1786175459406,
@@ -51,4 +54,7 @@ export const migrations = [
   AddRetentionFeatures1786970000000,
   AddSeasonalEvents1787050000000,
   AddSeasonalEventAchievements1787060000000,
+  AddReferralProgram1787070000000,
+  AddWinbackEmail1787080000000,
+  AddPerformanceIndexes1787090000000,
 ];

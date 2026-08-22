@@ -108,11 +108,17 @@ export class ImageStorageService {
     }
   }
 
-  async listAll(): Promise<StoredImage[]> {
+  // Yields one page at a time instead of the whole bucket at once — a
+  // maintenance pass (snapshot/purge) can accumulate running totals or start
+  // deleting stale files from page 1 without ever holding the full listing
+  // in memory. `total` (Appwrite's grand total, stable across pages) rides
+  // along with each page so a caller can report scan progress without a
+  // separate full pass just to learn how many files there are.
+  async *listAllPages(): AsyncGenerator<{files: StoredImage[]; total: number}> {
     const endpoint = this.required('APPWRITE_ENDPOINT').replace(/\/$/, '');
     const bucketId = this.required('APPWRITE_IMAGE_BUCKET_ID');
-    const files: StoredImage[] = [];
     const pageSize = 100;
+    let seen = 0;
 
     for (let offset = 0; ; offset += pageSize) {
       const params = new URLSearchParams();
@@ -144,15 +150,22 @@ export class ImageStorageService {
         throw new BadGatewayException('Image storage rejected the request');
       }
       const page = (await response.json()) as AppwriteFileList;
-      files.push(
-        ...page.files.map((file) => ({
-          id: file.$id,
-          name: file.name,
-          createdAt: file.$createdAt,
-          size: file.sizeOriginal,
-        }))
-      );
-      if (page.files.length < pageSize || files.length >= page.total) break;
+      const files = page.files.map((file) => ({
+        id: file.$id,
+        name: file.name,
+        createdAt: file.$createdAt,
+        size: file.sizeOriginal,
+      }));
+      seen += files.length;
+      yield {files, total: page.total};
+      if (page.files.length < pageSize || seen >= page.total) break;
+    }
+  }
+
+  async listAll(): Promise<StoredImage[]> {
+    const files: StoredImage[] = [];
+    for await (const page of this.listAllPages()) {
+      files.push(...page.files);
     }
     return files;
   }

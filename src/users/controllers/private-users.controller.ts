@@ -56,11 +56,16 @@ export class PrivateUsersController {
   ) {}
 
   private async _serialize(user: User) {
+    const [hasPassword, referredUserCount] = await Promise.all([
+      this.usersService.hasPassword(user.id),
+      this.usersService.countReferredUsers(user.id),
+    ]);
     return plainToInstance(
       UserPrivateResponseDto,
       {
         ...user,
-        hasPassword: await this.usersService.hasPassword(user.id),
+        hasPassword,
+        referredUserCount,
       },
       {
         excludeExtraneousValues: true,

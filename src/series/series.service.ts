@@ -1,13 +1,16 @@
 import {Injectable, NotFoundException} from '@nestjs/common';
+import {InjectQueue} from '@nestjs/bullmq';
 import {InjectRepository} from '@nestjs/typeorm';
+import type {Queue} from 'bullmq';
 import {IsNull, LessThanOrEqual, Not, Repository} from 'typeorm';
 import {Series} from './entities/series.entity';
 import {User} from 'src/users/entities/user.entity';
 import {SeriesSubscription} from './entities/series-subscription.entity';
-import {NotificationsService} from 'src/notifications/notifications.service';
 import {Story} from 'src/stories/entities/story.entity';
 import {Interval} from '@nestjs/schedule';
 import {StoryStatus} from 'src/stories/enums/story-status.enum';
+import {SERIES_NOTIFY_QUEUE} from 'src/jobs/queue.constants';
+import {DURABLE_JOB_OPTIONS} from 'src/jobs/queue.options';
 
 @Injectable()
 export class SeriesService {
@@ -18,7 +21,8 @@ export class SeriesService {
     private readonly subscriptionsRepository: Repository<SeriesSubscription>,
     @InjectRepository(Story)
     private readonly storiesRepository: Repository<Story>,
-    private readonly notificationsService: NotificationsService
+    @InjectQueue(SERIES_NOTIFY_QUEUE)
+    private readonly seriesNotifyQueue: Queue
   ) {}
 
   async subscribe(userId: string, seriesId: string): Promise<void> {
@@ -54,6 +58,13 @@ export class SeriesService {
     return rows.map((row) => row.series);
   }
 
+  // Fans out onto SERIES_NOTIFY_QUEUE rather than creating notifications
+  // inline: a series can have arbitrarily many subscribers, and this is
+  // called from bulkUpdateStatus inside an open DB transaction — unbounded
+  // per-subscriber writes there risked exhausting the connection pool on a
+  // large bulk approval. Only subscriber ids are loaded (not full User
+  // relations), and the queue add is the only DB-adjacent work left on this
+  // path.
   async notifySubscribers(story: Story): Promise<void> {
     if (
       !story.series ||
@@ -61,26 +72,37 @@ export class SeriesService {
       (story.scheduledFor && story.scheduledFor > new Date())
     )
       return;
-    const subscriptions = await this.subscriptionsRepository.find({
-      where: {series: {id: story.series.id}},
-      relations: {user: true},
-    });
-    await Promise.all(
-      subscriptions
-        .filter((subscription) => subscription.user.id !== story.author.id)
-        .map((subscription) =>
-          this.notificationsService.createNotification({
-            type: 'series',
-            recipientId: subscription.user.id,
-            actorName: story.author.name,
+    const subscriptions = await this.subscriptionsRepository
+      .createQueryBuilder('subscription')
+      .select('subscription.userId', 'userId')
+      .where('subscription.seriesId = :seriesId', {seriesId: story.series.id})
+      .getRawMany<{userId: string}>();
+
+    const recipientIds = subscriptions
+      .map((row) => row.userId)
+      .filter((userId) => userId !== story.author.id);
+
+    if (recipientIds.length > 0) {
+      await this.seriesNotifyQueue.addBulk(
+        recipientIds.map((recipientId) => ({
+          name: 'series-notify',
+          data: {
+            recipientId,
             actorId: story.author.id,
+            actorName: story.author.name,
             actorSlug: story.author.slug,
             storyId: story.id,
             storySlug: story.slug,
             storyTitle: story.title,
-          })
-        )
-    );
+          },
+          opts: {
+            ...DURABLE_JOB_OPTIONS,
+            jobId: `series-notify-${story.id}-${recipientId}`,
+          },
+        }))
+      );
+    }
+
     await this.storiesRepository.update(story.id, {
       seriesNotifiedAt: new Date(),
     });

@@ -36,6 +36,12 @@ export class PendingRegistration {
   @Column({type: 'int', default: 0})
   attempts: number;
 
+  // Resolved once, at start() time, from an inbound referral code (see
+  // RegistrationOtpService.start) — a plain id, not a relation, since this
+  // row is a short-lived staging record, not a durable one worth a FK.
+  @Column({type: 'uuid', nullable: true})
+  referredById: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

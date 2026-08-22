@@ -21,6 +21,7 @@ import type {ReportReason} from './enums/report-reason.enum';
 import {Badge} from './enums/badge.enum';
 import {
   ILike,
+  In,
   IsNull,
   MoreThan,
   Not,
@@ -48,6 +49,7 @@ import {SettingsService} from 'src/settings/settings.service';
 import {
   ACHIEVEMENT_DEFINITIONS,
   AchievementKey,
+  type AchievementBadge,
   type AchievementProgress,
   unlockedTier,
 } from './achievements';
@@ -177,7 +179,12 @@ export class UsersService {
 
   // Accepts RegisterUserDto (self-registration) or CreateUserDto (admin, extends it)
   async create(createUserDto: RegisterUserDto) {
-    const {password, ...rest} = createUserDto;
+    // referralCode here is an *inbound* code (see RegisterUserDto) — the
+    // admin-create path doesn't run through the referral program at all, so
+    // it's stripped rather than passed to _createUserWithHash, where it
+    // would otherwise collide with User's own outbound referralCode column.
+    const {password, referralCode, ...rest} = createUserDto;
+    void referralCode;
     const hashedPassword = await this.hashPassword(password);
     return this._createUserWithHash(rest, hashedPassword);
   }
@@ -185,20 +192,26 @@ export class UsersService {
   // Used by registration-OTP confirm, where the password was already hashed
   // back at registration-start time (before the code was even sent) — the
   // PendingRegistration row only ever holds the hash, never the plaintext.
+  // referredById is the *resolved* referrer's id (from
+  // RegistrationOtpService/PendingRegistration.referredById), never the raw
+  // inbound code — see the note on `create` above.
   async createFromVerifiedRegistration(
-    dto: Omit<RegisterUserDto, 'password'>,
-    hashedPassword: string
+    dto: Omit<RegisterUserDto, 'password' | 'referralCode'>,
+    hashedPassword: string,
+    referredById: string | null = null
   ) {
-    return this._createUserWithHash(dto, hashedPassword);
+    return this._createUserWithHash(dto, hashedPassword, referredById);
   }
 
   private async _createUserWithHash(
-    dto: Omit<RegisterUserDto, 'password'>,
-    hashedPassword: string
+    dto: Omit<RegisterUserDto, 'password' | 'referralCode'>,
+    hashedPassword: string,
+    referredById: string | null = null
   ) {
     const user = this.usersRepository.create({
       ...dto,
       password: hashedPassword,
+      referredById,
       // Creation never grants the public verified-author status. Admins may
       // still verify an existing account through update(), and qualifying
       // authors may earn it through the automatic verification rule.
@@ -392,6 +405,22 @@ export class UsersService {
     });
   }
 
+  // Registration-time lookup for an inbound referral code — a plain
+  // nullable return, not the throwing findOneBySlug style above, since an
+  // invalid/typo'd code must let registration proceed silently as "no
+  // referrer" rather than error or reveal which codes exist.
+  async findOneByReferralCode(code: string): Promise<User | null> {
+    return this.usersRepository.findOneBy({referralCode: code});
+  }
+
+  // How many accounts this user has referred — self-only (see
+  // PrivateUsersController), attached the same way as hasPassword: computed
+  // fresh on each /users/me fetch rather than a denormalized counter, since
+  // it's read far less often than it would need invalidating.
+  async countReferredUsers(userId: string): Promise<number> {
+    return this.usersRepository.count({where: {referredById: userId}});
+  }
+
   // Records reading activity for today (UTC), extending/resetting the
   // user's streak via the pure computeStreakUpdate — triggered from
   // StoriesService.recordView on any story view. A no-op (no query beyond
@@ -405,36 +434,41 @@ export class UsersService {
     const today = new Date().toISOString().slice(0, 10);
     const now = new Date();
 
-    // Patron+ streak-freeze perk: gated on the site-wide toggle like every
-    // other membership benefit, checked lazily here since nothing else in
-    // this file runs on a schedule either (see streak.ts).
-    const membershipLive =
-      user.membershipTier !== MembershipTier.Free &&
-      (await this.settingsService.isMembershipFeaturesEnabled());
-
     let streakFreezeCount = user.streakFreezeCount;
     let lastStreakFreezeUsedAt = user.lastStreakFreezeUsedAt;
     let freezeChanged = false;
     let effectiveState: StreakState = user;
 
-    if (membershipLive) {
-      if (
-        isEligibleForFreezeGrant(streakFreezeCount, lastStreakFreezeUsedAt, now)
-      ) {
-        streakFreezeCount += 1;
-        lastStreakFreezeUsedAt = now;
-        freezeChanged = true;
-      }
-      if (
-        streakFreezeCount > 0 &&
-        user.lastActiveDate &&
-        isOneDayGap(user.lastActiveDate, today)
-      ) {
-        effectiveState = {...user, ...applyFreeze(user, today)};
-        streakFreezeCount -= 1;
-        lastStreakFreezeUsedAt = now;
-        freezeChanged = true;
-      }
+    // isEligibleForFreezeGrant (cap, replenish window) and the tier check are
+    // both cheap and synchronous; the site-wide toggle is the only part of
+    // this condition that costs a settings lookup, called on every
+    // view/comment/like. Checking it last means most calls — a Free-tier
+    // member, or a Patron+ one already at the cap or mid-replenish-window —
+    // never pay for it at all.
+    const grantPossible =
+      user.membershipTier !== MembershipTier.Free &&
+      isEligibleForFreezeGrant(streakFreezeCount, lastStreakFreezeUsedAt, now);
+    if (
+      grantPossible &&
+      (await this.settingsService.isMembershipFeaturesEnabled())
+    ) {
+      streakFreezeCount += 1;
+      lastStreakFreezeUsedAt = now;
+      freezeChanged = true;
+    }
+
+    // Spending a banked freeze is universal — it doesn't matter whether it
+    // came from the Patron+ top-up above or a referral bonus, so this check
+    // is deliberately not gated on membershipLive.
+    if (
+      streakFreezeCount > 0 &&
+      user.lastActiveDate &&
+      isOneDayGap(user.lastActiveDate, today)
+    ) {
+      effectiveState = {...user, ...applyFreeze(user, today)};
+      streakFreezeCount -= 1;
+      lastStreakFreezeUsedAt = now;
+      freezeChanged = true;
     }
 
     const updated = computeStreakUpdate(effectiveState, today);
@@ -446,29 +480,38 @@ export class UsersService {
     });
   }
 
-  async computeBadges(userId: string, longestStreak: number): Promise<Badge[]> {
-    const [raw, hasSeries] = await Promise.all([
-      this.storiesRepository
-        .createQueryBuilder('story')
-        .select('COUNT(*)', 'approvedCount')
-        .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
-        .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
-        .where('story.author = :authorId', {authorId: userId})
-        .andWhere('story.status = :status', {status: StoryStatus.Approved})
-        .getRawOne<{
-          approvedCount: string;
-          totalLikes: string;
-          totalComments: string;
-        }>(),
-      this.seriesRepository.exists({where: {author: {id: userId}}}),
-    ]);
-
-    const stats = {
+  // Shared by computeBadges/computeAchievements/computeProfileExtras so a
+  // public profile view (which needs both badges and achievements) doesn't
+  // run this identical approved-story aggregate twice.
+  private async _approvedStoryStats(userId: string): Promise<{
+    approvedCount: number;
+    totalLikes: number;
+    totalComments: number;
+  }> {
+    const raw = await this.storiesRepository
+      .createQueryBuilder('story')
+      .select('COUNT(*)', 'approvedCount')
+      .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
+      .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
+      .where('story.author = :authorId', {authorId: userId})
+      .andWhere('story.status = :status', {status: StoryStatus.Approved})
+      .getRawOne<{
+        approvedCount: string;
+        totalLikes: string;
+        totalComments: string;
+      }>();
+    return {
       approvedCount: Number(raw?.approvedCount) || 0,
       totalLikes: Number(raw?.totalLikes) || 0,
       totalComments: Number(raw?.totalComments) || 0,
     };
+  }
 
+  private _badgesFromStats(
+    stats: {approvedCount: number; totalLikes: number; totalComments: number},
+    hasSeries: boolean,
+    longestStreak: number
+  ): Badge[] {
     const badges: Badge[] = [];
     if (stats.approvedCount >= 1) badges.push(Badge.Published);
     if (stats.approvedCount >= PROLIFIC_STORY_COUNT)
@@ -487,47 +530,51 @@ export class UsersService {
     return badges;
   }
 
-  // Achievement progress for the private achievements view. Most progress is
-  // computed from existing stats; event completions use the durable ledger so
-  // an earned tier remains after its limited event ends.
-  async computeAchievements(userId: string): Promise<AchievementProgress[]> {
-    const user = await this.findOne(userId);
-    const [storyStats, seriesCount, completedStories, completedEvents] =
-      await Promise.all([
-        this.storiesRepository
-          .createQueryBuilder('story')
-          .select('COUNT(*)', 'approvedCount')
-          .addSelect('COALESCE(SUM(story.likeCount), 0)', 'totalLikes')
-          .addSelect('COALESCE(SUM(story.commentCount), 0)', 'totalComments')
-          .where('story.author = :authorId', {authorId: userId})
-          .andWhere('story.status = :status', {status: StoryStatus.Approved})
-          .getRawOne<{
-            approvedCount: string;
-            totalLikes: string;
-            totalComments: string;
-          }>(),
-        this.seriesRepository
-          .createQueryBuilder('series')
-          .innerJoin('series.stories', 'story')
-          .where('series.author = :authorId', {authorId: userId})
-          .andWhere('story.status = :status', {status: StoryStatus.Approved})
-          .getCount(),
-        this.readingProgressRepository
-          .createQueryBuilder('progress')
-          .innerJoin('progress.story', 'story')
-          .where('progress.user = :userId', {userId})
-          .andWhere('progress.percent = :completePercent', {
-            completePercent: 100,
-          })
-          .andWhere('story.status = :status', {status: StoryStatus.Approved})
-          .getCount(),
-        this.eventCompletionsRepository?.countBy({user: {id: userId}}) ?? 0,
-      ]);
+  async computeBadges(userId: string, longestStreak: number): Promise<Badge[]> {
+    const [stats, hasSeries] = await Promise.all([
+      this._approvedStoryStats(userId),
+      this.seriesRepository.exists({where: {author: {id: userId}}}),
+    ]);
+
+    return this._badgesFromStats(stats, hasSeries, longestStreak);
+  }
+
+  // Shared by computeAchievements and computeProfileExtras once the caller
+  // already has `user` and its approved-story aggregate — event completions
+  // use the durable ledger so an earned tier remains after its limited event
+  // ends.
+  private async _achievementProgressFromStats(
+    user: User,
+    storyStats: {
+      approvedCount: number;
+      totalLikes: number;
+      totalComments: number;
+    }
+  ): Promise<AchievementProgress[]> {
+    const userId = user.id;
+    const [seriesCount, completedStories, completedEvents] = await Promise.all([
+      this.seriesRepository
+        .createQueryBuilder('series')
+        .innerJoin('series.stories', 'story')
+        .where('series.author = :authorId', {authorId: userId})
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getCount(),
+      this.readingProgressRepository
+        .createQueryBuilder('progress')
+        .innerJoin('progress.story', 'story')
+        .where('progress.user = :userId', {userId})
+        .andWhere('progress.percent = :completePercent', {
+          completePercent: 100,
+        })
+        .andWhere('story.status = :status', {status: StoryStatus.Approved})
+        .getCount(),
+      this.eventCompletionsRepository?.countBy({user: {id: userId}}) ?? 0,
+    ]);
 
     const progressByKey: Record<AchievementKey, number> = {
-      [AchievementKey.Storyteller]: Number(storyStats?.approvedCount) || 0,
-      [AchievementKey.CrowdFavorite]: Number(storyStats?.totalLikes) || 0,
-      [AchievementKey.CampfireHost]: Number(storyStats?.totalComments) || 0,
+      [AchievementKey.Storyteller]: storyStats.approvedCount,
+      [AchievementKey.CrowdFavorite]: storyStats.totalLikes,
+      [AchievementKey.CampfireHost]: storyStats.totalComments,
       [AchievementKey.SerialStoryteller]: seriesCount,
       [AchievementKey.ReadingRitual]: user.longestStreak,
       [AchievementKey.NightExplorer]: completedStories,
@@ -555,11 +602,47 @@ export class UsersService {
     });
   }
 
-  async computeAchievementBadges(userId: string) {
+  // Achievement progress for the private achievements view.
+  async computeAchievements(userId: string): Promise<AchievementProgress[]> {
+    const [user, storyStats] = await Promise.all([
+      this.findOne(userId),
+      this._approvedStoryStats(userId),
+    ]);
+    return this._achievementProgressFromStats(user, storyStats);
+  }
+
+  async computeAchievementBadges(userId: string): Promise<AchievementBadge[]> {
     const achievements = await this.computeAchievements(userId);
     return achievements.flatMap(({key, highestUnlockedTier}) =>
       highestUnlockedTier === 0 ? [] : [{key, tier: highestUnlockedTier}]
     );
+  }
+
+  // Public author profiles need both badges and achievement badges for the
+  // same user in one request. Computing them via the independent
+  // computeBadges/computeAchievementBadges methods above would run the
+  // approved-story aggregate twice and re-fetch a user the caller (the
+  // profile controller, which just resolved it via findOneBySlug) already
+  // has loaded — this shares both.
+  async computeProfileExtras(
+    user: User
+  ): Promise<{badges: Badge[]; achievementBadges: AchievementBadge[]}> {
+    const [storyStats, hasSeries] = await Promise.all([
+      this._approvedStoryStats(user.id),
+      this.seriesRepository.exists({where: {author: {id: user.id}}}),
+    ]);
+
+    const achievements = await this._achievementProgressFromStats(
+      user,
+      storyStats
+    );
+
+    return {
+      badges: this._badgesFromStats(storyStats, hasSeries, user.longestStreak),
+      achievementBadges: achievements.flatMap(({key, highestUnlockedTier}) =>
+        highestUnlockedTier === 0 ? [] : [{key, tier: highestUnlockedTier}]
+      ),
+    };
   }
 
   // Aggregate snapshot for the author's own dashboard (GET /users/me/stats).
@@ -867,6 +950,17 @@ export class UsersService {
   // StoriesService.updateStatus when a story reaches approved.
   async markHasPublishedStory(userId: string): Promise<void> {
     await this.usersRepository.update(userId, {hasPublishedStory: true});
+  }
+
+  // Same latch as markHasPublishedStory, batched for
+  // StoriesService.bulkUpdateStatus — one UPDATE across every distinct
+  // author in the batch instead of one per author.
+  async markManyHasPublishedStory(userIds: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+    await this.usersRepository.update(
+      {id: In(userIds)},
+      {hasPublishedStory: true}
+    );
   }
 
   // A member deleting their own account (as opposed to admin removal, see

@@ -75,6 +75,7 @@ describe('StoriesService', () => {
   let usersService: {
     findOne: jest.Mock;
     markHasPublishedStory: jest.Mock;
+    markManyHasPublishedStory: jest.Mock;
     recordActivity: jest.Mock;
   };
   let tagsService: {findManyByIds: jest.Mock};
@@ -169,6 +170,7 @@ describe('StoriesService', () => {
     usersService = {
       findOne: jest.fn().mockResolvedValue(author),
       markHasPublishedStory: jest.fn().mockResolvedValue(undefined),
+      markManyHasPublishedStory: jest.fn().mockResolvedValue(undefined),
       recordActivity: jest.fn().mockResolvedValue(undefined),
     };
     tagsService = {findManyByIds: jest.fn()};
@@ -1034,20 +1036,24 @@ describe('StoriesService', () => {
       expect(result[0].rejectionReason).toBeNull();
     });
 
-    it('latches markHasPublishedStory once per distinct author when approving', async () => {
+    it('latches markManyHasPublishedStory once with distinct authors when approving', async () => {
       const stories = [
         {id: 'story-1', status: StoryStatus.Pending, author: {id: 'a1'}},
         {id: 'story-2', status: StoryStatus.Pending, author: {id: 'a1'}},
+        {id: 'story-3', status: StoryStatus.Pending, author: {id: 'a2'}},
       ];
       repository.find.mockResolvedValue(stories);
 
       await service.bulkUpdateStatus(
-        ['story-1', 'story-2'],
+        ['story-1', 'story-2', 'story-3'],
         StoryStatus.Approved
       );
 
-      expect(usersService.markHasPublishedStory).toHaveBeenCalledTimes(1);
-      expect(usersService.markHasPublishedStory).toHaveBeenCalledWith('a1');
+      expect(usersService.markManyHasPublishedStory).toHaveBeenCalledTimes(1);
+      expect(usersService.markManyHasPublishedStory).toHaveBeenCalledWith([
+        'a1',
+        'a2',
+      ]);
     });
 
     it('rejects the whole batch (and changes nothing) when an id is missing', async () => {
@@ -1461,6 +1467,40 @@ describe('StoriesService', () => {
           excludeAuthorIds: ['reader-1'],
         },
       });
+    });
+
+    it('selects only ids off the engagement tables and caps the NotForMe exclusion list', async () => {
+      storyLikeRepository.find.mockResolvedValue([{story: {id: 'story-1'}}]);
+      repository.find.mockResolvedValue([
+        {id: 'story-1', tags: [{id: 'tag-1'}]},
+      ]);
+      jest
+        .spyOn(service, 'findApprovedFeed')
+        .mockResolvedValue({data: [], nextCursor: null, total: 0});
+
+      await service.findForYouFeed('reader-1', {});
+
+      expect(storyLikeRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {id: true, createdAt: true, story: {id: true}},
+        })
+      );
+      expect(bookmarkRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {id: true, createdAt: true, story: {id: true}},
+        })
+      );
+      expect(readingProgressRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {id: true, updatedAt: true, story: {id: true}},
+        })
+      );
+      expect(recommendationFeedbackRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {id: true, updatedAt: true, story: {id: true}},
+          take: 200,
+        })
+      );
     });
 
     it('also excludes muted authors alongside the reader themselves', async () => {

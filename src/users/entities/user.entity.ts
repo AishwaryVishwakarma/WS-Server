@@ -8,6 +8,8 @@ import {
   DeleteDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -24,7 +26,7 @@ import {
   NOTIFICATION_TYPES,
   type NotificationType,
 } from 'src/notifications/notification.types';
-import {buildSlug} from 'src/utils/slug';
+import {buildSlug, shortId} from 'src/utils/slug';
 
 @Entity()
 // One Google identity maps to at most one account. Named + nullable-unique so
@@ -39,6 +41,11 @@ import {buildSlug} from 'src/utils/slug';
 // created it in AddAnalyticsEvents — without this, migration:generate can't
 // see the index in entity metadata and proposes dropping it every time.
 @Index('IDX_user_createdAt', ['createdAt'], {where: '"deletedAt" IS NULL'})
+// GET /users/me reads this on every request (countReferredUsers) — partial
+// since most accounts were never referred by anyone.
+@Index('IDX_user_referredById', ['referredById'], {
+  where: '"referredById" IS NOT NULL',
+})
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -52,6 +59,27 @@ export class User {
   // including edits that never touch the name.
   @Column({length: 100, unique: true})
   slug: string;
+
+  // A permanent, shareable invite code — assigned once (see assignReferralCode
+  // below) and deliberately *not* derived from name/slug, since slug
+  // regenerates on a name change and would silently break a previously-shared
+  // referral link.
+  @Column({length: 12, unique: true})
+  referralCode: string;
+
+  // Set once, at registration, when this account was created via someone
+  // else's referral code (see RegistrationOtpService.start/AuthService.
+  // confirmRegistration). ON DELETE SET NULL: a referrer's account deletion
+  // shouldn't cascade into deleting everyone they referred.
+  @Column({type: 'uuid', nullable: true})
+  referredById: string | null;
+
+  @ManyToOne(() => User, {nullable: true, onDelete: 'SET NULL'})
+  @JoinColumn({
+    name: 'referredById',
+    foreignKeyConstraintName: 'FK_user_referredById',
+  })
+  referredBy: User | null;
 
   @Column({unique: true})
   email: string;
@@ -223,6 +251,16 @@ export class User {
   @Column({type: 'timestamp', nullable: true})
   lastDigestSentAt: Date | null;
 
+  // Win-back email is opt-out (unlike the weekly digest) — most readers
+  // would want a "we miss you" nudge if they lapse, so this defaults true.
+  @Column({default: true})
+  winbackEmailEnabled: boolean;
+
+  // Last time a win-back email was sent — compared against lastActiveDate so
+  // exactly one is sent per lapse episode (see WinbackService).
+  @Column({type: 'timestamp', nullable: true})
+  winbackEmailSentAt: Date | null;
+
   // Set by authenticated provider webhooks after a permanent bounce, spam
   // complaint, or provider suppression. Digest delivery is disabled at the
   // same time; admins can see why an address stopped receiving mail.
@@ -313,6 +351,13 @@ export class User {
   assignSlug() {
     if (!this.slug) {
       this.slug = buildSlug(this.name, 'member');
+    }
+  }
+
+  @BeforeInsert()
+  assignReferralCode() {
+    if (!this.referralCode) {
+      this.referralCode = shortId();
     }
   }
 }

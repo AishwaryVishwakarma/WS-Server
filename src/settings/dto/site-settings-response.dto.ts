@@ -7,6 +7,8 @@ export class SiteSettingsResponseDto {
   @Expose() digestEmailGloballyEnabled: boolean;
   @Expose() notificationEmailGloballyEnabled: boolean;
   @Expose() membershipFeaturesEnabled: boolean;
+  @Expose() winbackEmailGloballyEnabled: boolean;
+  @Expose() referralProgramEnabled: boolean;
   @Expose() updatedAt: Date;
 
   constructor(partial: Partial<SiteSettingsResponseDto>) {

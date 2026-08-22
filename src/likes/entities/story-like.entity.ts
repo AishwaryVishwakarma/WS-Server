@@ -22,12 +22,16 @@ import {
 // renaming them on every `migration:generate`, even though nothing changed.
 @Entity()
 @Unique('IDX_story_like_user_story', ['user', 'story'])
-@Index('IDX_story_like_user', ['user'])
+// No standalone user-only index: redundant with this unique constraint's
+// own (user, story) prefix.
 // Backs admin-analytics day-bucketed queries across all likes. Explicitly
 // named to match the raw SQL that created it in AddAnalyticsEvents — without
 // this, migration:generate can't see the index in entity metadata and
 // proposes dropping it every time.
 @Index('IDX_story_like_createdAt', ['createdAt'])
+// getStoryDailyStats' like-count leg filters by story; the unique
+// constraint above leads with user, not story, so it can't serve this.
+@Index('IDX_story_like_story_createdAt', ['story', 'createdAt'])
 export class StoryLike {
   @PrimaryGeneratedColumn('uuid')
   id: string;

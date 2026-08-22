@@ -112,6 +112,34 @@ describe('Reading streaks (integration)', () => {
     expect(me.body.longestStreak).toBe(6);
   });
 
+  it('lets a Free member spend a banked freeze — spending is universal even without Patron+ or membershipFeaturesEnabled', async () => {
+    const {reader, story} = await readerWithApprovedStory();
+
+    // A Free member only ever banks a freeze via a referral bonus (see
+    // AuthService.confirmRegistration) — set directly here since that's a
+    // separate flow, exercised in registration-otp.integration.spec.ts.
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setUTCDate(twoDaysAgo.getUTCDate() - 2);
+    await userRepository().update(
+      {email: 'reader@test.com'},
+      {
+        lastActiveDate: twoDaysAgo.toISOString().slice(0, 10),
+        currentStreak: 5,
+        longestStreak: 5,
+        streakFreezeCount: 1,
+      }
+    );
+
+    await reader.post(`/stories/${story.id}/view`).expect(200);
+
+    const me = await reader.get('/users/me').expect(200);
+    expect(me.body.currentStreak).toBe(6);
+    const updated = await userRepository().findOneBy({
+      email: 'reader@test.com',
+    });
+    expect(updated?.streakFreezeCount).toBe(0);
+  });
+
   it('surfaces streak-milestone badges once longestStreak crosses 7/30', async () => {
     const {authorId, authorSlug} = await readerWithApprovedStory();
     const anon = agent();

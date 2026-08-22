@@ -7,6 +7,7 @@ import {StoriesModule} from 'src/stories/stories.module';
 import {SeriesSubscription} from './entities/series-subscription.entity';
 import {NotificationsModule} from 'src/notifications/notifications.module';
 import {Story} from 'src/stories/entities/story.entity';
+import {SeriesNotifyProcessor} from './series-notify.processor';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import {Story} from 'src/stories/entities/story.entity';
     NotificationsModule,
   ],
   controllers: [SeriesController],
-  providers: [SeriesService],
+  providers: [SeriesService, SeriesNotifyProcessor],
   exports: [SeriesService],
 })
 export class SeriesModule {}

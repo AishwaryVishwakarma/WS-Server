@@ -1115,22 +1115,30 @@ export class StoriesService {
   // affinity.
   private async _engagedStoryIds(userId: string): Promise<string[]> {
     const CAP = 50;
+    // Only `.id` is read off `story` below — a `select` narrows each row to
+    // that column (plus whichever timestamp it's ordered by, which TypeORM's
+    // DISTINCT wrapping requires be present in the selection) instead of
+    // hydrating the full Story entity (content, searchVector, etc.) for up
+    // to 4 * CAP rows per request.
     const [likes, bookmarks, progress, positiveFeedback] = await Promise.all([
       this.storyLikeRepository.find({
         where: {user: {id: userId}},
         relations: {story: true},
+        select: {id: true, createdAt: true, story: {id: true}},
         order: {createdAt: 'DESC'},
         take: CAP,
       }),
       this.bookmarkRepository.find({
         where: {user: {id: userId}},
         relations: {story: true},
+        select: {id: true, createdAt: true, story: {id: true}},
         order: {createdAt: 'DESC'},
         take: CAP,
       }),
       this.readingProgressRepository.find({
         where: {user: {id: userId}},
         relations: {story: true},
+        select: {id: true, updatedAt: true, story: {id: true}},
         order: {updatedAt: 'DESC'},
         take: CAP,
       }),
@@ -1140,6 +1148,7 @@ export class StoriesService {
           action: RecommendationFeedbackAction.MoreLikeThis,
         },
         relations: {story: true},
+        select: {id: true, updatedAt: true, story: {id: true}},
         order: {updatedAt: 'DESC'},
         take: CAP,
       }),
@@ -1204,7 +1213,14 @@ export class StoriesService {
           action: RecommendationFeedbackAction.NotForMe,
         },
         relations: {story: true},
-        select: {id: true, story: {id: true}},
+        select: {id: true, updatedAt: true, story: {id: true}},
+        // Unbounded, this grows for the lifetime of an active reader's
+        // account. Most-recent exclusions matter most; an old one aging out
+        // of the cap just means that story could resurface eventually,
+        // which is the same recency-over-completeness trade-off
+        // _engagedStoryIds already makes above.
+        order: {updatedAt: 'DESC'},
+        take: 200,
       }),
     ]);
     const excludedStoryIds = [
@@ -1456,9 +1472,7 @@ export class StoriesService {
 
       if (status === StoryStatus.Approved) {
         const authorIds = new Set(stories.map((story) => story.author.id));
-        for (const authorId of authorIds) {
-          await this.usersService.markHasPublishedStory(authorId);
-        }
+        await this.usersService.markManyHasPublishedStory([...authorIds]);
         await Promise.all(
           newlyApprovedStories.map((story) =>
             this.seriesService.notifySubscribers(story)

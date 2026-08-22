@@ -31,6 +31,15 @@ export class RegisterUserDto {
   @IsClean()
   bio?: string;
 
+  // The inbound code from someone else's referral link (?ref=), if any — not
+  // to be confused with User.referralCode, this account's own outbound code.
+  // An invalid/typo'd value is never rejected; see
+  // RegistrationOtpService.start.
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  referralCode?: string;
+
   // Honeypot: a hidden field a real user never fills. Bots that auto-fill every
   // input trip @IsEmpty and get a 400 before an account is created.
   @IsEmpty()

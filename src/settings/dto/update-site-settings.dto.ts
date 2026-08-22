@@ -24,4 +24,12 @@ export class UpdateSiteSettingsDto {
   @IsOptional()
   @IsBoolean()
   membershipFeaturesEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  winbackEmailGloballyEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  referralProgramEnabled?: boolean;
 }

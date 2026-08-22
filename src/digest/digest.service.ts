@@ -58,19 +58,20 @@ export class DigestService {
           digestEmailEnabled: true,
           ...(cursor ? {id: MoreThan(cursor)} : {}),
         },
+        select: {id: true},
         order: {id: 'ASC'},
         take: DIGEST_BATCH_SIZE,
       });
       if (users.length === 0) break;
 
-      for (const user of users) {
-        await this.digestQueue.add(
-          'weekly',
-          {userId: user.id},
-          {...DURABLE_JOB_OPTIONS, jobId: `weekly-${week}-${user.id}`}
-        );
-        queued++;
-      }
+      await this.digestQueue.addBulk(
+        users.map((user) => ({
+          name: 'weekly',
+          data: {userId: user.id},
+          opts: {...DURABLE_JOB_OPTIONS, jobId: `weekly-${week}-${user.id}`},
+        }))
+      );
+      queued += users.length;
       cursor = users.at(-1)!.id;
     }
 
@@ -92,7 +93,8 @@ export class DigestService {
       this.mutesService.mutedAuthorIds(user.id),
       this.notificationsService.unreadCount(user.id),
     ]);
-    const visibleAuthorIds = authorIds.filter((id) => !mutedIds.includes(id));
+    const mutedIdSet = new Set(mutedIds);
+    const visibleAuthorIds = authorIds.filter((id) => !mutedIdSet.has(id));
 
     let newStories: {title: string; id: string; authorName: string}[] = [];
     if (visibleAuthorIds.length > 0) {

@@ -35,6 +35,17 @@ export class SiteSettings {
   @Column({type: 'boolean', default: false})
   membershipFeaturesEnabled: boolean;
 
+  // Off at launch, like digestEmailGloballyEnabled — gates the daily win-back
+  // cron (see WinbackService) regardless of any member's own
+  // winbackEmailEnabled opt-in/out.
+  @Column({type: 'boolean', default: false})
+  winbackEmailGloballyEnabled: boolean;
+
+  // Off at launch — gates whether a supplied referral code is even looked up
+  // during registration (see RegistrationOtpService.start).
+  @Column({type: 'boolean', default: false})
+  referralProgramEnabled: boolean;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }

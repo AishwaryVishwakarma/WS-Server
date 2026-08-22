@@ -49,6 +49,16 @@ describe('Users (integration)', () => {
     it('rejects unauthenticated requests', async () => {
       await agent().get('/users/me').expect(401);
     });
+
+    it("includes the account's own referral code and referred-user count", async () => {
+      const client = agent();
+      await registerUser(client);
+
+      const response = await client.get('/users/me').expect(200);
+
+      expect(response.body.referralCode).toMatch(/^[a-z0-9]+$/);
+      expect(response.body.referredUserCount).toBe(0);
+    });
   });
 
   describe('GET /users/me/stats', () => {

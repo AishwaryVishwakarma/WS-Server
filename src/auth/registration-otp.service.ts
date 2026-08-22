@@ -7,6 +7,7 @@ import {RegisterUserDto} from 'src/users/dto/register-user.dto';
 import {UsersService} from 'src/users/users.service';
 import {MailService} from 'src/mail/mail.service';
 import {EMAIL_ACCENT_COLOR, renderEmailHtml} from 'src/mail/email-template';
+import {SettingsService} from 'src/settings/settings.service';
 
 // A code is meant to be read off an email and typed back in one sitting —
 // unlike a password-reset link, there's no reason to let it sit unused for
@@ -22,6 +23,7 @@ export interface ConfirmedRegistration {
   email: string;
   passwordHash: string;
   bio: string | null;
+  referredById: string | null;
 }
 
 @Injectable()
@@ -30,7 +32,8 @@ export class RegistrationOtpService {
     @InjectRepository(PendingRegistration)
     private readonly pendingRepository: Repository<PendingRegistration>,
     private readonly usersService: UsersService,
-    private readonly mailService: MailService
+    private readonly mailService: MailService,
+    private readonly settingsService: SettingsService
   ) {}
 
   private _hash(code: string): string {
@@ -88,6 +91,7 @@ export class RegistrationOtpService {
     // (see User.normalizeEmail) for the register-step existing-account check.
     const email = dto.email.toLowerCase();
     const passwordHash = await this.usersService.hashPassword(dto.password);
+    const referredById = await this._resolveReferrerId(dto.referralCode);
 
     await this.pendingRepository.delete({email});
 
@@ -101,8 +105,24 @@ export class RegistrationOtpService {
         bio: dto.bio ?? null,
         codeHash,
         expiresAt,
+        referredById,
       })
     );
+  }
+
+  // Resolves an inbound referral code to a referrer's user id — silently
+  // `null` (never a validation error) when the program is off, no code was
+  // supplied, or the code doesn't resolve to anyone. A typo'd/stale code must
+  // never block registration, and this must never reveal which codes exist.
+  private async _resolveReferrerId(
+    referralCode: string | undefined
+  ): Promise<string | null> {
+    if (!referralCode) return null;
+    if (!(await this.settingsService.isReferralProgramEnabled())) return null;
+
+    const referrer =
+      await this.usersService.findOneByReferralCode(referralCode);
+    return referrer?.id ?? null;
   }
 
   async resend(rawEmail: string): Promise<void> {
@@ -149,6 +169,7 @@ export class RegistrationOtpService {
       email: pending.email,
       passwordHash: pending.passwordHash,
       bio: pending.bio,
+      referredById: pending.referredById,
     };
   }
 }

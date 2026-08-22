@@ -13,6 +13,7 @@ import {UserPreviewResponseDto} from 'src/users/dto/user-response.dto';
 import {Role} from 'src/users/enums/role';
 import {UsersService} from 'src/users/users.service';
 import {MailService} from 'src/mail/mail.service';
+import {SettingsService} from 'src/settings/settings.service';
 
 export type Agent = ReturnType<typeof request.agent>;
 
@@ -125,6 +126,11 @@ export async function cleanDatabase(dataSource: DataSource) {
     // later in this same loop is a harmless no-op.
     await dataSource.query(`TRUNCATE TABLE "${table_name}" CASCADE`);
   }
+
+  // This TRUNCATE bypasses SettingsService entirely, so its short-TTL cache
+  // would otherwise carry a previous test's site_settings row (or an
+  // in-flight admin PATCH's cached result) into the next test.
+  currentTestApp?.app.get(SettingsService).invalidateCache();
 }
 
 // Registers a user through the real two-step OTP endpoints (start, then
